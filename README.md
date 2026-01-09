@@ -97,6 +97,7 @@ A minimal single-page web application for visualizing and managing Azure DevOps 
 - **Never commit your `.env` file** - it contains your PAT
 - The PAT is stored server-side and never exposed to the browser
 - All Azure DevOps API calls go through the backend server
+- For production deployment, see [SECURITY.md](SECURITY.md) for important security recommendations including rate limiting and authentication
 
 ## Troubleshooting
 
