@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scrum Calendar Demo - With Mock Data</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        header {
+            background: #0078d4;
+            color: white;
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        h1 {
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        button {
+            padding: 8px 16px;
+            background: white;
+            color: #0078d4;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        button:hover {
+            background: #f0f0f0;
+        }
+
+        button.active {
+            background: #005a9e;
+            color: white;
+        }
+
+        .main-content {
+            display: flex;
+            height: calc(100vh - 120px);
+        }
+
+        .calendar-section {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .unscheduled-section {
+            width: 300px;
+            background: #fafafa;
+            border-left: 1px solid #e0e0e0;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .unscheduled-section h2 {
+            font-size: 18px;
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .calendar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .calendar-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .nav-buttons {
+            display: flex;
+            gap: 10px;
+        }
+
+        .calendar-grid {
+            display: grid;
+            gap: 1px;
+            background: #e0e0e0;
+            border: 1px solid #e0e0e0;
+        }
+
+        .calendar-grid.month-view {
+            grid-template-columns: repeat(7, 1fr);
+        }
+
+        .calendar-grid.week-view {
+            grid-template-columns: repeat(7, 1fr);
+        }
+
+        .day-header {
+            background: #f5f5f5;
+            padding: 10px;
+            text-align: center;
+            font-weight: 600;
+            font-size: 14px;
+            color: #666;
+        }
+
+        .day-cell {
+            background: white;
+            min-height: 100px;
+            padding: 8px;
+            position: relative;
+        }
+
+        .day-cell.other-month {
+            background: #fafafa;
+            color: #999;
+        }
+
+        .day-cell.today {
+            background: #fff4e5;
+        }
+
+        .day-number {
+            font-size: 14px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .day-cell.other-month .day-number {
+            color: #999;
+        }
+
+        .pbi-item {
+            background: #0078d4;
+            color: white;
+            padding: 6px 8px;
+            margin: 4px 0;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: move;
+            user-select: none;
+            transition: opacity 0.2s;
+        }
+
+        .pbi-item:hover {
+            opacity: 0.8;
+        }
+
+        .pbi-item.dragging {
+            opacity: 0.5;
+        }
+
+        .pbi-item.state-new {
+            background: #0078d4;
+        }
+
+        .pbi-item.state-active {
+            background: #107c10;
+        }
+
+        .pbi-item.state-resolved {
+            background: #8764b8;
+        }
+
+        .pbi-item.state-closed {
+            background: #666;
+        }
+
+        .day-cell.drag-over {
+            background: #e5f3ff;
+            border: 2px dashed #0078d4;
+        }
+
+        .unscheduled-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .week-view .day-cell {
+            min-height: 400px;
+        }
+
+        .pbi-title {
+            font-weight: 500;
+            margin-bottom: 2px;
+        }
+
+        .pbi-id {
+            font-size: 10px;
+            opacity: 0.8;
+        }
+
+        .refresh-info {
+            font-size: 12px;
+            color: white;
+            opacity: 0.8;
+        }
+
+        .demo-notice {
+            background: #fff4ce;
+            border-left: 4px solid #ffb900;
+            padding: 15px;
+            margin: 20px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Scrum Calendar - Azure DevOps PBIs (Demo)</h1>
+            <div class="controls">
+                <span class="refresh-info">Demo Mode - Mock Data</span>
+                <button onclick="app.switchView('month')" id="monthBtn" class="active">Month</button>
+                <button onclick="app.switchView('week')" id="weekBtn">Week</button>
+                <button onclick="app.loadPBIs()">Refresh</button>
+            </div>
+        </header>
+
+        <div class="demo-notice">
+            <strong>Demo Mode:</strong> This is a demonstration with mock data. Drag and drop PBIs between dates or to the "Unscheduled" list. 
+            In production, changes would be saved to Azure DevOps.
+        </div>
+
+        <div class="main-content">
+            <div class="calendar-section">
+                <div class="calendar-header">
+                    <h2 class="calendar-title" id="calendarTitle">Loading...</h2>
+                    <div class="nav-buttons">
+                        <button onclick="app.navigateCalendar('prev')">← Previous</button>
+                        <button onclick="app.navigateCalendar('today')">Today</button>
+                        <button onclick="app.navigateCalendar('next')">Next →</button>
+                    </div>
+                </div>
+                <div id="calendar"></div>
+            </div>
+
+            <div class="unscheduled-section">
+                <h2>Unscheduled</h2>
+                <div class="unscheduled-list" id="unscheduledList"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const app = {
+            pbis: [],
+            currentDate: new Date(),
+            view: 'month',
+            draggedItem: null,
+
+            init() {
+                this.loadPBIs();
+            },
+
+            loadPBIs() {
+                // Mock data for demonstration
+                const today = new Date();
+                const tomorrow = new Date(today);
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                const nextWeek = new Date(today);
+                nextWeek.setDate(nextWeek.getDate() + 7);
+                const lastWeek = new Date(today);
+                lastWeek.setDate(lastWeek.getDate() - 7);
+
+                this.pbis = [
+                    { id: 1001, title: 'Implement user authentication', state: 'Active', dueDate: today.toISOString() },
+                    { id: 1002, title: 'Create dashboard UI', state: 'New', dueDate: tomorrow.toISOString() },
+                    { id: 1003, title: 'Setup CI/CD pipeline', state: 'Active', dueDate: nextWeek.toISOString() },
+                    { id: 1004, title: 'Write API documentation', state: 'Resolved', dueDate: lastWeek.toISOString() },
+                    { id: 1005, title: 'Fix login bug', state: 'Closed', dueDate: lastWeek.toISOString() },
+                    { id: 1006, title: 'Add search functionality', state: 'New', dueDate: null },
+                    { id: 1007, title: 'Improve performance', state: 'New', dueDate: null },
+                    { id: 1008, title: 'Update dependencies', state: 'Active', dueDate: nextWeek.toISOString() },
+                ];
+                
+                this.renderCalendar();
+            },
+
+            switchView(view) {
+                this.view = view;
+                document.getElementById('monthBtn').classList.toggle('active', view === 'month');
+                document.getElementById('weekBtn').classList.toggle('active', view === 'week');
+                this.renderCalendar();
+            },
+
+            navigateCalendar(direction) {
+                if (direction === 'prev') {
+                    if (this.view === 'month') {
+                        this.currentDate.setMonth(this.currentDate.getMonth() - 1);
+                    } else {
+                        this.currentDate.setDate(this.currentDate.getDate() - 7);
+                    }
+                } else if (direction === 'next') {
+                    if (this.view === 'month') {
+                        this.currentDate.setMonth(this.currentDate.getMonth() + 1);
+                    } else {
+                        this.currentDate.setDate(this.currentDate.getDate() + 7);
+                    }
+                } else if (direction === 'today') {
+                    this.currentDate = new Date();
+                }
+                this.renderCalendar();
+            },
+
+            renderCalendar() {
+                if (this.view === 'month') {
+                    this.renderMonthView();
+                } else {
+                    this.renderWeekView();
+                }
+                this.renderUnscheduled();
+            },
+
+            renderMonthView() {
+                const year = this.currentDate.getFullYear();
+                const month = this.currentDate.getMonth();
+                
+                document.getElementById('calendarTitle').textContent = 
+                    new Date(year, month).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+                const firstDay = new Date(year, month, 1);
+                const startDate = new Date(firstDay);
+                startDate.setDate(startDate.getDate() - startDate.getDay());
+
+                let html = '<div class="calendar-grid month-view">';
+                
+                ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].forEach(day => {
+                    html += `<div class="day-header">${day}</div>`;
+                });
+
+                const currentDate = new Date(startDate);
+                for (let i = 0; i < 42; i++) {
+                    const isCurrentMonth = currentDate.getMonth() === month;
+                    const isToday = this.isToday(currentDate);
+                    const dateStr = this.formatDate(currentDate);
+                    
+                    const pbisForDay = this.pbis.filter(pbi => 
+                        pbi.dueDate && this.formatDate(new Date(pbi.dueDate)) === dateStr
+                    );
+
+                    html += `<div class="day-cell ${!isCurrentMonth ? 'other-month' : ''} ${isToday ? 'today' : ''}" 
+                                  data-date="${dateStr}"
+                                  ondragover="event.preventDefault(); event.currentTarget.classList.add('drag-over')"
+                                  ondragleave="event.currentTarget.classList.remove('drag-over')"
+                                  ondrop="app.handleDrop(event, '${dateStr}')">
+                                <div class="day-number">${currentDate.getDate()}</div>
+                                ${pbisForDay.map(pbi => this.renderPBI(pbi)).join('')}
+                             </div>`;
+                    
+                    currentDate.setDate(currentDate.getDate() + 1);
+                }
+
+                html += '</div>';
+                document.getElementById('calendar').innerHTML = html;
+            },
+
+            renderWeekView() {
+                const startOfWeek = new Date(this.currentDate);
+                startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
+                const endOfWeek = new Date(startOfWeek);
+                endOfWeek.setDate(endOfWeek.getDate() + 6);
+
+                document.getElementById('calendarTitle').textContent = 
+                    `${startOfWeek.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${endOfWeek.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+
+                let html = '<div class="calendar-grid week-view">';
+                
+                const currentDate = new Date(startOfWeek);
+                for (let i = 0; i < 7; i++) {
+                    html += `<div class="day-header">
+                                ${currentDate.toLocaleDateString('en-US', { weekday: 'short' })}<br>
+                                ${currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                             </div>`;
+                    currentDate.setDate(currentDate.getDate() + 1);
+                }
+
+                currentDate.setTime(startOfWeek.getTime());
+                for (let i = 0; i < 7; i++) {
+                    const isToday = this.isToday(currentDate);
+                    const dateStr = this.formatDate(currentDate);
+                    
+                    const pbisForDay = this.pbis.filter(pbi => 
+                        pbi.dueDate && this.formatDate(new Date(pbi.dueDate)) === dateStr
+                    );
+
+                    html += `<div class="day-cell ${isToday ? 'today' : ''}" 
+                                  data-date="${dateStr}"
+                                  ondragover="event.preventDefault(); event.currentTarget.classList.add('drag-over')"
+                                  ondragleave="event.currentTarget.classList.remove('drag-over')"
+                                  ondrop="app.handleDrop(event, '${dateStr}')">
+                                ${pbisForDay.map(pbi => this.renderPBI(pbi)).join('')}
+                             </div>`;
+                    
+                    currentDate.setDate(currentDate.getDate() + 1);
+                }
+
+                html += '</div>';
+                document.getElementById('calendar').innerHTML = html;
+            },
+
+            renderUnscheduled() {
+                const unscheduledPBIs = this.pbis.filter(pbi => !pbi.dueDate);
+                const html = unscheduledPBIs.length > 0
+                    ? unscheduledPBIs.map(pbi => this.renderPBI(pbi)).join('')
+                    : '<div style="color: #999; font-size: 14px;">No unscheduled items</div>';
+                
+                document.getElementById('unscheduledList').innerHTML = html;
+                
+                const unscheduledList = document.getElementById('unscheduledList');
+                unscheduledList.ondragover = (e) => {
+                    e.preventDefault();
+                    unscheduledList.style.background = '#e5f3ff';
+                };
+                unscheduledList.ondragleave = () => {
+                    unscheduledList.style.background = '';
+                };
+                unscheduledList.ondrop = (e) => {
+                    e.preventDefault();
+                    unscheduledList.style.background = '';
+                    this.handleDrop(e, null);
+                };
+            },
+
+            renderPBI(pbi) {
+                const stateClass = `state-${pbi.state.toLowerCase().replace(/\s+/g, '-')}`;
+                return `<div class="pbi-item ${stateClass}" 
+                             draggable="true" 
+                             data-id="${pbi.id}"
+                             ondragstart="app.handleDragStart(event, ${pbi.id})"
+                             ondragend="app.handleDragEnd(event)"
+                             title="${pbi.title}">
+                            <div class="pbi-title">${this.truncate(pbi.title, 40)}</div>
+                            <div class="pbi-id">#${pbi.id}</div>
+                        </div>`;
+            },
+
+            handleDragStart(event, pbiId) {
+                this.draggedItem = pbiId;
+                event.target.classList.add('dragging');
+            },
+
+            handleDragEnd(event) {
+                event.target.classList.remove('dragging');
+                document.querySelectorAll('.drag-over').forEach(el => {
+                    el.classList.remove('drag-over');
+                });
+            },
+
+            handleDrop(event, dateStr) {
+                event.preventDefault();
+                event.currentTarget.classList.remove('drag-over');
+                
+                if (!this.draggedItem) return;
+
+                const pbi = this.pbis.find(p => p.id === this.draggedItem);
+                if (pbi) {
+                    pbi.dueDate = dateStr ? new Date(dateStr).toISOString() : null;
+                    this.renderCalendar();
+                }
+
+                this.draggedItem = null;
+            },
+
+            formatDate(date) {
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            },
+
+            isToday(date) {
+                const today = new Date();
+                return date.getDate() === today.getDate() &&
+                       date.getMonth() === today.getMonth() &&
+                       date.getFullYear() === today.getFullYear();
+            },
+
+            truncate(str, length) {
+                return str.length > length ? str.substring(0, length) + '...' : str;
+            }
+        };
+
+        app.init();
+    </script>
+</body>
+</html>
