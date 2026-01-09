@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Scrum Calendar - Azure DevOps PBIs</title>
+    <title>Scrum Calendar Demo - With Mock Data</title>
     <style>
         * {
             margin: 0;
@@ -211,21 +211,6 @@
             min-height: 400px;
         }
 
-        .loading {
-            text-align: center;
-            padding: 40px;
-            color: #666;
-        }
-
-        .error {
-            background: #fde7e9;
-            color: #a80000;
-            padding: 15px;
-            margin: 20px;
-            border-radius: 4px;
-            border-left: 4px solid #a80000;
-        }
-
         .pbi-title {
             font-weight: 500;
             margin-bottom: 2px;
@@ -241,19 +226,32 @@
             color: white;
             opacity: 0.8;
         }
+
+        .demo-notice {
+            background: #fff4ce;
+            border-left: 4px solid #ffb900;
+            padding: 15px;
+            margin: 20px;
+            border-radius: 4px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>Scrum Calendar - Azure DevOps PBIs</h1>
+            <h1>Scrum Calendar - Azure DevOps PBIs (Demo)</h1>
             <div class="controls">
-                <span class="refresh-info" id="refreshInfo">Auto-refresh: 30s</span>
+                <span class="refresh-info">Demo Mode - Mock Data</span>
                 <button onclick="app.switchView('month')" id="monthBtn" class="active">Month</button>
                 <button onclick="app.switchView('week')" id="weekBtn">Week</button>
                 <button onclick="app.loadPBIs()">Refresh</button>
             </div>
         </header>
+
+        <div class="demo-notice">
+            <strong>Demo Mode:</strong> This is a demonstration with mock data. Drag and drop PBIs between dates or to the "Unscheduled" list. 
+            In production, changes would be saved to Azure DevOps.
+        </div>
 
         <div class="main-content">
             <div class="calendar-section">
@@ -265,7 +263,7 @@
                         <button onclick="app.navigateCalendar('next')">Next →</button>
                     </div>
                 </div>
-                <div id="calendar" class="loading">Loading PBIs...</div>
+                <div id="calendar"></div>
             </div>
 
             <div class="unscheduled-section">
@@ -276,46 +274,38 @@
     </div>
 
     <script>
-        const POLL_INTERVAL_MS = 30000; // Poll every 30 seconds
-        
         const app = {
             pbis: [],
             currentDate: new Date(),
             view: 'month',
             draggedItem: null,
-            pollInterval: null,
 
             init() {
                 this.loadPBIs();
-                this.startPolling();
             },
 
-            async loadPBIs() {
-                try {
-                    const response = await fetch('/api/pbis');
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
-                    this.pbis = await response.json();
-                    this.renderCalendar();
-                    this.updateRefreshInfo();
-                } catch (error) {
-                    console.error('Error loading PBIs:', error);
-                    document.getElementById('calendar').innerHTML = 
-                        `<div class="error">Failed to load PBIs: ${error.message}</div>`;
-                }
-            },
+            loadPBIs() {
+                // Mock data for demonstration
+                const today = new Date();
+                const tomorrow = new Date(today);
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                const nextWeek = new Date(today);
+                nextWeek.setDate(nextWeek.getDate() + 7);
+                const lastWeek = new Date(today);
+                lastWeek.setDate(lastWeek.getDate() - 7);
 
-            startPolling() {
-                this.pollInterval = setInterval(() => {
-                    this.loadPBIs();
-                }, POLL_INTERVAL_MS);
-            },
-
-            updateRefreshInfo() {
-                const now = new Date();
-                document.getElementById('refreshInfo').textContent = 
-                    `Last update: ${now.toLocaleTimeString()}`;
+                this.pbis = [
+                    { id: 1001, title: 'Implement user authentication', state: 'Active', dueDate: today.toISOString() },
+                    { id: 1002, title: 'Create dashboard UI', state: 'New', dueDate: tomorrow.toISOString() },
+                    { id: 1003, title: 'Setup CI/CD pipeline', state: 'Active', dueDate: nextWeek.toISOString() },
+                    { id: 1004, title: 'Write API documentation', state: 'Resolved', dueDate: lastWeek.toISOString() },
+                    { id: 1005, title: 'Fix login bug', state: 'Closed', dueDate: lastWeek.toISOString() },
+                    { id: 1006, title: 'Add search functionality', state: 'New', dueDate: null },
+                    { id: 1007, title: 'Improve performance', state: 'New', dueDate: null },
+                    { id: 1008, title: 'Update dependencies', state: 'Active', dueDate: nextWeek.toISOString() },
+                ];
+                
+                this.renderCalendar();
             },
 
             switchView(view) {
@@ -361,18 +351,15 @@
                     new Date(year, month).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
                 const firstDay = new Date(year, month, 1);
-                const lastDay = new Date(year, month + 1, 0);
                 const startDate = new Date(firstDay);
                 startDate.setDate(startDate.getDate() - startDate.getDay());
 
                 let html = '<div class="calendar-grid month-view">';
                 
-                // Day headers
                 ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].forEach(day => {
                     html += `<div class="day-header">${day}</div>`;
                 });
 
-                // Calendar days
                 const currentDate = new Date(startDate);
                 for (let i = 0; i < 42; i++) {
                     const isCurrentMonth = currentDate.getMonth() === month;
@@ -410,7 +397,6 @@
 
                 let html = '<div class="calendar-grid week-view">';
                 
-                // Day headers
                 const currentDate = new Date(startOfWeek);
                 for (let i = 0; i < 7; i++) {
                     html += `<div class="day-header">
@@ -420,7 +406,6 @@
                     currentDate.setDate(currentDate.getDate() + 1);
                 }
 
-                // Week days
                 currentDate.setTime(startOfWeek.getTime());
                 for (let i = 0; i < 7; i++) {
                     const isToday = this.isToday(currentDate);
@@ -453,7 +438,6 @@
                 
                 document.getElementById('unscheduledList').innerHTML = html;
                 
-                // Setup drop zone for unscheduled
                 const unscheduledList = document.getElementById('unscheduledList');
                 unscheduledList.ondragover = (e) => {
                     e.preventDefault();
@@ -489,39 +473,21 @@
 
             handleDragEnd(event) {
                 event.target.classList.remove('dragging');
-                // Remove drag-over class from all cells
                 document.querySelectorAll('.drag-over').forEach(el => {
                     el.classList.remove('drag-over');
                 });
             },
 
-            async handleDrop(event, dateStr) {
+            handleDrop(event, dateStr) {
                 event.preventDefault();
                 event.currentTarget.classList.remove('drag-over');
                 
                 if (!this.draggedItem) return;
 
-                const pbiId = this.draggedItem;
-                const dueDate = dateStr ? new Date(dateStr).toISOString() : null;
-
-                try {
-                    const response = await fetch(`/api/pbis/${pbiId}`, {
-                        method: 'PATCH',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({ dueDate })
-                    });
-
-                    if (!response.ok) {
-                        throw new Error(`Failed to update PBI: ${response.statusText}`);
-                    }
-
-                    // Reload PBIs to reflect the change
-                    await this.loadPBIs();
-                } catch (error) {
-                    console.error('Error updating PBI:', error);
-                    alert(`Failed to update PBI: ${error.message}`);
+                const pbi = this.pbis.find(p => p.id === this.draggedItem);
+                if (pbi) {
+                    pbi.dueDate = dateStr ? new Date(dateStr).toISOString() : null;
+                    this.renderCalendar();
                 }
 
                 this.draggedItem = null;
@@ -546,7 +512,6 @@
             }
         };
 
-        // Initialize the app
         app.init();
     </script>
 </body>

@@ -16,12 +16,16 @@ const ADO_ORG = process.env.ADO_ORGANIZATION;
 const ADO_PROJECT = process.env.ADO_PROJECT;
 const ADO_PAT = process.env.ADO_PAT;
 
-// Create base64 encoded auth header
-const auth = ADO_PAT ? Buffer.from(`:${ADO_PAT}`).toString('base64') : '';
+// Create base64 encoded auth header (only if PAT is configured)
+const auth = ADO_PAT ? Buffer.from(`:${ADO_PAT}`).toString('base64') : null;
 
 // Azure DevOps API helper
 async function adoApiCall(method, url, data = null) {
   try {
+    if (!auth) {
+      throw new Error('Azure DevOps PAT is not configured');
+    }
+    
     const config = {
       method,
       url,
@@ -111,7 +115,7 @@ app.patch('/api/pbis/:id', async (req, res) => {
       {
         op: dueDate ? 'add' : 'remove',
         path: '/fields/Microsoft.VSTS.Scheduling.DueDate',
-        value: dueDate || undefined
+        value: dueDate
       }
     ];
 
