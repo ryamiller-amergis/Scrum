@@ -1,119 +1,134 @@
-# Scrum Calendar - Azure DevOps PBIs
+# Scrum Calendar
 
-A minimal single-page web application for visualizing and managing Azure DevOps Product Backlog Items (PBIs) on a calendar interface.
+A web application for visualizing Azure DevOps Product Backlog Items (PBIs) on a calendar with two-way sync support.
 
 ## Features
 
-- **Calendar Views**: Switch between month and week views
-- **Drag & Drop**: Move PBIs between dates to update their due dates
-- **Unscheduled List**: View and manage PBIs without due dates
-- **Real-time Sync**: Auto-refresh every 30 seconds to sync with Azure DevOps changes
-- **Color-coded States**: Visual indicators for different PBI states (New, Active, Resolved, Closed)
-
-## Prerequisites
-
-- Node.js (v14 or higher)
-- Azure DevOps Personal Access Token (PAT) with work item read/write permissions
+- **Calendar View**: Month and week views with drag-and-drop support
+- **Unscheduled List**: Side panel showing PBIs without due dates
+- **Two-Way Sync**: Changes in Azure DevOps are reflected in the app within the polling interval
+- **Details Panel**: Click any PBI to view details and open in Azure DevOps
+- **Drag & Drop**:
+  - Drag PBIs to calendar dates to set due dates
+  - Drag PBIs back to unscheduled to clear due dates
 
 ## Setup
 
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd AI-Pilot
-   ```
+### Prerequisites
 
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
+- Node.js 18+
+- Azure DevOps Personal Access Token (PAT) with Work Items (Read, Write) permissions
 
-3. **Configure Azure DevOps connection**
-   
-   Create a `.env` file in the root directory (use `.env.example` as template):
-   ```
-   ADO_ORGANIZATION=your-organization
-   ADO_PROJECT=your-project
-   ADO_PAT=your-personal-access-token
-   PORT=3000
-   ```
+### Installation
 
-   To get your Azure DevOps PAT:
-   - Go to https://dev.azure.com/{your-organization}
-   - Click on User Settings (top right) > Personal Access Tokens
-   - Create a new token with "Work Items (Read & Write)" scope
+1. Clone the repository:
 
-4. **Start the server**
-   ```bash
-   npm start
-   ```
+```bash
+git clone <repository-url>
+cd AI-Pilot
+```
 
-5. **Open the application**
-   
-   Navigate to `http://localhost:3000` in your browser
+2. Install dependencies:
 
-## Usage
+```bash
+npm install
+```
 
-### Viewing PBIs
-- The calendar displays all PBIs with due dates set in Azure DevOps
-- PBIs without due dates appear in the "Unscheduled" sidebar
-- Switch between month and week views using the buttons in the header
+3. Configure environment variables:
 
-### Updating Due Dates
-- Drag any PBI and drop it on a different date to update its due date
-- Drag a PBI to the "Unscheduled" sidebar to remove its due date
-- Changes are immediately saved to Azure DevOps
+```bash
+cp .env.example .env
+```
 
-### Navigation
-- Use "Previous" and "Next" buttons to navigate through dates
-- Click "Today" to return to the current date
-- Click "Refresh" to manually sync with Azure DevOps
+Edit `.env` and set your Azure DevOps configuration:
 
-### Auto-refresh
-- The application automatically polls Azure DevOps every 30 seconds
-- This ensures changes made in Azure DevOps are reflected in the calendar
-- Last update time is shown in the header
+- `ADO_ORG`: Your Azure DevOps organization URL (e.g., https://dev.azure.com/yourorg)
+- `ADO_PROJECT`: Your project name
+- `ADO_PAT`: Your Personal Access Token
+- `ADO_AREA_PATH`: (Optional) Area path to filter PBIs
+- `PORT`: Server port (default: 3001)
+- `POLL_INTERVAL`: Polling interval in seconds (default: 30)
+
+### Development
+
+Run the development server:
+
+```bash
+npm run dev
+```
+
+This starts both the backend server (port 3001) and frontend dev server (port 3000).
+
+### Building
+
+Build for production:
+
+```bash
+npm run build
+```
+
+Run production build:
+
+```bash
+npm start
+```
+
+### Testing
+
+Run tests:
+
+```bash
+npm test
+```
 
 ## Architecture
 
-### Backend (server.js)
-- Express.js server that proxies requests to Azure DevOps REST API
-- Handles authentication using server-side PAT (keeps token secure)
-- Endpoints:
-  - `GET /api/pbis` - Fetch all PBIs with due dates
-  - `PATCH /api/pbis/:id` - Update PBI due date
+### Backend
 
-### Frontend (public/index.html)
-- Single-page application with vanilla JavaScript
-- No build process required
-- Features:
-  - Calendar rendering (month/week views)
-  - Drag-and-drop interface
-  - Automatic polling for updates
-  - Responsive design
+- Express server with TypeScript
+- Azure DevOps integration using `azure-devops-node-api`
+- REST API endpoints for work item operations
+- Retry logic with exponential backoff for API resilience
 
-## Security Notes
+### Frontend
 
-- **Never commit your `.env` file** - it contains your PAT
-- The PAT is stored server-side and never exposed to the browser
-- All Azure DevOps API calls go through the backend server
-- For production deployment, see [SECURITY.md](SECURITY.md) for important security recommendations including rate limiting and authentication
+- React 18 with TypeScript
+- React Big Calendar for calendar visualization
+- React DnD for drag-and-drop functionality
+- Polling-based sync with Azure DevOps
 
-## Troubleshooting
+## API Endpoints
 
-**PBIs not loading**
-- Verify your `.env` file is configured correctly
-- Check that your PAT has the required permissions
-- Ensure your organization and project names are correct
+### GET /api/workitems
 
-**Drag and drop not working**
-- Make sure you're using a modern browser (Chrome, Firefox, Edge, Safari)
-- Check browser console for errors
+Fetch work items for a date range plus unscheduled items.
 
-**Changes not syncing**
-- Wait for the auto-refresh (30 seconds)
-- Click the "Refresh" button to force an update
-- Verify your PAT has write permissions for work items
+Query parameters:
+
+- `from` (optional): Start date in YYYY-MM-DD format
+- `to` (optional): End date in YYYY-MM-DD format
+
+### PATCH /api/workitems/:id/due-date
+
+Update the due date for a work item.
+
+Body:
+
+```json
+{
+  "dueDate": "2024-03-15" | null
+}
+```
+
+### GET /api/health
+
+Health check endpoint.
+
+## Security
+
+- PAT is stored server-side only and never exposed to the frontend
+- All API calls are proxied through the backend
+- CORS is configured for development
 
 ## License
 

@@ -1,0 +1,50 @@
+.scrum-calendar-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  overflow: auto;
+}
+
+.unscheduled-drop-zone {
+  padding: 12px;
+  margin-bottom: 16px;
+  border: 2px dashed #ccc;
+  border-radius: 4px;
+  text-align: center;
+  color: #666;
+  background: #f9f9f9;
+  transition: all 0.2s;
+}
+
+.unscheduled-drop-zone.over {
+  border-color: #0078d4;
+  background: #e3f2fd;
+  color: #0078d4;
+}
+
+.rbc-calendar {
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu,
+    Cantarell, sans-serif;
+}
+
+.rbc-event {
+  background-color: #0078d4;
+  border-radius: 4px;
+  padding: 2px 5px;
+  cursor: move;
+}
+
+.rbc-event:hover {
+  background-color: #106ebe;
+}
+
+.rbc-today {
+  background-color: #fff4e6;
+}
+
+.rbc-header {
+  padding: 10px 3px;
+  font-weight: 600;
+}
