@@ -4,6 +4,7 @@
   flex-direction: column;
   padding: 16px;
   overflow: auto;
+  position: relative;
 }
 
 .calendar-filters {
@@ -91,20 +92,23 @@
 }
 
 .rbc-event {
-  background-color: var(--calendar-event-bg);
-  color: var(--calendar-event-text);
-  border: 1px solid var(--calendar-event-border);
+  background-color: transparent !important;
+  border: none !important;
   border-radius: 4px;
-  padding: 2px 5px;
+  padding: 0;
   cursor: move;
   transition: all 0.2s ease;
   user-select: none;
+  overflow: hidden;
+  height: 24px !important;
+  line-height: 24px !important;
 }
 
 .rbc-event:hover {
   opacity: 0.9;
   transform: scale(1.02);
-  box-shadow: 0 2px 4px var(--shadow-sm);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  z-index: 10;
 }
 
 .rbc-addons-dnd-dragging {
@@ -150,6 +154,24 @@
   border-color: var(--border-color) !important;
 }
 
+.rbc-month-row {
+  min-height: 100px;
+  overflow: visible;
+}
+
+.rbc-row-content {
+  position: relative;
+}
+
+.rbc-row-segment .rbc-event {
+  max-height: 24px;
+  min-height: 24px;
+}
+
+.rbc-day-slot .rbc-events-container {
+  margin-right: 0;
+}
+
 .rbc-off-range-bg {
   background: var(--bg-tertiary);
 }
@@ -177,14 +199,81 @@
   padding: 4px 8px !important;
   border-radius: 4px !important;
   font-weight: 600 !important;
-  font-size: 12px !important;
-  margin: 2px !important;
-  display: inline-block !important;
+  font-size: 11px !important;
+  margin: 2px 4px !important;
+  display: block !important;
   cursor: pointer !important;
-  transition: opacity 0.2s !important;
+  transition: all 0.2s !important;
+  text-align: center !important;
+  width: calc(100% - 8px) !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2) !important;
 }
 
 .rbc-show-more:hover {
   opacity: 0.9 !important;
   text-decoration: none !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3) !important;
+}
+
+.rbc-overlay {
+  background: rgba(var(--bg-primary-rgb, 255, 255, 255), 0.95) !important;
+  border: 1px solid var(--border-color) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3) !important;
+  border-radius: 8px !important;
+  padding: 12px !important;
+  max-height: 400px !important;
+  overflow-y: auto !important;
+  z-index: 1000 !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+  transition: opacity 0.2s ease, background 0.2s ease !important;
+}
+
+.rbc-overlay.dragging-from-popup {
+  opacity: 0.1 !important;
+  background: rgba(var(--bg-primary-rgb, 255, 255, 255), 0.05) !important;
+  backdrop-filter: blur(2px) !important;
+  -webkit-backdrop-filter: blur(2px) !important;
+}
+
+[data-theme='dark'] .rbc-overlay {
+  background: rgba(30, 30, 40, 0.92) !important;
+}
+
+[data-theme='dark'] .rbc-overlay.dragging-from-popup {
+  background: rgba(30, 30, 40, 0.05) !important;
+}
+
+.rbc-overlay-header {
+  background: var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
+  padding: 8px 12px !important;
+  margin: -12px -12px 12px -12px !important;
+  border-radius: 8px 8px 0 0 !important;
+  font-weight: 600 !important;
+  border-bottom: 1px solid var(--border-color) !important;
+}
+
+.rbc-overlay .rbc-event {
+  height: auto !important;
+  min-height: 32px !important;
+  margin-bottom: 4px !important;
+  cursor: move !important;
+  line-height: normal !important;
+  padding: 6px 8px !important;
+}
+
+.rbc-overlay .rbc-event:hover {
+  transform: translateX(4px) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15) !important;
+}
+
+.rbc-overlay .rbc-event-content {
+  pointer-events: none;
+}
+
+.rbc-event-content {
+  height: 100%;
+  width: 100%;
 }

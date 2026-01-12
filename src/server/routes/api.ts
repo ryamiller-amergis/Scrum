@@ -21,7 +21,7 @@ router.get('/workitems', async (req: Request, res: Response) => {
 router.patch('/workitems/:id/due-date', async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id, 10);
-    const { dueDate } = req.body as UpdateDueDateRequest;
+    const { dueDate, reason } = req.body as UpdateDueDateRequest;
 
     if (isNaN(id)) {
       return res.status(400).json({ error: 'Invalid work item ID' });
@@ -34,11 +34,33 @@ router.patch('/workitems/:id/due-date', async (req: Request, res: Response) => {
         .json({ error: 'Invalid date format. Use YYYY-MM-DD' });
     }
 
-    await adoService.updateDueDate(id, dueDate);
+    await adoService.updateDueDate(id, dueDate, reason);
     res.json({ success: true });
   } catch (error: any) {
     console.error('Error updating due date:', error);
     res.status(500).json({ error: 'Failed to update due date' });
+  }
+});
+
+// PATCH /api/workitems/:id/field - Update a specific field for a work item
+router.patch('/workitems/:id/field', async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const { field, value } = req.body;
+
+    if (isNaN(id)) {
+      return res.status(400).json({ error: 'Invalid work item ID' });
+    }
+
+    if (!field) {
+      return res.status(400).json({ error: 'Field name is required' });
+    }
+
+    await adoService.updateWorkItemField(id, field, value);
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Error updating work item field:', error);
+    res.status(500).json({ error: 'Failed to update work item field' });
   }
 });
 
@@ -68,6 +90,18 @@ router.get('/health', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Health check error:', error);
     res.status(503).json({ healthy: false, error: 'Service unavailable' });
+  }
+});
+
+// GET /api/due-date-stats - Get due date change statistics by developer
+router.get('/due-date-stats', async (req: Request, res: Response) => {
+  try {
+    const { from, to, developer } = req.query as WorkItemsQuery & { developer?: string };
+    const stats = await adoService.getDueDateStatsByDeveloper(from, to, developer);
+    res.json(stats);
+  } catch (error: any) {
+    console.error('Error fetching due date stats:', error);
+    res.status(500).json({ error: 'Failed to fetch due date statistics' });
   }
 });
 

@@ -25,3 +25,17 @@ export interface CycleTimeData {
   qaReadyDate?: string;
   cycleTimeDays?: number;
 }
+
+export interface DueDateChange {
+  changedDate: string;
+  changedBy: string;
+  oldDueDate?: string;
+  newDueDate?: string;
+  reason?: string;
+}
+
+export interface DeveloperDueDateStats {
+  developer: string;
+  totalChanges: number;
+  reasonBreakdown: { [reason: string]: number };
+}

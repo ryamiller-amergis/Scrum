@@ -188,3 +188,58 @@ body {
 .theme-toggle:active {
   transform: translateY(0);
 }
+
+.analytics-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.analytics-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 16px 16px 0 16px;
+  background: var(--bg-secondary);
+  border-bottom: 2px solid var(--border-color);
+}
+
+.tab-button {
+  padding: 12px 24px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: 8px 8px 0 0;
+  transition: all 0.2s;
+  position: relative;
+}
+
+.tab-button:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.tab-button.active {
+  background: var(--bg-primary);
+  color: var(--accent-color);
+  font-weight: 600;
+}
+
+.tab-button.active::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent-color);
+}
+
+.analytics-content {
+  flex: 1;
+  overflow: auto;
+  background: var(--bg-primary);
+}
+

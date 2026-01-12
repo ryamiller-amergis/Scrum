@@ -37,4 +37,19 @@ export interface WorkItemsQuery {
 
 export interface UpdateDueDateRequest {
   dueDate: string | null;
+  reason?: string;
+}
+
+export interface DueDateChange {
+  changedDate: string;
+  changedBy: string;
+  oldDueDate?: string;
+  newDueDate?: string;
+  reason?: string;
+}
+
+export interface DeveloperDueDateStats {
+  developer: string;
+  totalChanges: number;
+  reasonBreakdown: { [reason: string]: number };
 }

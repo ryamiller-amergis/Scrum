@@ -1,9 +1,10 @@
-import { useState, useMemo, useCallback, useRef } from 'react';
-import { Calendar, dateFnsLocalizer, View } from 'react-big-calendar';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import { Calendar, dateFnsLocalizer, View, EventProps } from 'react-big-calendar';
 import withDragAndDrop from 'react-big-calendar/lib/addons/dragAndDrop';
-import { format, parse, startOfWeek, getDay } from 'date-fns';
+import { format, parse, startOfWeek, getDay, addMonths, subMonths } from 'date-fns';
 import enUSLocale from 'date-fns/locale/en-US';
 import { WorkItem } from '../types/workitem';
+import { getAssigneeColor } from '../utils/assigneeColors';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import 'react-big-calendar/lib/addons/dragAndDrop/styles.css';
 import './ScrumCalendar.css';
@@ -44,9 +45,10 @@ export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
 }) => {
   const [view, setView] = useState<View>('month');
   const [date, setDate] = useState(new Date());
-  const [isDragging, setIsDragging] = useState(false);
+  const [isDraggingFromPopup, setIsDraggingFromPopup] = useState(false);
   const [selectedAssignedTo, setSelectedAssignedTo] = useState<string>('');
   const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const eventsRef = useRef<CalendarEvent[]>([]);
 
   // Get unique assigned to values
   const assignedToOptions = useMemo(() => {
@@ -75,7 +77,8 @@ export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
       .map((item) => {
         // Parse the date string directly (YYYY-MM-DD format)
         const [year, month, day] = item.dueDate!.split('-').map(Number);
-        const eventDate = new Date(year, month - 1, day);
+        // Create date at noon local time to avoid timezone boundary issues
+        const eventDate = new Date(year, month - 1, day, 12, 0, 0);
         
         // Create event with custom onDragStart
         const event: CalendarEvent = {
@@ -91,15 +94,58 @@ export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
       });
   }, [filteredWorkItems]);
 
+  // Update the ref when events change
+  useEffect(() => {
+    eventsRef.current = events;
+  }, [events]);
+
+  // Add event listeners for popup events
+  useEffect(() => {
+    const handlePopupDragStart = (e: DragEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.classList.contains('rbc-event') && target.closest('.rbc-overlay')) {
+        const eventId = target.getAttribute('data-event-id');
+        if (eventId) {
+          const event = eventsRef.current.find(ev => ev.id === parseInt(eventId));
+          if (event) {
+            setIsDraggingFromPopup(true);
+            
+            // Immediately remove all overlay popups when drag starts
+            document.querySelectorAll('.rbc-overlay').forEach(overlay => {
+              overlay.remove();
+            });
+            
+            (window as any).__DRAGGED_WORK_ITEM__ = event.resource;
+            (window as any).__DRAGGED_CALENDAR_ITEM__ = event.resource;
+            if (e.dataTransfer) {
+              e.dataTransfer.effectAllowed = 'move';
+            }
+          }
+        }
+      }
+    };
+
+    const handlePopupDragEnd = () => {
+      setIsDraggingFromPopup(false);
+      
+      (window as any).__DRAGGED_WORK_ITEM__ = null;
+      (window as any).__DRAGGED_CALENDAR_ITEM__ = null;
+    };
+
+    document.addEventListener('dragstart', handlePopupDragStart);
+    document.addEventListener('dragend', handlePopupDragEnd);
+
+    return () => {
+      document.removeEventListener('dragstart', handlePopupDragStart);
+      document.removeEventListener('dragend', handlePopupDragEnd);
+    };
+  }, []);
+
   const handleSelectEvent = useCallback((event: CalendarEvent) => {
-    // Reset dragging state and open details
-    setIsDragging(false);
     onSelectItem(event.resource);
   }, [onSelectItem]);
 
   const handleEventDrop = useCallback(({ event, start, end, allDay }: any) => {
-    setIsDragging(false);
-    
     // Use the local date components to avoid timezone issues
     const year = start.getFullYear();
     const month = start.getMonth();
@@ -140,54 +186,99 @@ export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
     }, 100);
   }, [onUpdateDueDate]);
 
-  const handleDragStart = useCallback(() => {
-    setIsDragging(true);
-  }, []);
-
   const handleEventDragStart = useCallback((event: CalendarEvent) => {
-    // Set global reference for unscheduled list to pick up
-    console.log('Calendar drag start:', event.resource);
     (window as any).__DRAGGED_CALENDAR_ITEM__ = event.resource;
   }, []);
 
   const handleDropFromOutside = useCallback(({ start, end, allDay }: any) => {
-    // This handles drops from external sources (unscheduled items)
-    const draggedItem = (window as any).__DRAGGED_WORK_ITEM__;
+    // This handles drops from external sources (unscheduled items or popup events)
+    const draggedItem = (window as any).__DRAGGED_WORK_ITEM__ || (window as any).__DRAGGED_CALENDAR_ITEM__;
     
     if (!draggedItem) {
       return;
     }
 
-    // Use the local date components to avoid timezone issues
-    const year = start.getFullYear();
-    const month = start.getMonth();
-    const day = start.getDate();
+    console.log('=== handleDropFromOutside ===');
+    console.log('Start Date Object:', start);
+    console.log('Start ISO:', start.toISOString());
+    console.log('Start UTC:', {
+      year: start.getUTCFullYear(),
+      month: start.getUTCMonth(),
+      day: start.getUTCDate(),
+      hours: start.getUTCHours()
+    });
+    console.log('Start Local:', {
+      year: start.getFullYear(),
+      month: start.getMonth(),
+      day: start.getDate(),
+      hours: start.getHours()
+    });
+
+    // Handle timezone issues by using UTC components or local components based on what we receive
+    // If the date is UTC midnight, we need to use UTC methods
+    let year, month, day;
+    
+    if (start.getUTCHours() === 0 && start.getUTCMinutes() === 0) {
+      // Date is UTC midnight, use UTC components
+      console.log('Using UTC components (UTC midnight detected)');
+      year = start.getUTCFullYear();
+      month = start.getUTCMonth();
+      day = start.getUTCDate();
+    } else {
+      // Use local components
+      console.log('Using Local components');
+      year = start.getFullYear();
+      month = start.getMonth();
+      day = start.getDate();
+    }
     
     // Format as YYYY-MM-DD
     const newDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     
-    console.log('Drop from outside:', { 
-      workItemId: draggedItem.id,
-      newDate,
-      start,
-      year,
-      month,
-      day
-    });
+    console.log('Formatted Date:', newDate);
+    console.log('Calling onUpdateDueDate with:', { workItemId: draggedItem.id, newDate });
     
     onUpdateDueDate(draggedItem.id, newDate);
     
-    // Clear the dragged item reference
+    // Clear the dragged item references
     (window as any).__DRAGGED_WORK_ITEM__ = null;
+    (window as any).__DRAGGED_CALENDAR_ITEM__ = null;
   }, [onUpdateDueDate]);
 
   const AgendaEvent = ({ event }: { event: CalendarEvent }) => {
+    const colors = getAssigneeColor(event.resource.assignedTo);
+    
     return (
       <div>
         <div style={{ fontWeight: 500, marginBottom: '4px' }}>{event.title}</div>
-        <div style={{ fontSize: '0.85em', color: '#666' }}>
+        <div style={{ fontSize: '0.85em', color: colors.text }}>
           <strong>Assigned To:</strong> {event.resource.assignedTo || 'Unassigned'}
         </div>
+      </div>
+    );
+  };
+
+  const EventComponent = ({ event }: EventProps<CalendarEvent>) => {
+    const colors = getAssigneeColor(event.resource.assignedTo);
+    
+    return (
+      <div
+        data-event-id={event.id}
+        style={{
+          height: '24px',
+          backgroundColor: colors.bg,
+          borderLeft: `3px solid ${colors.border}`,
+          color: colors.text,
+          padding: '2px 4px',
+          overflow: 'hidden',
+          fontSize: '0.75em',
+          fontWeight: 500,
+          lineHeight: '20px',
+          whiteSpace: 'nowrap',
+          textOverflow: 'ellipsis',
+        }}
+      >
+        #{event.resource.id} {event.resource.title}
       </div>
     );
   };
@@ -239,7 +330,6 @@ export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
         onEventDrop={handleEventDrop}
         onDropFromOutside={handleDropFromOutside}
         onDragStart={(args: any) => {
-          handleDragStart();
           handleEventDragStart(args.event);
         }}
         draggableAccessor={() => true}
@@ -247,10 +337,23 @@ export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
         step={60}
         showMultiDayTimes
         defaultDate={new Date()}
+        popup
+        popupOffset={30}
         components={{
+          event: EventComponent,
           agenda: {
             event: AgendaEvent,
           },
+          eventContainerWrapper: (props: any) => {
+            // Check if we're in the popup overlay
+            const isPopup = props.slotMetrics === undefined;
+            return <div {...props}>{props.children}</div>;
+          },
+        }}
+        eventPropGetter={(event: CalendarEvent) => {
+          return {
+            className: 'custom-event',
+          };
         }}
       />
     </div>

@@ -1,5 +1,5 @@
 import * as azdev from 'azure-devops-node-api';
-import { WorkItem, CycleTimeData } from '../types/workitem';
+import { WorkItem, CycleTimeData, DueDateChange, DeveloperDueDateStats } from '../types/workitem';
 import { retryWithBackoff } from '../utils/retry';
 
 export class AzureDevOpsService {
@@ -93,24 +93,31 @@ export class AzureDevOpsService {
         for (const wi of workItems) {
           if (!wi.id || !wi.fields) continue;
 
+          // Helper function to extract date as YYYY-MM-DD without timezone issues
+          const extractDate = (dateValue: any): string | undefined => {
+            if (!dateValue) return undefined;
+            const date = new Date(dateValue);
+            
+            // Use LOCAL date methods because ADO stores dates at midnight UTC
+            // which appears as the previous day in timezones behind UTC (EST/CST)
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const result = `${year}-${month}-${day}`;
+            
+            return result;
+          };
+
           allWorkItems.push({
             id: wi.id,
             title: wi.fields['System.Title'] || '',
             state: wi.fields['System.State'] || '',
             assignedTo: wi.fields['System.AssignedTo']?.displayName,
-            dueDate: wi.fields['Microsoft.VSTS.Scheduling.DueDate']
-              ? new Date(wi.fields['Microsoft.VSTS.Scheduling.DueDate'])
-                  .toISOString()
-                  .split('T')[0]
-              : undefined,
+            dueDate: extractDate(wi.fields['Microsoft.VSTS.Scheduling.DueDate']),
             workItemType: wi.fields['System.WorkItemType'] || '',
             changedDate: wi.fields['System.ChangedDate'] || '',
             createdDate: wi.fields['System.CreatedDate'] || '',
-            closedDate: wi.fields['Microsoft.VSTS.Common.ClosedDate']
-              ? new Date(wi.fields['Microsoft.VSTS.Common.ClosedDate'])
-                  .toISOString()
-                  .split('T')[0]
-              : undefined,
+            closedDate: extractDate(wi.fields['Microsoft.VSTS.Common.ClosedDate']),
             areaPath: wi.fields['System.AreaPath'] || '',
             iterationPath: wi.fields['System.IterationPath'] || '',
           });
@@ -201,7 +208,7 @@ export class AzureDevOpsService {
     }
   }
 
-  async updateDueDate(id: number, dueDate: string | null): Promise<void> {
+  async updateDueDate(id: number, dueDate: string | null, reason?: string): Promise<void> {
     return retryWithBackoff(async () => {
       const witApi = await this.connection.getWorkItemTrackingApi();
 
@@ -214,14 +221,74 @@ export class AzureDevOpsService {
           path: '/fields/Microsoft.VSTS.Scheduling.DueDate',
         });
       } else {
+        // Create a Date object at midnight in local timezone, then convert to UTC
+        // This ensures ADO stores a time that, when read back with local methods, gives the correct date
+        const [year, month, day] = dueDate.split('-').map(Number);
+        const localDate = new Date(year, month - 1, day, 0, 0, 0);
+        const dateValue = localDate.toISOString();
+        
         // Add or replace the due date field
         patchDocument.push({
           op: 'add',
           path: '/fields/Microsoft.VSTS.Scheduling.DueDate',
-          value: dueDate,
+          value: dateValue,
         });
       }
 
+      // If a reason is provided, update the custom field AND add to history
+      if (reason) {
+        // Try to update custom field if it exists
+        patchDocument.push({
+          op: 'add',
+          path: '/fields/Custom.DueDateMovementReasons',
+          value: reason,
+        });
+        
+        // Also add to history as a fallback (this field always exists)
+        patchDocument.push({
+          op: 'add',
+          path: '/fields/System.History',
+          value: `Due date change reason: ${reason}`,
+        });
+      }
+
+      await witApi.updateWorkItem({}, patchDocument, id, this.project);
+    });
+  }
+
+  async updateWorkItemField(id: number, field: string, value: any): Promise<void> {
+    return retryWithBackoff(async () => {
+      const witApi = await this.connection.getWorkItemTrackingApi();
+
+      // Map friendly field names to Azure DevOps field names
+      const fieldMap: Record<string, string> = {
+        state: 'System.State',
+        assignedTo: 'System.AssignedTo',
+        iterationPath: 'System.IterationPath',
+        areaPath: 'System.AreaPath',
+        title: 'System.Title',
+      };
+
+      const adoFieldName = fieldMap[field] || field;
+      
+      const patchDocument: any[] = [];
+
+      if (value === null || value === undefined || value === '') {
+        // Remove the field
+        patchDocument.push({
+          op: 'remove',
+          path: `/fields/${adoFieldName}`,
+        });
+      } else {
+        // Add or replace the field
+        patchDocument.push({
+          op: 'add',
+          path: `/fields/${adoFieldName}`,
+          value: value,
+        });
+      }
+
+      console.log(`Updating work item ${id} field ${adoFieldName} to:`, value);
       await witApi.updateWorkItem({}, patchDocument, id, this.project);
     });
   }
@@ -261,4 +328,186 @@ export class AzureDevOpsService {
     
     return result;
   }
+
+  async getDueDateChangeHistory(workItemIds: number[]): Promise<DueDateChange[]> {
+    try {
+      const witApi = await this.connection.getWorkItemTrackingApi();
+      const allChanges: DueDateChange[] = [];
+
+      // Process items in batches to avoid overwhelming the API
+      const batchSize = 5;
+      for (let i = 0; i < workItemIds.length; i += batchSize) {
+        const batch = workItemIds.slice(i, i + batchSize);
+        console.log(`Processing due date history batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(workItemIds.length / batchSize)}`);
+        
+        for (const workItemId of batch) {
+          try {
+            // Get all revisions for this work item
+            const revisions = await witApi.getRevisions(workItemId);
+            
+            if (!revisions || revisions.length === 0) continue;
+            
+            let previousDueDate: string | undefined = undefined;
+            
+            for (const revision of revisions) {
+              const fields = revision.fields;
+              if (!fields) continue;
+              
+              const currentDueDate = fields['Microsoft.VSTS.Scheduling.DueDate'];
+              const changedBy = fields['System.ChangedBy']?.displayName || fields['System.ChangedBy'] || 'Unknown';
+              const changedDate = fields['System.ChangedDate'];
+              
+              // Try multiple possible field names for the reason
+              let reason = fields['Custom.DueDateMovementReasons'] 
+                || fields['Custom.DueDateMovementReason']
+                || fields['Custom.DueDateReason']
+                || undefined;
+              
+              // If no custom field, try to extract from history
+              if (!reason && fields['System.History']) {
+                const historyText = fields['System.History'];
+                const match = historyText.match(/Due date change reason:\s*(.+?)(?:<|$)/i);
+                if (match) {
+                  reason = match[1].trim();
+                }
+              }
+              
+              // Normalize dates to YYYY-MM-DD format
+              const normalizeDate = (dateValue: any): string | undefined => {
+                if (!dateValue) return undefined;
+                try {
+                  const date = new Date(dateValue);
+                  return date.toISOString().split('T')[0];
+                } catch {
+                  return undefined;
+                }
+              };
+              
+              const normalizedCurrent = normalizeDate(currentDueDate);
+              const normalizedPrevious = normalizeDate(previousDueDate);
+              
+              // Check if due date changed in this revision
+              if (normalizedCurrent !== normalizedPrevious && changedDate) {
+                // DEBUG: Log all available fields when a due date change is detected
+                console.log(`\n=== Due Date Change Detected for Work Item ${workItemId} ===`);
+                console.log(`Old: ${normalizedPrevious} -> New: ${normalizedCurrent}`);
+                console.log(`Changed by: ${changedBy}`);
+                console.log(`Changed date: ${changedDate}`);
+                console.log(`Reason found:`, reason);
+                console.log(`History field:`, fields['System.History']?.substring(0, 200));
+                console.log(`Available custom fields:`, Object.keys(fields).filter(k => k.startsWith('Custom')));
+                
+                allChanges.push({
+                  changedDate: new Date(changedDate).toISOString(),
+                  changedBy,
+                  oldDueDate: normalizedPrevious,
+                  newDueDate: normalizedCurrent,
+                  reason: reason || 'No reason provided'
+                });
+              }
+              
+              previousDueDate = currentDueDate;
+            }
+          } catch (error) {
+            console.error(`Error getting revisions for work item ${workItemId}:`, error);
+            // Continue processing other work items
+          }
+        }
+      }
+
+      return allChanges;
+    } catch (error) {
+      console.error('Error in getDueDateChangeHistory:', error);
+      return []; // Return empty array instead of throwing
+    }
+  }
+
+  async getDueDateStatsByDeveloper(from?: string, to?: string, developerFilter?: string): Promise<DeveloperDueDateStats[]> {
+    try {
+      console.log('Fetching work items for due date stats...');
+      
+      // For stats, we want work items changed in the time range, not items with due dates in the range
+      // This ensures we catch recent due date changes
+      const witApi = await this.connection.getWorkItemTrackingApi();
+      
+      let wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${this.project}' AND [System.WorkItemType] = 'Product Backlog Item'`;
+
+      if (this.areaPath) {
+        wiql += ` AND [System.AreaPath] UNDER '${this.areaPath}'`;
+      }
+
+      // Query by CHANGED DATE to get recently modified items
+      if (from && to) {
+        wiql += ` AND [System.ChangedDate] >= '${from}' AND [System.ChangedDate] <= '${to}'`;
+      }
+
+      wiql += ' ORDER BY [System.ChangedDate] DESC';
+      
+      const queryResult = await witApi.queryByWiql(
+        { query: wiql },
+        { project: this.project }
+      );
+
+      if (!queryResult.workItems || queryResult.workItems.length === 0) {
+        console.log('No work items found in date range');
+        return [];
+      }
+
+      const ids = queryResult.workItems.map((wi) => wi.id!);
+      console.log(`Found ${ids.length} work items changed in date range`);
+      
+      // OPTIMIZATION: Limit to most recent work items to avoid processing too many
+      const maxItems = 150;
+      const limitedIds = ids.slice(0, maxItems);
+      if (ids.length > maxItems) {
+        console.log(`Limiting to ${maxItems} most recently changed work items for performance`);
+      }
+      
+      console.log(`Processing ${limitedIds.length} work items for due date change history...`);
+      // Get due date change history for filtered work items
+      const changes = await this.getDueDateChangeHistory(limitedIds);
+      console.log(`Found ${changes.length} due date changes`);
+      
+      // Filter by developer if specified
+      const filteredChanges = developerFilter 
+        ? changes.filter(change => change.changedBy === developerFilter)
+        : changes;
+      
+      console.log(`After developer filter: ${filteredChanges.length} changes`);
+      
+      // Aggregate by developer
+      const statsByDev = new Map<string, { totalChanges: number, reasonBreakdown: Map<string, number> }>();
+      
+      for (const change of filteredChanges) {
+        const developer = change.changedBy;
+        
+        if (!statsByDev.has(developer)) {
+          statsByDev.set(developer, {
+            totalChanges: 0,
+            reasonBreakdown: new Map()
+          });
+        }
+        
+        const devStats = statsByDev.get(developer)!;
+        devStats.totalChanges++;
+        
+        const reason = change.reason || 'No reason provided';
+        devStats.reasonBreakdown.set(reason, (devStats.reasonBreakdown.get(reason) || 0) + 1);
+      }
+      
+      // Convert to array format
+      const result = Array.from(statsByDev.entries()).map(([developer, stats]) => ({
+        developer,
+        totalChanges: stats.totalChanges,
+        reasonBreakdown: Object.fromEntries(stats.reasonBreakdown)
+      })).sort((a, b) => b.totalChanges - a.totalChanges);
+      
+      console.log(`Returning stats for ${result.length} developers`);
+      return result;
+    } catch (error) {
+      console.error('Error in getDueDateStatsByDeveloper:', error);
+      return []; // Return empty array instead of throwing
+    }
+  }
 }
+

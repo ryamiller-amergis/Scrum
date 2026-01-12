@@ -52,8 +52,8 @@ export function useWorkItems(startDate: Date, endDate: Date) {
     return () => clearInterval(interval);
   }, [fetchWorkItems]);
 
-  const updateDueDate = useCallback(async (id: number, dueDate: string | null) => {
-    console.log(`Updating item ${id} to date ${dueDate}`);
+  const updateDueDate = useCallback(async (id: number, dueDate: string | null, reason?: string) => {
+    console.log(`Updating item ${id} to date ${dueDate} with reason: ${reason || 'none'}`);
     
     // Mark this item as being updated with the new date
     updatingItemsRef.current.set(id, dueDate);
@@ -67,7 +67,7 @@ export function useWorkItems(startDate: Date, endDate: Date) {
     );
 
     try {
-      await workItemService.updateDueDate(id, dueDate);
+      await workItemService.updateDueDate(id, dueDate, reason);
       console.log(`Successfully updated item ${id} on server`);
       
       // Keep the item marked as updating for longer to ensure backend has processed and propagated

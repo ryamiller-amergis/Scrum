@@ -18,13 +18,13 @@ export const workItemService = {
     return response.json();
   },
 
-  async updateDueDate(id: number, dueDate: string | null): Promise<void> {
+  async updateDueDate(id: number, dueDate: string | null, reason?: string): Promise<void> {
     const response = await fetch(`${API_BASE}/workitems/${id}/due-date`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ dueDate }),
+      body: JSON.stringify({ dueDate, reason }),
     });
 
     if (!response.ok) {

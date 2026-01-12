@@ -97,3 +97,213 @@
 .remove-due-date-btn:active {
   opacity: 0.8;
 }
+
+.detail-select {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-size: 14px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.detail-select:focus {
+  outline: none;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.1);
+}
+
+.detail-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.detail-date-edit-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.detail-date-edit {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.detail-reason-input {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  margin-top: 4px;
+}
+
+.reason-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.reason-select {
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-size: 14px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.reason-select:focus {
+  outline: none;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.1);
+}
+
+.reason-textarea {
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-size: 14px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: inherit;
+  resize: vertical;
+}
+
+.reason-textarea:focus {
+  outline: none;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.1);
+}
+
+.reason-buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.reason-confirm-btn,
+.reason-cancel-btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.reason-confirm-btn {
+  flex: 1;
+  background: var(--accent-color);
+  color: white;
+}
+
+.reason-confirm-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.reason-confirm-btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.reason-cancel-btn {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+
+.reason-cancel-btn:hover {
+  background: var(--error-color);
+  color: white;
+  border-color: var(--error-color);
+}
+
+
+.detail-date-input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-size: 14px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.detail-date-input:focus {
+  outline: none;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.1);
+}
+
+.date-save-btn,
+.date-cancel-btn {
+  padding: 8px 12px;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.date-save-btn {
+  background: var(--success-color);
+  color: white;
+}
+
+.date-cancel-btn {
+  background: var(--error-color);
+  color: white;
+}
+
+.date-save-btn:hover,
+.date-cancel-btn:hover {
+  opacity: 0.9;
+}
+
+.detail-date-display {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.detail-date-display .detail-value {
+  flex: 1;
+}
+
+.date-edit-btn,
+.date-remove-btn {
+  padding: 6px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.date-edit-btn:hover {
+  background: var(--accent-color);
+  color: white;
+  border-color: var(--accent-color);
+}
+
+.date-remove-btn {
+  border-color: var(--error-color);
+  color: var(--error-color);
+}
+
+.date-remove-btn:hover {
+  background: var(--error-color);
+  color: white;
+}
