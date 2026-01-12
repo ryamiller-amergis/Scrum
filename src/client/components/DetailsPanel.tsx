@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { WorkItem } from '../types/workitem';
+import { EpicProgress } from './EpicProgress';
 import './DetailsPanel.css';
 
 interface DetailsPanelProps {
@@ -9,6 +10,9 @@ interface DetailsPanelProps {
   allWorkItems?: WorkItem[];
   onUpdateField?: (id: number, field: string, value: any) => void;
   isSaving?: boolean;
+  project: string;
+  areaPath: string;
+  onSelectItem: (item: WorkItem) => void;
 }
 
 export const DetailsPanel: React.FC<DetailsPanelProps> = ({
@@ -18,12 +22,16 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
   allWorkItems = [],
   onUpdateField,
   isSaving = false,
+  project,
+  areaPath,
+  onSelectItem,
 }) => {
   const [isEditingDueDate, setIsEditingDueDate] = useState(false);
   const [tempDueDate, setTempDueDate] = useState('');
   const [dueDateReason, setDueDateReason] = useState('');
   const [customReason, setCustomReason] = useState('');
   const [showReasonInput, setShowReasonInput] = useState(false);
+  const [parentEpicId, setParentEpicId] = useState<number | null>(null);
 
   if (!workItem) return null;
 
@@ -90,11 +98,34 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
     setCustomReason('');
   };
 
+  const handleChildSelect = (child: WorkItem) => {
+    // Store the current Epic ID before navigating to child
+    if (workItem.workItemType === 'Epic') {
+      setParentEpicId(workItem.id);
+    }
+    onSelectItem(child);
+  };
+
+  const handleBackToEpic = () => {
+    if (parentEpicId) {
+      const epicItem = allWorkItems.find(item => item.id === parentEpicId);
+      if (epicItem) {
+        setParentEpicId(null);
+        onSelectItem(epicItem);
+      }
+    }
+  };
+
   return (
     <div className="details-panel">
       <div className="details-header">
         <h3>Work Item Details</h3>
         {isSaving && <span className="saving-badge">Saving...</span>}
+        {parentEpicId && (
+          <button onClick={handleBackToEpic} className="back-to-epic-btn" title="Back to Epic">
+            ← Back to Epic
+          </button>
+        )}
         <button onClick={onClose} className="close-btn">
           ×
         </button>
@@ -107,6 +138,16 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
         <div className="detail-row">
           <span className="detail-label">Title:</span>
           <span className="detail-value">{workItem.title}</span>
+        </div>
+        <div className="detail-row">
+          <span className="detail-label">Type:</span>
+          <span className="detail-value" style={{
+            fontWeight: workItem.workItemType === 'Epic' ? 700 : 'normal',
+            color: workItem.workItemType === 'Epic' ? '#7B68EE' : 'inherit'
+          }}>
+            {workItem.workItemType === 'Epic' && '👑 '}
+            {workItem.workItemType}
+          </span>
         </div>
         <div className="detail-row">
           <span className="detail-label">State:</span>
@@ -201,6 +242,22 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
             </div>
           )}
         </div>
+        {workItem.workItemType === 'Epic' && (
+          <div className="detail-row">
+            <span className="detail-label">Target Date:</span>
+            <span className="detail-value" style={{ color: '#7B68EE', fontWeight: 600 }}>
+              {workItem.targetDate || 'Not set'}
+            </span>
+          </div>
+        )}
+        {workItem.workItemType === 'Epic' && (
+          <EpicProgress 
+            epicId={workItem.id} 
+            project={project} 
+            areaPath={areaPath}
+            onSelectChild={handleChildSelect}
+          />
+        )}
         <div className="detail-row">
           <span className="detail-label">Area Path:</span>
           <span className="detail-value">{workItem.areaPath}</span>

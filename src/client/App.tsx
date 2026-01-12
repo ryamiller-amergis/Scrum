@@ -140,12 +140,12 @@ function App() {
   }, [workItems]);
 
   const scheduledItems = useMemo(
-    () => workItems.filter((item) => item.dueDate),
+    () => workItems.filter((item) => item.dueDate || item.targetDate),
     [workItems]
   );
 
   const unscheduledItems = useMemo(
-    () => workItems.filter((item) => !item.dueDate),
+    () => workItems.filter((item) => !item.dueDate && !item.targetDate),
     [workItems]
   );
 
@@ -332,6 +332,9 @@ function App() {
                 allWorkItems={workItems}
                 onUpdateField={handleFieldUpdate}
                 isSaving={isSaving}
+                project={selectedProject}
+                areaPath={selectedAreaPath}
+                onSelectItem={setSelectedItem}
               />
             )}
             {pendingDueDateChange && (

@@ -37,6 +37,28 @@
   animation: pulse 1.5s ease-in-out infinite;
 }
 
+.back-to-epic-btn {
+  padding: 6px 12px;
+  background: var(--accent-color);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.85em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.back-to-epic-btn:hover {
+  background: var(--accent-hover);
+  transform: translateX(-2px);
+}
+
+.back-to-epic-btn:active {
+  transform: translateX(-2px) scale(0.98);
+}
+
 @keyframes pulse {
   0%, 100% {
     opacity: 1;

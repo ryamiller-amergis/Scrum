@@ -136,7 +136,9 @@ export const UnscheduledList: React.FC<UnscheduledListProps> = ({
           <option value="">All Types</option>
           {workItemTypeOptions.map(type => (
             <option key={type} value={type}>
-              {type === 'Product Backlog Item' ? 'PBI' : type === 'Technical Backlog Item' ? 'TBI' : type}
+              {type === 'Product Backlog Item' ? 'PBI' : 
+               type === 'Technical Backlog Item' ? 'TBI' : 
+               type}
             </option>
           ))}
         </select>

@@ -37,17 +37,17 @@ export class AzureDevOpsService {
     return retryWithBackoff(async () => {
       const witApi = await this.connection.getWorkItemTrackingApi();
 
-      // Build WIQL query to include both Product Backlog Items and Technical Backlog Items
-      let wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${this.project}' AND ([System.WorkItemType] = 'Product Backlog Item' OR [System.WorkItemType] = 'Technical Backlog Item')`;
+      // Build WIQL query to include Product Backlog Items, Technical Backlog Items, and Epics
+      let wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${this.project}' AND ([System.WorkItemType] = 'Product Backlog Item' OR [System.WorkItemType] = 'Technical Backlog Item' OR [System.WorkItemType] = 'Epic')`;
 
       if (this.areaPath) {
         // Use exact match (=) instead of UNDER to avoid getting child area paths
         wiql += ` AND [System.AreaPath] = '${this.areaPath}'`;
       }
 
-      // Query for items in date range OR with no due date
+      // Query for items in date range OR with no due date/target date
       if (from && to) {
-        wiql += ` AND ([Microsoft.VSTS.Scheduling.DueDate] >= '${from}' AND [Microsoft.VSTS.Scheduling.DueDate] <= '${to}' OR [Microsoft.VSTS.Scheduling.DueDate] = '')`;
+        wiql += ` AND (([Microsoft.VSTS.Scheduling.DueDate] >= '${from}' AND [Microsoft.VSTS.Scheduling.DueDate] <= '${to}') OR ([Microsoft.VSTS.Scheduling.TargetDate] >= '${from}' AND [Microsoft.VSTS.Scheduling.TargetDate] <= '${to}') OR [Microsoft.VSTS.Scheduling.DueDate] = '' OR [Microsoft.VSTS.Scheduling.TargetDate] = '')`;
       }
 
       wiql += ' ORDER BY [System.ChangedDate] DESC';
@@ -82,6 +82,7 @@ export class AzureDevOpsService {
         'System.AreaPath',
         'System.IterationPath',
         'Microsoft.VSTS.Scheduling.DueDate',
+        'Microsoft.VSTS.Scheduling.TargetDate',
       ];
 
       const allWorkItems: WorkItem[] = [];
@@ -119,6 +120,7 @@ export class AzureDevOpsService {
             state: wi.fields['System.State'] || '',
             assignedTo: wi.fields['System.AssignedTo']?.displayName,
             dueDate: extractDate(wi.fields['Microsoft.VSTS.Scheduling.DueDate']),
+            targetDate: extractDate(wi.fields['Microsoft.VSTS.Scheduling.TargetDate']),
             workItemType: wi.fields['System.WorkItemType'] || '',
             changedDate: wi.fields['System.ChangedDate'] || '',
             createdDate: wi.fields['System.CreatedDate'] || '',
@@ -514,5 +516,100 @@ export class AzureDevOpsService {
       return []; // Return empty array instead of throwing
     }
   }
-}
 
+  async getEpicChildren(epicId: number): Promise<WorkItem[]> {
+    return retryWithBackoff(async () => {
+      const witApi = await this.connection.getWorkItemTrackingApi();
+
+      // Query for all work items that are descendants of this Epic (recursive query to get Features AND their PBIs)
+      const wiql = `SELECT [System.Id] FROM WorkItemLinks WHERE ([Source].[System.Id] = ${epicId}) AND ([System.Links.LinkType] = 'System.LinkTypes.Hierarchy-Forward') MODE (Recursive)`;
+
+      const queryResult = await witApi.queryByWiql(
+        { query: wiql },
+        { project: this.project }
+      );
+
+      if (!queryResult.workItemRelations || queryResult.workItemRelations.length === 0) {
+        return [];
+      }
+
+      // Extract all descendant IDs (skip the first relation which is the Epic itself)
+      const descendantIds = queryResult.workItemRelations
+        .slice(1) // Skip the source Epic
+        .map(rel => rel.target?.id)
+        .filter((id): id is number => id !== undefined);
+
+      if (descendantIds.length === 0) {
+        return [];
+      }
+
+      // Fetch work items in batches of 200 (ADO limit)
+      const batchSize = 200;
+      const batches: number[][] = [];
+      for (let i = 0; i < descendantIds.length; i += batchSize) {
+        batches.push(descendantIds.slice(i, i + batchSize));
+      }
+
+      const fields = [
+        'System.Id',
+        'System.Title',
+        'System.State',
+        'System.AssignedTo',
+        'System.WorkItemType',
+        'System.ChangedDate',
+        'System.CreatedDate',
+        'Microsoft.VSTS.Common.ClosedDate',
+        'System.AreaPath',
+        'System.IterationPath',
+        'Microsoft.VSTS.Scheduling.DueDate',
+      ];
+
+      const allWorkItems: WorkItem[] = [];
+
+      for (const batch of batches) {
+        const workItems = await witApi.getWorkItems(
+          batch,
+          fields,
+          undefined,
+          undefined,
+          undefined
+        );
+
+        for (const wi of workItems) {
+          if (!wi.id || !wi.fields) continue;
+
+          const extractDate = (dateValue: any): string | undefined => {
+            if (!dateValue) return undefined;
+            const date = new Date(dateValue);
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+          };
+
+          allWorkItems.push({
+            id: wi.id,
+            title: wi.fields['System.Title'] || '',
+            state: wi.fields['System.State'] || '',
+            assignedTo: wi.fields['System.AssignedTo']?.displayName,
+            dueDate: extractDate(wi.fields['Microsoft.VSTS.Scheduling.DueDate']),
+            workItemType: wi.fields['System.WorkItemType'] || '',
+            changedDate: wi.fields['System.ChangedDate'] || '',
+            createdDate: wi.fields['System.CreatedDate'] || '',
+            closedDate: extractDate(wi.fields['Microsoft.VSTS.Common.ClosedDate']),
+            areaPath: wi.fields['System.AreaPath'] || '',
+            iterationPath: wi.fields['System.IterationPath'] || '',
+          });
+        }
+      }
+
+      // Filter to only include PBIs and Technical Backlog Items (exclude Features to avoid double counting)
+      const pbiItems = allWorkItems.filter(item => 
+        item.workItemType === 'Product Backlog Item' || 
+        item.workItemType === 'Technical Backlog Item'
+      );
+
+      return pbiItems;
+    });
+  }
+}

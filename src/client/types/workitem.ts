@@ -4,6 +4,7 @@ export interface WorkItem {
   state: string;
   assignedTo?: string;
   dueDate?: string;
+  targetDate?: string;
   workItemType: string;
   changedDate: string;
   createdDate: string;

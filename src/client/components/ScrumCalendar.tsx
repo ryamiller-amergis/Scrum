@@ -4,7 +4,7 @@ import withDragAndDrop from 'react-big-calendar/lib/addons/dragAndDrop';
 import { format, parse, startOfWeek, getDay, addMonths, subMonths } from 'date-fns';
 import enUSLocale from 'date-fns/locale/en-US';
 import { WorkItem } from '../types/workitem';
-import { getAssigneeColor } from '../utils/assigneeColors';
+import { getAssigneeColor, getEpicColor } from '../utils/assigneeColors';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import 'react-big-calendar/lib/addons/dragAndDrop/styles.css';
 import './ScrumCalendar.css';
@@ -88,10 +88,18 @@ export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
 
   const events: CalendarEvent[] = useMemo(() => {
     return filteredWorkItems
-      .filter((item) => item.dueDate)
+      .filter((item) => {
+        // Include items that have either dueDate or targetDate (for Epics)
+        return item.dueDate || item.targetDate;
+      })
       .map((item) => {
+        // For Epics, use targetDate; otherwise use dueDate
+        const dateString = item.workItemType === 'Epic' ? item.targetDate : item.dueDate;
+        
+        if (!dateString) return null;
+        
         // Parse the date string directly (YYYY-MM-DD format)
-        const [year, month, day] = item.dueDate!.split('-').map(Number);
+        const [year, month, day] = dateString.split('-').map(Number);
         // Create date at noon local time to avoid timezone boundary issues
         const eventDate = new Date(year, month - 1, day, 12, 0, 0);
         
@@ -106,7 +114,8 @@ export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
         };
         
         return event;
-      });
+      })
+      .filter((event): event is CalendarEvent => event !== null);
   }, [filteredWorkItems]);
 
   // Update the ref when events change
@@ -262,37 +271,66 @@ export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
 
   const AgendaEvent = ({ event }: { event: CalendarEvent }) => {
     const colors = getAssigneeColor(event.resource.assignedTo);
+    const isEpic = event.resource.workItemType === 'Epic';
     
     return (
       <div>
-        <div style={{ fontWeight: 500, marginBottom: '4px' }}>{event.title}</div>
+        <div style={{ 
+          fontWeight: isEpic ? 700 : 500, 
+          marginBottom: '4px',
+          color: isEpic ? '#7B68EE' : 'inherit'
+        }}>
+          {isEpic && <span style={{ marginRight: '4px' }}>👑</span>}
+          {event.title}
+          {isEpic && <span style={{ 
+            marginLeft: '8px', 
+            fontSize: '0.8em', 
+            padding: '2px 6px', 
+            backgroundColor: '#7B68EE', 
+            color: 'white', 
+            borderRadius: '3px',
+            fontWeight: 600
+          }}>EPIC</span>}
+        </div>
         <div style={{ fontSize: '0.85em', color: colors.text }}>
           <strong>Assigned To:</strong> {event.resource.assignedTo || 'Unassigned'}
         </div>
+        {isEpic && event.resource.targetDate && (
+          <div style={{ fontSize: '0.85em', color: '#7B68EE', marginTop: '4px' }}>
+            <strong>Target Date:</strong> {event.resource.targetDate}
+          </div>
+        )}
       </div>
     );
   };
 
   const EventComponent = ({ event }: EventProps<CalendarEvent>) => {
-    const colors = getAssigneeColor(event.resource.assignedTo);
+    const isEpic = event.resource.workItemType === 'Epic';
+    const colors = isEpic ? getEpicColor(event.resource.id) : getAssigneeColor(event.resource.assignedTo);
     
     return (
       <div
         data-event-id={event.id}
+        className={isEpic ? 'epic-event' : ''}
         style={{
-          height: '24px',
+          height: isEpic ? '28px' : '22px',
           backgroundColor: colors.bg,
-          borderLeft: `3px solid ${colors.border}`,
+          borderLeft: `${isEpic ? '4px' : '3px'} solid ${colors.border}`,
           color: colors.text,
-          padding: '2px 4px',
+          padding: isEpic ? '0 5px' : '2px 4px',
           overflow: 'hidden',
-          fontSize: '0.75em',
-          fontWeight: 500,
-          lineHeight: '20px',
+          fontSize: isEpic ? '0.75em' : '0.7em',
+          fontWeight: isEpic ? 700 : 500,
+          lineHeight: isEpic ? '28px' : '18px',
           whiteSpace: 'nowrap',
           textOverflow: 'ellipsis',
+          borderRadius: '3px',
+          boxShadow: isEpic ? '0 1px 3px rgba(0, 0, 0, 0.2)' : 'none',
+          display: isEpic ? 'flex' : 'block',
+          alignItems: isEpic ? 'center' : 'initial',
         }}
       >
+        {isEpic && <span style={{ marginRight: '3px', fontSize: '0.9em' }}>👑</span>}
         #{event.resource.id} {event.resource.title}
       </div>
     );
@@ -312,10 +350,12 @@ export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
             }}
             className="filter-select"
           >
-            <option value="">All</option>
+            <option value="">All Types</option>
             {workItemTypeOptions.map(type => (
               <option key={type} value={type}>
-                {type === 'Product Backlog Item' ? 'Product Backlog Item' : type === 'Technical Backlog Item' ? 'Technical Backlog Item' : type}
+                {type === 'Product Backlog Item' ? 'Product Backlog Item' : 
+                 type === 'Technical Backlog Item' ? 'Technical Backlog Item' : 
+                 type}
               </option>
             ))}
           </select>

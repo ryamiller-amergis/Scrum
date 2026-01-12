@@ -14,6 +14,18 @@ const ASSIGNEE_COLORS = [
   { bg: 'rgba(217, 70, 239, 0.1)', border: '#d946ef', text: '#d946ef' },      // Fuchsia
 ];
 
+// Epic-specific colors (royal/purple theme variations)
+const EPIC_COLORS = [
+  { bg: '#7B68EE', border: '#4B0082', text: '#FFFFFF' },      // Medium Slate Blue / Indigo
+  { bg: '#9370DB', border: '#663399', text: '#FFFFFF' },      // Medium Purple / Rebecca Purple
+  { bg: '#8A2BE2', border: '#5D1A99', text: '#FFFFFF' },      // Blue Violet / Dark Violet
+  { bg: '#9932CC', border: '#660099', text: '#FFFFFF' },      // Dark Orchid / Purple
+  { bg: '#BA55D3', border: '#8B008B', text: '#FFFFFF' },      // Medium Orchid / Dark Magenta
+  { bg: '#6A5ACD', border: '#483D8B', text: '#FFFFFF' },      // Slate Blue / Dark Slate Blue
+  { bg: '#7B61FF', border: '#4B0082', text: '#FFFFFF' },      // Royal Purple / Indigo
+  { bg: '#9F7AEA', border: '#6B46C1', text: '#FFFFFF' },      // Purple 400 / Purple 700
+];
+
 // Hash function to get a consistent index for a string
 function hashString(str: string): number {
   let hash = 0;
@@ -32,4 +44,9 @@ export function getAssigneeColor(assignee: string | undefined): { bg: string; bo
 
   const index = hashString(assignee) % ASSIGNEE_COLORS.length;
   return ASSIGNEE_COLORS[index];
+}
+
+export function getEpicColor(epicId: number): { bg: string; border: string; text: string } {
+  const index = epicId % EPIC_COLORS.length;
+  return EPIC_COLORS[index];
 }

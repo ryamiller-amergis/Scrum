@@ -1,0 +1,21 @@
+# IMPORTANT: Do not commit this file with real values!
+# Copy this to terraform.tfvars and fill in your actual values
+
+resource_group_name    = "rg-ai-pilot-dev"
+location               = "East US"
+app_service_name       = "app-ai-pilot-dev"
+app_service_plan_name  = "plan-ai-pilot-dev"
+environment            = "dev"
+
+# Azure DevOps Configuration
+ado_org     = "https://dev.azure.com/your-org"
+ado_pat     = "your-pat-token-here"
+ado_project = "YourProject"
+
+# Optional: Override default tags
+# tags = {
+#   ManagedBy   = "Terraform"
+#   Application = "AI-Pilot"
+#   Team        = "Platform"
+#   CostCenter  = "Engineering"
+# }

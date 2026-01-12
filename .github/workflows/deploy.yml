@@ -1,0 +1,57 @@
+name: Deploy to Azure App Service
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '20.x'
+  APP_SERVICE_NAME: 'app-scrum-dev'
+  RESOURCE_GROUP_NAME: 'rg-scrum-dev'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build application
+        run: npm run build
+
+      - name: Create deployment package
+        run: |
+          mkdir deploy
+          cp -r dist deploy/
+          cp package*.json deploy/
+          cp server.js deploy/
+          cd deploy
+          npm ci --production
+
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: ${{ env.APP_SERVICE_NAME }}
+          resource-group-name: ${{ env.RESOURCE_GROUP_NAME }}
+          package: ./deploy
+
+      - name: Azure logout
+        run: az logout
+        if: always()

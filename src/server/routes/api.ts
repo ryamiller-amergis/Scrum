@@ -111,4 +111,23 @@ router.get('/due-date-stats', async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/epics/:id/children - Get child work items for an Epic
+router.get('/epics/:id/children', async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const { project, areaPath } = req.query as { project?: string; areaPath?: string };
+
+    if (isNaN(id)) {
+      return res.status(400).json({ error: 'Invalid Epic ID' });
+    }
+
+    const adoService = new AzureDevOpsService(project, areaPath);
+    const children = await adoService.getEpicChildren(id);
+    res.json(children);
+  } catch (error: any) {
+    console.error('Error fetching Epic children:', error);
+    res.status(500).json({ error: 'Failed to fetch Epic children' });
+  }
+});
+
 export default router;

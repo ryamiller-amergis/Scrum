@@ -1,0 +1,315 @@
+.epic-progress {
+  margin: 20px 0;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.epic-progress-header {
+  display: flex;
+  align-items: center;
+  padding: 14px 16px;
+  background: var(--bg-secondary);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.2s;
+}
+
+.epic-progress-header:hover {
+  background: var(--bg-tertiary);
+}
+
+.epic-progress-icon {
+  margin-right: 12px;
+  font-size: 0.9em;
+  color: var(--text-secondary);
+  transition: transform 0.2s;
+}
+
+.epic-progress-title {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 1em;
+}
+
+.epic-progress-count {
+  margin-left: 10px;
+  font-size: 0.9em;
+  color: var(--text-secondary);
+}
+
+.epic-progress-content {
+  padding: 20px;
+  background: var(--bg-primary);
+}
+
+.epic-progress-loading,
+.epic-progress-error,
+.epic-progress-empty {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 0.95em;
+}
+
+.epic-progress-error {
+  color: #ef4444;
+}
+
+.epic-summary {
+  padding: 16px;
+  background: var(--bg-secondary);
+  border-radius: 6px;
+  margin-bottom: 24px;
+}
+
+.epic-summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.epic-summary-label {
+  font-size: 1em;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.epic-summary-value {
+  font-size: 1.3em;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.epic-summary-bar {
+  height: 32px;
+  background: var(--bg-tertiary);
+  border-radius: 16px;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+}
+
+.epic-summary-bar-fill {
+  height: 100%;
+  transition: width 0.5s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9em;
+  font-weight: 700;
+  color: white;
+}
+
+.epic-summary-bar-fill.remaining {
+  background: linear-gradient(90deg, #ef4444 0%, #dc2626 100%);
+  border-radius: 16px 0 0 16px;
+}
+
+.epic-summary-bar-fill.completed {
+  background: linear-gradient(90deg, #22c55e 0%, #16a34a 100%);
+  border-radius: 0 16px 16px 0;
+}
+
+.epic-summary-legend {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  margin-top: 8px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9em;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.legend-color {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+}
+
+.legend-color.remaining {
+  background: linear-gradient(90deg, #ef4444 0%, #dc2626 100%);
+}
+
+.legend-color.completed {
+  background: linear-gradient(90deg, #22c55e 0%, #16a34a 100%);
+}
+
+.epic-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  margin-bottom: 28px;
+}
+
+.epic-stat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.epic-stat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.epic-stat-label {
+  font-size: 0.95em;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.epic-stat-value {
+  font-size: 1.2em;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.epic-stat-bar {
+  height: 24px;
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  overflow: hidden;
+  position: relative;
+}
+
+.epic-stat-bar-fill {
+  height: 100%;
+  transition: width 0.3s ease;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  padding-left: 10px;
+  font-size: 0.85em;
+  font-weight: 600;
+  color: white;
+}
+
+.epic-stat-bar-fill.not-started {
+  background: linear-gradient(90deg, #94a3b8 0%, #64748b 100%);
+}
+
+.epic-stat-bar-fill.development {
+  background: linear-gradient(90deg, #3b82f6 0%, #2563eb 100%);
+}
+
+.epic-stat-bar-fill.qa {
+  background: linear-gradient(90deg, #f59e0b 0%, #d97706 100%);
+}
+
+.epic-stat-bar-fill.uat {
+  background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+}
+
+.epic-stat-bar-fill.done {
+  background: linear-gradient(90deg, #22c55e 0%, #16a34a 100%);
+}
+
+.epic-children-list {
+  margin-top: 28px;
+  border-top: 2px solid var(--border-color);
+  padding-top: 20px;
+}
+
+.epic-children-header {
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 16px;
+  font-size: 1em;
+}
+
+.epic-child-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  margin-bottom: 8px;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+
+.epic-child-item:hover {
+  background: var(--bg-secondary);
+  border-color: var(--accent-color);
+  transform: translateX(2px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.epic-child-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.epic-child-id {
+  font-weight: 700;
+  color: var(--text-secondary);
+  font-size: 0.85em;
+  flex-shrink: 0;
+}
+
+.epic-child-title {
+  color: var(--text-primary);
+  font-size: 0.95em;
+  font-weight: 500;
+  flex: 1;
+  line-height: 1.4;
+}
+
+.epic-child-state {
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 0.8em;
+  font-weight: 600;
+  white-space: nowrap;
+  align-self: flex-start;
+  margin-top: 4px;
+}
+
+/* State-specific colors */
+.state-new,
+.state-approved,
+.state-grooming,
+.state-grooming-complete,
+.state-requirement-gathering,
+.state-requirements-gathering {
+  background: rgba(148, 163, 184, 0.2);
+  color: #64748b;
+}
+
+.state-committed,
+.state-in-progress,
+.state-in-pull-request {
+  background: rgba(59, 130, 246, 0.2);
+  color: #2563eb;
+}
+
+.state-ready-for-test,
+.state-in-test,
+.state-blocked {
+  background: rgba(245, 158, 11, 0.2);
+  color: #d97706;
+}
+
+.state-uat---ready-for-test,
+.state-uat---test-done {
+  background: rgba(16, 185, 129, 0.2);
+  color: #059669;
+}
+
+.state-done,
+.state-closed {
+  background: rgba(34, 197, 94, 0.2);
+  color: #16a34a;
+}
