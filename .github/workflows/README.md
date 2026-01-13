@@ -38,17 +38,17 @@ This command will output JSON credentials like:
 
 #### Required Secrets:
 
-**AZURE_CLIENT_ID**
-- Value: The `clientId` from the service principal JSON output
-
-**AZURE_CLIENT_SECRET**
-- Value: The `clientSecret` from the service principal JSON output
-
-**AZURE_TENANT_ID**
-- Value: The `tenantId` from the service principal JSON output
-
-**AZURE_SUBSCRIPTION_ID**
-- Value: The `subscriptionId` from the service principal JSON output
+**AZURE_CREDENTIALS**
+- Value: JSON with your service principal credentials in this exact format:
+```json
+{
+  "clientId": "your-client-id",
+  "clientSecret": "your-client-secret",
+  "subscriptionId": "your-subscription-id",
+  "tenantId": "your-tenant-id"
+}
+```
+- **Important:** Must be valid JSON with these exact field names (camelCase)
 
 **ADO_ORG**
 - Value: Your Azure DevOps organization URL (e.g., `https://dev.azure.com/Amergis`)
