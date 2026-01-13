@@ -101,6 +101,13 @@ jobs:
               PORT=8080 \
               POLL_INTERVAL=30
 
+          # Bypass npm start/package.json resolution issues by setting an explicit startup command.
+          # Using an absolute path ensures it works even if the current working directory isn't wwwroot.
+          az webapp config set \
+            --name ${{ env.APP_SERVICE_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
+            --startup-file "node /home/site/wwwroot/dist/server/index.js"
+
       - name: Wait for SCM restart
         run: sleep 45
 
