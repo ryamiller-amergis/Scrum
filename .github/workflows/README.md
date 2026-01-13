@@ -12,7 +12,7 @@ Run this command in Azure CLI to create a service principal with Contributor acc
 az ad sp create-for-rbac --name "github-actions-scrum-calendar" \
   --role contributor \
   --scopes /subscriptions/<SUBSCRIPTION_ID>/resourceGroups/rg-scrum-dev \
-  --sdk-auth
+  --json-auth
 ```
 
 Replace `<SUBSCRIPTION_ID>` with your Azure subscription ID. You can find it by running:
@@ -26,13 +26,7 @@ This command will output JSON credentials like:
   "clientId": "<client-id>",
   "clientSecret": "<client-secret>",
   "subscriptionId": "<subscription-id>",
-  "tenantId": "<tenant-id>",
-  "activeDirectoryEndpointUrl": "https://login.microsoftonline.com",
-  "resourceManagerEndpointUrl": "https://management.azure.com/",
-  "activeDirectoryGraphResourceId": "https://graph.windows.net/",
-  "sqlManagementEndpointUrl": "https://management.core.windows.net:8443/",
-  "galleryEndpointUrl": "https://gallery.azure.com/",
-  "managementEndpointUrl": "https://management.core.windows.net/"
+  "tenantId": "<tenant-id>"
 }
 ```
 
