@@ -41,6 +41,39 @@ jobs:
           cd deploy
           npm ci --omit=dev
 
+      - name: Validate Azure credentials secret
+        shell: bash
+        env:
+          AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+        run: |
+          python3 - <<'PY'
+          import json, os, sys
+
+          raw = os.environ.get('AZURE_CREDENTIALS', '')
+          if not raw.strip():
+            print("AZURE_CREDENTIALS is empty/unavailable. If you're using an Environment, ensure the secret is added under that Environment (job environment: dev).")
+            sys.exit(1)
+
+          try:
+            creds = json.loads(raw)
+          except Exception as e:
+            print("AZURE_CREDENTIALS is not valid JSON:", str(e))
+            sys.exit(1)
+
+          if not isinstance(creds, dict):
+            print("AZURE_CREDENTIALS must be a JSON object with keys clientId, clientSecret, tenantId, subscriptionId")
+            sys.exit(1)
+
+          required = ["clientId", "clientSecret", "tenantId", "subscriptionId"]
+          missing = [k for k in required if not creds.get(k)]
+          if missing:
+            print("AZURE_CREDENTIALS JSON is missing required field(s):", ", ".join(missing))
+            print("Expected format: {\"clientId\":..., \"clientSecret\":..., \"tenantId\":..., \"subscriptionId\":...}")
+            sys.exit(1)
+
+          print("AZURE_CREDENTIALS JSON looks OK (required keys present).")
+          PY
+
       - name: Login to Azure
         uses: azure/login@v2
         with:
