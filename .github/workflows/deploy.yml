@@ -40,6 +40,8 @@ jobs:
           cp server.js deploy/ 2>/dev/null || true
           cd deploy
           npm ci --omit=dev
+          cd ..
+          (cd deploy && zip -r ../deploy.zip .)
 
       - name: Validate Azure credentials secret
         shell: bash
@@ -114,7 +116,7 @@ jobs:
         uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ env.APP_SERVICE_NAME }}
-          package: ./deploy
+          package: ./deploy.zip
 
       - name: Azure logout
         run: az logout
