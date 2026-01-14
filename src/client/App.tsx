@@ -32,15 +32,20 @@ function App() {
   // Parse available projects and area paths from environment
   const { availableProjects, availableAreaPaths } = useMemo(() => {
     const teamsEnv = import.meta.env.VITE_TEAMS || 'MaxView|MaxView';
+    console.log('VITE_TEAMS raw value:', teamsEnv);
     const projects = new Set<string>();
     const areaPaths = new Set<string>();
-    
-    teamsEnv.split(',').forEach((team: string) => {
+
+    teamsEnv.split('~~~').forEach((team: string) => {
       const [project, areaPath] = team.trim().split('|');
+      console.log('Parsed team:', { project, areaPath });
       if (project) projects.add(project);
       // Keep the full area path including hierarchy
       if (areaPath) areaPaths.add(areaPath);
     });
+    
+    console.log('Available projects:', Array.from(projects));
+    console.log('Available area paths:', Array.from(areaPaths));
     
     return {
       availableProjects: Array.from(projects).sort(),

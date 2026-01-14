@@ -14,6 +14,9 @@ export function useWorkItems(startDate: Date, endDate: Date, project: string, ar
   const hasLoadedOnce = useRef(false);
   const fetchFnRef = useRef<() => Promise<void>>();
 
+  // Convert forward slashes to backslashes for Azure DevOps API
+  const normalizedAreaPath = areaPath.replace(/\//g, '\\');
+
   const formatDate = (date: Date): string => {
     return date.toISOString().split('T')[0];
   };
@@ -32,7 +35,7 @@ export function useWorkItems(startDate: Date, endDate: Date, project: string, ar
         // Store the request params to validate response matches current selection
         const requestParams = { project, areaPath };
         
-        const items = await workItemService.getWorkItems(from, to, project, areaPath);
+        const items = await workItemService.getWorkItems(from, to, project, normalizedAreaPath);
         
         // Only update if this response is for the current team selection
         if (requestParams.project === currentRequestRef.current.project && 
