@@ -1,6 +1,12 @@
 import { Request, Response, NextFunction } from 'express';
 
 export function ensureAuthenticated(req: Request, res: Response, next: NextFunction) {
+  console.log('Auth check:', {
+    isAuthenticated: req.isAuthenticated(),
+    sessionID: req.sessionID,
+    user: req.user ? 'present' : 'missing'
+  });
+  
   if (req.isAuthenticated()) {
     return next();
   }

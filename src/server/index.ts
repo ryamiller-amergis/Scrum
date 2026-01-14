@@ -18,8 +18,8 @@ const PORT = process.env.PORT || 3001;
 // Middleware
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
-    ? process.env.AZURE_REDIRECT_URL?.replace('/auth/callback', '') 
-    : 'http://localhost:5173',
+    ? ['https://app-scrum-dev.azurewebsites.net']
+    : ['http://localhost:3000', 'http://localhost:5173'],
   credentials: true
 }));
 app.use(express.json());
