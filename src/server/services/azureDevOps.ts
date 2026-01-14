@@ -484,9 +484,35 @@ export class AzureDevOpsService {
         console.log(`Limiting to ${maxItems} most recently changed work items for performance`);
       }
       
-      console.log(`Processing ${limitedIds.length} work items for due date change history...`);
+      // Filter work items that have been in "In Progress" state
+      console.log('Filtering work items that have been In Progress...');
+      const inProgressIds: number[] = [];
+      
+      for (const workItemId of limitedIds) {
+        try {
+          const revisions = await witApi.getRevisions(workItemId);
+          const hasBeenInProgress = revisions.some(rev => 
+            rev.fields && rev.fields['System.State'] === 'In Progress'
+          );
+          
+          if (hasBeenInProgress) {
+            inProgressIds.push(workItemId);
+          }
+        } catch (error) {
+          console.error(`Error checking state for work item ${workItemId}:`, error);
+        }
+      }
+      
+      console.log(`Found ${inProgressIds.length} work items that have been In Progress out of ${limitedIds.length} total`);
+      
+      if (inProgressIds.length === 0) {
+        console.log('No work items found that have been In Progress');
+        return [];
+      }
+      
+      console.log(`Processing ${inProgressIds.length} work items for due date change history...`);
       // Get due date change history for filtered work items
-      const changes = await this.getDueDateChangeHistory(limitedIds);
+      const changes = await this.getDueDateChangeHistory(inProgressIds);
       console.log(`Found ${changes.length} due date changes`);
       
       // Filter by developer if specified

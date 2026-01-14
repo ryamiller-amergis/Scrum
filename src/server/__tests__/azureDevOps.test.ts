@@ -558,4 +558,144 @@ describe('AzureDevOpsService', () => {
       expect(result).toEqual([]);
     });
   });
+
+  describe('QA Complete Date', () => {
+    it('should fetch work items with qaCompleteDate field', async () => {
+      const service = new AzureDevOpsService();
+      
+      mockWitApi.queryByWiql.mockResolvedValue({
+        workItems: [{ id: 1 }],
+      });
+
+      // Create a date at noon to avoid timezone issues in tests
+      const testDate = new Date(2024, 0, 20, 12, 0, 0); // Jan 20, 2024 at noon
+
+      mockWitApi.getWorkItems.mockResolvedValue([
+        {
+          id: 1,
+          fields: {
+            'System.Id': 1,
+            'System.Title': 'Test Item',
+            'System.State': 'Ready For Test',
+            'System.WorkItemType': 'Product Backlog Item',
+            'System.ChangedDate': '2024-01-01T00:00:00Z',
+            'System.CreatedDate': '2024-01-01T00:00:00Z',
+            'System.AreaPath': 'TestProject\\TestArea',
+            'System.IterationPath': 'TestProject\\Sprint 1',
+            'Custom.QACompleteDate': testDate.toISOString(),
+          },
+        },
+      ]);
+
+      const result = await service.getWorkItems();
+
+      expect(result).toHaveLength(1);
+      expect(result[0].qaCompleteDate).toBe('2024-01-20');
+    });
+
+    it('should handle work items without qaCompleteDate', async () => {
+      const service = new AzureDevOpsService();
+      
+      mockWitApi.queryByWiql.mockResolvedValue({
+        workItems: [{ id: 1 }],
+      });
+
+      mockWitApi.getWorkItems.mockResolvedValue([
+        {
+          id: 1,
+          fields: {
+            'System.Id': 1,
+            'System.Title': 'Test Item',
+            'System.State': 'New',
+            'System.WorkItemType': 'Product Backlog Item',
+            'System.ChangedDate': '2024-01-01T00:00:00Z',
+            'System.CreatedDate': '2024-01-01T00:00:00Z',
+            'System.AreaPath': 'TestProject\\TestArea',
+            'System.IterationPath': 'TestProject\\Sprint 1',
+          },
+        },
+      ]);
+
+      const result = await service.getWorkItems();
+
+      expect(result).toHaveLength(1);
+      expect(result[0].qaCompleteDate).toBeUndefined();
+    });
+
+    it('should update qaCompleteDate field via updateWorkItemField', async () => {
+      const service = new AzureDevOpsService();
+      
+      mockWitApi.updateWorkItem.mockResolvedValue({});
+
+      await service.updateWorkItemField(123, 'qaCompleteDate', '2024-01-25');
+
+      expect(mockWitApi.updateWorkItem).toHaveBeenCalledWith(
+        {},
+        expect.arrayContaining([
+          expect.objectContaining({
+            op: 'add',
+            path: '/fields/Custom.QACompleteDate',
+            value: expect.stringContaining('2024-01-25'),
+          }),
+        ]),
+        123,
+        'TestProject'
+      );
+    });
+
+    it('should convert qaCompleteDate to ISO string when updating', async () => {
+      const service = new AzureDevOpsService();
+      
+      mockWitApi.updateWorkItem.mockResolvedValue({});
+
+      await service.updateWorkItemField(123, 'qaCompleteDate', '2024-01-25');
+
+      const callArgs = mockWitApi.updateWorkItem.mock.calls[0];
+      const patchDoc = callArgs[1];
+      const addOperation = patchDoc.find((op: any) => op.path === '/fields/Custom.QACompleteDate');
+      
+      expect(addOperation).toBeDefined();
+      expect(addOperation.value).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    });
+
+    it('should remove qaCompleteDate when value is undefined', async () => {
+      const service = new AzureDevOpsService();
+      
+      mockWitApi.updateWorkItem.mockResolvedValue({});
+
+      await service.updateWorkItemField(123, 'qaCompleteDate', undefined);
+
+      expect(mockWitApi.updateWorkItem).toHaveBeenCalledWith(
+        {},
+        expect.arrayContaining([
+          expect.objectContaining({
+            op: 'remove',
+            path: '/fields/Custom.QACompleteDate',
+          }),
+        ]),
+        123,
+        'TestProject'
+      );
+    });
+
+    it('should remove qaCompleteDate when value is empty string', async () => {
+      const service = new AzureDevOpsService();
+      
+      mockWitApi.updateWorkItem.mockResolvedValue({});
+
+      await service.updateWorkItemField(123, 'qaCompleteDate', '');
+
+      expect(mockWitApi.updateWorkItem).toHaveBeenCalledWith(
+        {},
+        expect.arrayContaining([
+          expect.objectContaining({
+            op: 'remove',
+            path: '/fields/Custom.QACompleteDate',
+          }),
+        ]),
+        123,
+        'TestProject'
+      );
+    });
+  });
 });

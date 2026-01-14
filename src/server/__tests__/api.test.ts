@@ -289,4 +289,94 @@ describe('API Routes', () => {
       });
     });
   });
+
+  describe('PATCH /api/workitems/:id/field - QA Complete Date', () => {
+    it('should update qaCompleteDate field', async () => {
+      mockAdoService.updateWorkItemField.mockResolvedValue();
+
+      const response = await request(app)
+        .patch('/api/workitems/123/field')
+        .send({
+          field: 'qaCompleteDate',
+          value: '2024-01-25',
+          project: 'TestProject',
+          areaPath: 'TestArea',
+        })
+        .expect(200);
+
+      expect(response.body).toEqual({ success: true });
+      expect(mockAdoService.updateWorkItemField).toHaveBeenCalledWith(123, 'qaCompleteDate', '2024-01-25');
+    });
+
+    it('should remove qaCompleteDate when value is undefined', async () => {
+      mockAdoService.updateWorkItemField.mockResolvedValue();
+
+      const response = await request(app)
+        .patch('/api/workitems/123/field')
+        .send({
+          field: 'qaCompleteDate',
+          value: undefined,
+          project: 'TestProject',
+          areaPath: 'TestArea',
+        })
+        .expect(200);
+
+      expect(response.body).toEqual({ success: true });
+      expect(mockAdoService.updateWorkItemField).toHaveBeenCalledWith(123, 'qaCompleteDate', undefined);
+    });
+
+    it('should handle state field update', async () => {
+      mockAdoService.updateWorkItemField.mockResolvedValue();
+
+      const response = await request(app)
+        .patch('/api/workitems/123/field')
+        .send({
+          field: 'state',
+          value: 'Ready For Test',
+          project: 'TestProject',
+          areaPath: 'TestArea',
+        })
+        .expect(200);
+
+      expect(response.body).toEqual({ success: true });
+      expect(mockAdoService.updateWorkItemField).toHaveBeenCalledWith(123, 'state', 'Ready For Test');
+    });
+
+    it('should reject invalid work item ID', async () => {
+      const response = await request(app)
+        .patch('/api/workitems/invalid/field')
+        .send({
+          field: 'qaCompleteDate',
+          value: '2024-01-25',
+        })
+        .expect(400);
+
+      expect(response.body).toEqual({ error: 'Invalid work item ID' });
+    });
+
+    it('should reject missing field name', async () => {
+      const response = await request(app)
+        .patch('/api/workitems/123/field')
+        .send({
+          value: '2024-01-25',
+        })
+        .expect(400);
+
+      expect(response.body).toEqual({ error: 'Field name is required' });
+    });
+
+    it('should handle errors gracefully', async () => {
+      mockAdoService.updateWorkItemField.mockRejectedValue(new Error('Update failed'));
+
+      const response = await request(app)
+        .patch('/api/workitems/123/field')
+        .send({
+          field: 'qaCompleteDate',
+          value: '2024-01-25',
+        })
+        .expect(500);
+
+      expect(response.body).toEqual({ error: 'Failed to update work item field' });
+    });
+  });
 });
