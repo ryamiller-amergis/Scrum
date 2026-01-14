@@ -9,20 +9,41 @@ interface DevStatsProps {
 }
 
 const LOADING_STATE_KEY = 'devStatsLoadingState';
+const DATA_STATE_KEY = 'devStatsData';
+const FILTER_STATE_KEY = 'devStatsFilters';
 
 export const DevStats: React.FC<DevStatsProps> = ({ workItems, project, areaPath }) => {
-  const [dueDateStats, setDueDateStats] = useState<DeveloperDueDateStats[]>([]);
+  // Restore data from sessionStorage on mount
+  const [dueDateStats, setDueDateStats] = useState<DeveloperDueDateStats[]>(() => {
+    const savedData = sessionStorage.getItem(DATA_STATE_KEY);
+    return savedData ? JSON.parse(savedData).stats : [];
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hasLoaded, setHasLoaded] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(() => {
+    const savedData = sessionStorage.getItem(DATA_STATE_KEY);
+    return savedData ? JSON.parse(savedData).hasLoaded : false;
+  });
   const [showNotification, setShowNotification] = useState(false);
   const [notificationMessage, setNotificationMessage] = useState('');
   
-  // Filter states
-  const [selectedDeveloper, setSelectedDeveloper] = useState<string>('all');
-  const [timeFrame, setTimeFrame] = useState<string>('30');
-  const [customFromDate, setCustomFromDate] = useState('');
-  const [customToDate, setCustomToDate] = useState('');
+  // Filter states - restore from sessionStorage
+  const [selectedDeveloper, setSelectedDeveloper] = useState<string>(() => {
+    const savedFilters = sessionStorage.getItem(FILTER_STATE_KEY);
+    return savedFilters ? JSON.parse(savedFilters).selectedDeveloper : 'all';
+  });
+  const [timeFrame, setTimeFrame] = useState<string>(() => {
+    const savedFilters = sessionStorage.getItem(FILTER_STATE_KEY);
+    return savedFilters ? JSON.parse(savedFilters).timeFrame : '30';
+  });
+  const [customFromDate, setCustomFromDate] = useState(() => {
+    const savedFilters = sessionStorage.getItem(FILTER_STATE_KEY);
+    return savedFilters ? JSON.parse(savedFilters).customFromDate : '';
+  });
+  const [customToDate, setCustomToDate] = useState(() => {
+    const savedFilters = sessionStorage.getItem(FILTER_STATE_KEY);
+    return savedFilters ? JSON.parse(savedFilters).customToDate : '';
+  });
 
   // Get unique developers from work items
   const developers = useMemo(() => {
@@ -35,12 +56,13 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, project, areaPath
     return Array.from(devSet).sort();
   }, [workItems]);
 
-  // Poll sessionStorage to sync loading state across navigation
+  // Poll sessionStorage to sync loading state and data across navigation
   useEffect(() => {
-    const checkLoadingState = () => {
-      const savedState = sessionStorage.getItem(LOADING_STATE_KEY);
-      if (savedState) {
-        const { loading: isLoading } = JSON.parse(savedState);
+    const checkState = () => {
+      // Check loading state
+      const savedLoadingState = sessionStorage.getItem(LOADING_STATE_KEY);
+      if (savedLoadingState) {
+        const { loading: isLoading } = JSON.parse(savedLoadingState);
         if (isLoading && !loading) {
           setLoading(true);
           setShowNotification(true);
@@ -53,16 +75,49 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, project, areaPath
         setLoading(false);
         setShowNotification(false);
       }
+
+      // Check for data updates
+      const savedData = sessionStorage.getItem(DATA_STATE_KEY);
+      if (savedData) {
+        const { stats, hasLoaded: dataHasLoaded } = JSON.parse(savedData);
+        // Only update if the data has changed
+        if (JSON.stringify(stats) !== JSON.stringify(dueDateStats)) {
+          setDueDateStats(stats);
+        }
+        if (dataHasLoaded !== hasLoaded) {
+          setHasLoaded(dataHasLoaded);
+        }
+      }
     };
 
     // Check immediately on mount
-    checkLoadingState();
+    checkState();
 
     // Poll every 500ms to detect changes
-    const interval = setInterval(checkLoadingState, 500);
+    const interval = setInterval(checkState, 500);
 
     return () => clearInterval(interval);
-  }, [loading]);
+  }, [loading, dueDateStats, hasLoaded]);
+
+  // Persist filter selections to sessionStorage whenever they change
+  useEffect(() => {
+    const filters = {
+      selectedDeveloper,
+      timeFrame,
+      customFromDate,
+      customToDate
+    };
+    sessionStorage.setItem(FILTER_STATE_KEY, JSON.stringify(filters));
+  }, [selectedDeveloper, timeFrame, customFromDate, customToDate]);
+
+  // Persist data and hasLoaded state to sessionStorage
+  useEffect(() => {
+    const data = {
+      stats: dueDateStats,
+      hasLoaded
+    };
+    sessionStorage.setItem(DATA_STATE_KEY, JSON.stringify(data));
+  }, [dueDateStats, hasLoaded]);
 
   const fetchDueDateStats = async () => {
     setLoading(true);
@@ -102,6 +157,14 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, project, areaPath
         throw new Error('Failed to fetch due date statistics');
       }
       const data = await response.json();
+      
+      // Save to sessionStorage immediately (works even if component unmounts)
+      sessionStorage.setItem(DATA_STATE_KEY, JSON.stringify({ 
+        stats: data, 
+        hasLoaded: true 
+      }));
+      
+      // Update component state (only works if still mounted)
       setDueDateStats(data);
       setHasLoaded(true);
       setNotificationMessage('Statistics loaded successfully!');
