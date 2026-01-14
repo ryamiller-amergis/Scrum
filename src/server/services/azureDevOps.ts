@@ -83,6 +83,7 @@ export class AzureDevOpsService {
         'System.IterationPath',
         'Microsoft.VSTS.Scheduling.DueDate',
         'Microsoft.VSTS.Scheduling.TargetDate',
+        'Custom.QACompleteDate',
       ];
 
       const allWorkItems: WorkItem[] = [];
@@ -121,6 +122,7 @@ export class AzureDevOpsService {
             assignedTo: wi.fields['System.AssignedTo']?.displayName,
             dueDate: extractDate(wi.fields['Microsoft.VSTS.Scheduling.DueDate']),
             targetDate: extractDate(wi.fields['Microsoft.VSTS.Scheduling.TargetDate']),
+            qaCompleteDate: extractDate(wi.fields['Custom.QACompleteDate']),
             workItemType: wi.fields['System.WorkItemType'] || '',
             changedDate: wi.fields['System.ChangedDate'] || '',
             createdDate: wi.fields['System.CreatedDate'] || '',
@@ -274,6 +276,7 @@ export class AzureDevOpsService {
         iterationPath: 'System.IterationPath',
         areaPath: 'System.AreaPath',
         title: 'System.Title',
+        qaCompleteDate: 'Custom.QACompleteDate',
       };
 
       const adoFieldName = fieldMap[field] || field;
@@ -287,11 +290,22 @@ export class AzureDevOpsService {
           path: `/fields/${adoFieldName}`,
         });
       } else {
+        // Check if this is a date field that needs special handling
+        const dateFields = ['Custom.QACompleteDate', 'Microsoft.VSTS.Scheduling.DueDate', 'Microsoft.VSTS.Scheduling.TargetDate'];
+        let fieldValue = value;
+        
+        if (dateFields.includes(adoFieldName) && typeof value === 'string' && value.match(/^\d{4}-\d{2}-\d{2}$/)) {
+          // Convert YYYY-MM-DD to ISO string at midnight local time
+          const [year, month, day] = value.split('-').map(Number);
+          const localDate = new Date(year, month - 1, day, 0, 0, 0);
+          fieldValue = localDate.toISOString();
+        }
+        
         // Add or replace the field
         patchDocument.push({
           op: 'add',
           path: `/fields/${adoFieldName}`,
-          value: value,
+          value: fieldValue,
         });
       }
 

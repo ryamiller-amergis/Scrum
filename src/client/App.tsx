@@ -327,6 +327,7 @@ function App() {
                 setSelectedItem(null);
                 handleDueDateChange(id, dueDate);
               }}
+              onUpdateField={handleFieldUpdate}
               onSelectItem={setSelectedItem}
             />
             {selectedItem && (

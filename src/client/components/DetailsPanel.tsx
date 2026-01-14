@@ -32,6 +32,8 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
   const [customReason, setCustomReason] = useState('');
   const [showReasonInput, setShowReasonInput] = useState(false);
   const [parentEpicId, setParentEpicId] = useState<number | null>(null);
+  const [isEditingQADate, setIsEditingQADate] = useState(false);
+  const [tempQADate, setTempQADate] = useState('');
 
   if (!workItem) return null;
 
@@ -42,6 +44,14 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
   // Extract unique values for dropdowns
   const uniqueStates = useMemo(() => {
     const states = new Set(allWorkItems.map(item => item.state));
+    // Add common states that may not be in current items
+    states.add('New');
+    states.add('Active');
+    states.add('Resolved');
+    states.add('Closed');
+    states.add('Ready For Test');
+    states.add('In Test');
+    states.add('Removed');
     return Array.from(states).sort();
   }, [allWorkItems]);
 
@@ -96,6 +106,32 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
     setTempDueDate('');
     setDueDateReason('');
     setCustomReason('');
+  };
+
+  const handleQADateEdit = () => {
+    setTempQADate(workItem.qaCompleteDate || '');
+    setIsEditingQADate(true);
+  };
+
+  const handleQADateSave = async () => {
+    if (onUpdateField) {
+      await onUpdateField(workItem.id, 'qaCompleteDate', tempQADate || undefined);
+      // Wait a bit for the refetch to complete before closing edit mode
+      setTimeout(() => {
+        setIsEditingQADate(false);
+      }, 600);
+    }
+  };
+
+  const handleQADateCancel = () => {
+    setIsEditingQADate(false);
+    setTempQADate('');
+  };
+
+  const handleRemoveQADate = async () => {
+    if (onUpdateField) {
+      await onUpdateField(workItem.id, 'qaCompleteDate', undefined);
+    }
   };
 
   const handleChildSelect = (child: WorkItem) => {
@@ -177,7 +213,7 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
           </select>
         </div>
         <div className="detail-row">
-          <span className="detail-label">Due Date:</span>
+          <span className="detail-label">Dev Due Date:</span>
           {isEditingDueDate ? (
             <div className="detail-date-edit-container">
               <div className="detail-date-edit">
@@ -242,6 +278,31 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
             </div>
           )}
         </div>
+        {(workItem.state === 'Ready For Test' || workItem.state === 'In Test') && (
+          <div className="detail-row">
+            <span className="detail-label">QA Complete Date:</span>
+            {isEditingQADate ? (
+              <div className="detail-date-edit">
+                <input 
+                  type="date"
+                  className="detail-date-input"
+                  value={tempQADate}
+                  onChange={(e) => setTempQADate(e.target.value)}
+                />
+                <button onClick={handleQADateSave} className="date-save-btn">✓</button>
+                <button onClick={handleQADateCancel} className="date-cancel-btn">✕</button>
+              </div>
+            ) : (
+              <div className="detail-date-display">
+                <span className="detail-value">{workItem.qaCompleteDate || 'Not set'}</span>
+                <button onClick={handleQADateEdit} className="date-edit-btn">Edit</button>
+                {workItem.qaCompleteDate && (
+                  <button onClick={handleRemoveQADate} className="date-remove-btn">Remove</button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
         {workItem.workItemType === 'Epic' && (
           <div className="detail-row">
             <span className="detail-label">Target Date:</span>

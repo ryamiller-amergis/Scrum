@@ -26,6 +26,7 @@ const localizer = dateFnsLocalizer({
 interface ScrumCalendarProps {
   workItems: WorkItem[];
   onUpdateDueDate: (id: number, dueDate: string | null) => void;
+  onUpdateField?: (id: number, field: string, value: any) => void;
   onSelectItem: (item: WorkItem) => void;
 }
 
@@ -41,12 +42,14 @@ interface CalendarEvent {
 export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
   workItems,
   onUpdateDueDate,
+  onUpdateField,
   onSelectItem,
 }) => {
   const [view, setView] = useState<View>('month');
   const [date, setDate] = useState(new Date());
   const [selectedAssignedTo, setSelectedAssignedTo] = useState<string>('');
   const [selectedWorkItemType, setSelectedWorkItemType] = useState<string>('');
+  const [selectedState, setSelectedState] = useState<string>('');
   const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const eventsRef = useRef<CalendarEvent[]>([]);
 
@@ -72,6 +75,17 @@ export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
     return Array.from(unique).sort();
   }, [workItems]);
 
+  // Get unique states
+  const stateOptions = useMemo(() => {
+    const unique = new Set<string>();
+    workItems.forEach(item => {
+      if (item.state) {
+        unique.add(item.state);
+      }
+    });
+    return Array.from(unique).sort();
+  }, [workItems]);
+
   // Filter work items based on selected filters
   const filteredWorkItems = useMemo(() => {
     return workItems.filter(item => {
@@ -81,19 +95,39 @@ export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
       if (selectedWorkItemType && item.workItemType !== selectedWorkItemType) {
         return false;
       }
+      if (selectedState && item.state !== selectedState) {
+        return false;
+      }
       return true;
     });
-  }, [workItems, selectedAssignedTo, selectedWorkItemType]);
+  }, [workItems, selectedAssignedTo, selectedWorkItemType, selectedState]);
 
   const events: CalendarEvent[] = useMemo(() => {
     return filteredWorkItems
       .filter((item) => {
-        // Include items that have either dueDate or targetDate (for Epics)
-        return item.dueDate || item.targetDate;
+        // Include items that have either dueDate, targetDate (for Epics), or qaCompleteDate (for test items)
+        return item.dueDate || item.targetDate || item.qaCompleteDate;
       })
       .map((item) => {
-        // For Epics, use targetDate; otherwise use dueDate
-        const dateString = item.workItemType === 'Epic' ? item.targetDate : item.dueDate;
+        let dateString: string | undefined;
+        
+        // Determine which date to use based on state and work item type
+        // Check for various QA/Testing state names
+        const isTestState = item.state?.toLowerCase().includes('test') || 
+                           item.state?.toLowerCase().includes('qa') ||
+                           item.state === 'Ready For Test' || 
+                           item.state === 'In Test';
+        
+        if (isTestState && item.qaCompleteDate) {
+          // For items in test states, use qaCompleteDate
+          dateString = item.qaCompleteDate;
+        } else if (item.workItemType === 'Epic') {
+          // For Epics, use targetDate
+          dateString = item.targetDate;
+        } else {
+          // For all other items, use dueDate
+          dateString = item.dueDate;
+        }
         
         if (!dateString) return null;
         
@@ -173,7 +207,9 @@ export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
     
     // Format as YYYY-MM-DD
     const newDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    const currentDate = event.resource.dueDate;
+    const workItemState = event.resource.state;
+    const isTestOrBlockedState = workItemState === 'Ready For Test' || workItemState === 'In Test' || workItemState === 'Blocked';
+    const currentDate = isTestOrBlockedState ? event.resource.qaCompleteDate : event.resource.dueDate;
     
     console.log('Drop event:', { 
       start, 
@@ -183,7 +219,9 @@ export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
       dropDate,
       newDate, 
       currentDate,
-      workItemId: event.resource.id
+      workItemId: event.resource.id,
+      state: workItemState,
+      isTestOrBlockedState
     });
     
     // Only update if the date actually changed
@@ -199,10 +237,15 @@ export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
 
     // Debounce the update slightly to prevent rapid-fire updates
     updateTimeoutRef.current = setTimeout(() => {
-      console.log('Updating due date:', event.resource.id, newDate);
-      onUpdateDueDate(event.resource.id, newDate);
+      if (isTestOrBlockedState && onUpdateField) {
+        console.log('Updating QA Complete Date:', event.resource.id, newDate);
+        onUpdateField(event.resource.id, 'qaCompleteDate', newDate);
+      } else {
+        console.log('Updating due date:', event.resource.id, newDate);
+        onUpdateDueDate(event.resource.id, newDate);
+      }
     }, 100);
-  }, [onUpdateDueDate]);
+  }, [onUpdateDueDate, onUpdateField]);
 
   const handleEventDragStart = useCallback((event: CalendarEvent) => {
     (window as any).__DRAGGED_CALENDAR_ITEM__ = event.resource;
@@ -252,16 +295,22 @@ export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
     
     // Format as YYYY-MM-DD
     const newDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const workItemState = draggedItem.state;
+    const isTestOrBlockedState = workItemState === 'Ready For Test' || workItemState === 'In Test' || workItemState === 'Blocked';
     
     console.log('Formatted Date:', newDate);
-    console.log('Calling onUpdateDueDate with:', { workItemId: draggedItem.id, newDate });
+    console.log('Calling update with:', { workItemId: draggedItem.id, newDate, state: workItemState, isTestOrBlockedState });
     
-    onUpdateDueDate(draggedItem.id, newDate);
+    if (isTestOrBlockedState && onUpdateField) {
+      onUpdateField(draggedItem.id, 'qaCompleteDate', newDate);
+    } else {
+      onUpdateDueDate(draggedItem.id, newDate);
+    }
     
     // Clear the dragged item references
     (window as any).__DRAGGED_WORK_ITEM__ = null;
     (window as any).__DRAGGED_CALENDAR_ITEM__ = null;
-  }, [onUpdateDueDate]);
+  }, [onUpdateDueDate, onUpdateField]);
 
   const AgendaEvent = ({ event }: { event: CalendarEvent }) => {
     const colors = getAssigneeColor(event.resource.assignedTo);
@@ -355,6 +404,23 @@ export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
           </select>
         </div>
         <div className="filter-group">
+          <label htmlFor="state">State:</label>
+          <select 
+            id="state"
+            value={selectedState} 
+            onChange={(e) => {
+              setSelectedState(e.target.value);
+              onSelectItem(null as any);
+            }}
+            className="filter-select"
+          >
+            <option value="">All States</option>
+            {stateOptions.map(state => (
+              <option key={state} value={state}>{state}</option>
+            ))}
+          </select>
+        </div>
+        <div className="filter-group">
           <label htmlFor="assignedTo">Assigned To:</label>
           <select 
             id="assignedTo"
@@ -371,12 +437,13 @@ export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
             ))}
           </select>
         </div>
-        {(selectedAssignedTo || selectedWorkItemType) && (
+        {(selectedAssignedTo || selectedWorkItemType || selectedState) && (
           <button 
             className="clear-filters-btn"
             onClick={() => {
               setSelectedAssignedTo('');
               setSelectedWorkItemType('');
+              setSelectedState('');
               onSelectItem(null as any); // Close details panel
             }}
           >

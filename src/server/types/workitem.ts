@@ -5,6 +5,7 @@ export interface WorkItem {
   assignedTo?: string;
   dueDate?: string;
   targetDate?: string;
+  qaCompleteDate?: string;
   workItemType: string;
   changedDate: string;
   createdDate: string;
