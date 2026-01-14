@@ -125,6 +125,12 @@ jobs:
             --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
             --startup-file "node /home/site/wwwroot/dist/server/index.js"
 
+          # Enable ARR Affinity for session persistence
+          az webapp update \
+            --name ${{ env.APP_SERVICE_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
+            --set clientAffinityEnabled=true
+
           # Configure static content cache headers to prevent caching issues
           az resource update \
             --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
