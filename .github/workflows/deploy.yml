@@ -113,6 +113,14 @@ jobs:
             --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
             --startup-file "node /home/site/wwwroot/dist/server/index.js"
 
+          # Configure static content cache headers to prevent caching issues
+          az resource update \
+            --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
+            --name ${{ env.APP_SERVICE_NAME }} \
+            --resource-type "Microsoft.Web/sites/config" \
+            --set properties.staticWebAssets.enabled=true \
+            --api-version 2022-03-01 || true
+
       - name: Wait for SCM restart
         run: sleep 45
 
