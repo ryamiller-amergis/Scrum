@@ -12,13 +12,21 @@ const azureAdConfig: any = {
   responseType: 'code',
   responseMode: 'query',
   redirectUrl: process.env.AZURE_REDIRECT_URL || 'http://localhost:3001/auth/callback',
-  allowHttpForRedirectUrl: true, // Allow HTTP for development
+  allowHttpForRedirectUrl: process.env.NODE_ENV !== 'production',
   validateIssuer: true,
   passReqToCallback: false,
   scope: ['profile', 'openid', 'email', 'User.Read'],
   loggingLevel: 'info' as const,
   loggingNoPII: false,
 };
+
+console.log('Azure AD Config:', {
+  tenantId: process.env.AZURE_TENANT_ID,
+  clientId: process.env.AZURE_CLIENT_ID,
+  redirectUrl: process.env.AZURE_REDIRECT_URL,
+  allowHttp: azureAdConfig.allowHttpForRedirectUrl,
+  nodeEnv: process.env.NODE_ENV
+});
 
 passport.use(
   new OIDCStrategy(
@@ -45,7 +53,13 @@ passport.deserializeUser((user: any, done) => {
 });
 
 // Login route
-router.get('/login', passport.authenticate('azuread-openidconnect', { failureRedirect: '/' }));
+router.get('/login', (req, res, next) => {
+  console.log('Login route hit, initiating OAuth flow');
+  passport.authenticate('azuread-openidconnect', { 
+    failureRedirect: '/auth/login-failed',
+    failureMessage: true 
+  })(req, res, next);
+});
 
 // Callback route (GET for query response mode)
 router.get(
