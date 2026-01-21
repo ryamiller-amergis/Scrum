@@ -50,6 +50,7 @@ export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
   const [selectedAssignedTo, setSelectedAssignedTo] = useState<string>('');
   const [selectedWorkItemType, setSelectedWorkItemType] = useState<string>('');
   const [selectedState, setSelectedState] = useState<string>('');
+  const [selectedIteration, setSelectedIteration] = useState<string>('');
   const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const eventsRef = useRef<CalendarEvent[]>([]);
 
@@ -86,6 +87,17 @@ export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
     return Array.from(unique).sort();
   }, [workItems]);
 
+  // Get unique iterations
+  const iterationOptions = useMemo(() => {
+    const unique = new Set<string>();
+    workItems.forEach(item => {
+      if (item.iterationPath) {
+        unique.add(item.iterationPath);
+      }
+    });
+    return Array.from(unique).sort();
+  }, [workItems]);
+
   // Filter work items based on selected filters
   const filteredWorkItems = useMemo(() => {
     return workItems.filter(item => {
@@ -98,9 +110,12 @@ export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
       if (selectedState && item.state !== selectedState) {
         return false;
       }
+      if (selectedIteration && item.iterationPath !== selectedIteration) {
+        return false;
+      }
       return true;
     });
-  }, [workItems, selectedAssignedTo, selectedWorkItemType, selectedState]);
+  }, [workItems, selectedAssignedTo, selectedWorkItemType, selectedState, selectedIteration]);
 
   const events: CalendarEvent[] = useMemo(() => {
     return filteredWorkItems
@@ -121,11 +136,11 @@ export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
         if (isTestState && item.qaCompleteDate) {
           // For items in test states, use qaCompleteDate
           dateString = item.qaCompleteDate;
-        } else if (item.workItemType === 'Epic') {
-          // For Epics, use targetDate
+        } else if (item.workItemType === 'Epic' || item.workItemType === 'Feature' || item.workItemType === 'Bug') {
+          // For Epics, Features, and Bugs, use targetDate
           dateString = item.targetDate;
         } else {
-          // For all other items, use dueDate
+          // For all other items (PBI, TBI), use dueDate
           dateString = item.dueDate;
         }
         
@@ -208,8 +223,18 @@ export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
     // Format as YYYY-MM-DD
     const newDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     const workItemState = event.resource.state;
+    const workItemType = event.resource.workItemType;
     const isTestOrBlockedState = workItemState === 'Ready For Test' || workItemState === 'In Test' || workItemState === 'Blocked';
-    const currentDate = isTestOrBlockedState ? event.resource.qaCompleteDate : event.resource.dueDate;
+    const usesTargetDate = workItemType === 'Epic' || workItemType === 'Feature' || workItemType === 'Bug';
+    
+    let currentDate;
+    if (isTestOrBlockedState) {
+      currentDate = event.resource.qaCompleteDate;
+    } else if (usesTargetDate) {
+      currentDate = event.resource.targetDate;
+    } else {
+      currentDate = event.resource.dueDate;
+    }
     
     console.log('Drop event:', { 
       start, 
@@ -221,7 +246,9 @@ export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
       currentDate,
       workItemId: event.resource.id,
       state: workItemState,
-      isTestOrBlockedState
+      type: workItemType,
+      isTestOrBlockedState,
+      usesTargetDate
     });
     
     // Only update if the date actually changed
@@ -240,6 +267,9 @@ export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
       if (isTestOrBlockedState && onUpdateField) {
         console.log('Updating QA Complete Date:', event.resource.id, newDate);
         onUpdateField(event.resource.id, 'qaCompleteDate', newDate);
+      } else if (usesTargetDate && onUpdateField) {
+        console.log('Updating Target Date:', event.resource.id, newDate);
+        onUpdateField(event.resource.id, 'targetDate', newDate);
       } else {
         console.log('Updating due date:', event.resource.id, newDate);
         onUpdateDueDate(event.resource.id, newDate);
@@ -296,13 +326,17 @@ export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
     // Format as YYYY-MM-DD
     const newDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     const workItemState = draggedItem.state;
+    const workItemType = draggedItem.workItemType;
     const isTestOrBlockedState = workItemState === 'Ready For Test' || workItemState === 'In Test' || workItemState === 'Blocked';
+    const usesTargetDate = workItemType === 'Epic' || workItemType === 'Feature' || workItemType === 'Bug';
     
     console.log('Formatted Date:', newDate);
-    console.log('Calling update with:', { workItemId: draggedItem.id, newDate, state: workItemState, isTestOrBlockedState });
+    console.log('Calling update with:', { workItemId: draggedItem.id, newDate, state: workItemState, type: workItemType, isTestOrBlockedState, usesTargetDate });
     
     if (isTestOrBlockedState && onUpdateField) {
       onUpdateField(draggedItem.id, 'qaCompleteDate', newDate);
+    } else if (usesTargetDate && onUpdateField) {
+      onUpdateField(draggedItem.id, 'targetDate', newDate);
     } else {
       onUpdateDueDate(draggedItem.id, newDate);
     }
@@ -315,15 +349,23 @@ export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
   const AgendaEvent = ({ event }: { event: CalendarEvent }) => {
     const colors = getAssigneeColor(event.resource.assignedTo);
     const isEpic = event.resource.workItemType === 'Epic';
+    const isFeature = event.resource.workItemType === 'Feature';
+    const isBug = event.resource.workItemType === 'Bug';
+    const isPBI = event.resource.workItemType === 'Product Backlog Item';
+    const isTBI = event.resource.workItemType === 'Technical Backlog Item';
     
     return (
       <div>
         <div style={{ 
-          fontWeight: isEpic ? 700 : 500, 
+          fontWeight: isEpic || isFeature ? 700 : 500, 
           marginBottom: '4px',
           color: isEpic ? '#7B68EE' : 'inherit'
         }}>
           {isEpic && <span style={{ marginRight: '4px' }}>👑</span>}
+          {isFeature && <span style={{ marginRight: '4px' }}>⭐</span>}
+          {isBug && <span style={{ marginRight: '4px' }}>🐛</span>}
+          {isPBI && <span style={{ marginRight: '4px' }}>📋</span>}
+          {isTBI && <span style={{ marginRight: '4px' }}>🔧</span>}
           {event.title}
           {isEpic && <span style={{ 
             marginLeft: '8px', 
@@ -334,12 +376,30 @@ export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
             borderRadius: '3px',
             fontWeight: 600
           }}>EPIC</span>}
+          {isFeature && <span style={{ 
+            marginLeft: '8px', 
+            fontSize: '0.8em', 
+            padding: '2px 6px', 
+            backgroundColor: '#FFA500', 
+            color: 'white', 
+            borderRadius: '3px',
+            fontWeight: 600
+          }}>FEATURE</span>}
+          {isBug && <span style={{ 
+            marginLeft: '8px', 
+            fontSize: '0.8em', 
+            padding: '2px 6px', 
+            backgroundColor: '#DC143C', 
+            color: 'white', 
+            borderRadius: '3px',
+            fontWeight: 600
+          }}>BUG</span>}
         </div>
         <div style={{ fontSize: '0.85em', color: colors.text }}>
           <strong>Assigned To:</strong> {event.resource.assignedTo || 'Unassigned'}
         </div>
-        {isEpic && event.resource.targetDate && (
-          <div style={{ fontSize: '0.85em', color: '#7B68EE', marginTop: '4px' }}>
+        {(isEpic || isFeature || isBug) && event.resource.targetDate && (
+          <div style={{ fontSize: '0.85em', color: isEpic ? '#7B68EE' : isFeature ? '#FFA500' : '#DC143C', marginTop: '4px' }}>
             <strong>Target Date:</strong> {event.resource.targetDate}
           </div>
         )}
@@ -349,6 +409,11 @@ export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
 
   const EventComponent = ({ event }: EventProps<CalendarEvent>) => {
     const isEpic = event.resource.workItemType === 'Epic';
+    const isFeature = event.resource.workItemType === 'Feature';
+    const isBug = event.resource.workItemType === 'Bug';
+    const isPBI = event.resource.workItemType === 'Product Backlog Item';
+    const isTBI = event.resource.workItemType === 'Technical Backlog Item';
+    const isSpecialType = isEpic || isFeature;
     const colors = isEpic ? getEpicColor(event.resource.id) : getAssigneeColor(event.resource.assignedTo);
     
     return (
@@ -356,24 +421,28 @@ export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
         data-event-id={event.id}
         className={isEpic ? 'epic-event' : ''}
         style={{
-          height: isEpic ? '28px' : '22px',
+          height: isSpecialType ? '28px' : '22px',
           backgroundColor: colors.bg,
-          borderLeft: `${isEpic ? '4px' : '3px'} solid ${colors.border}`,
+          borderLeft: `${isSpecialType ? '4px' : '3px'} solid ${colors.border}`,
           color: colors.text,
-          padding: isEpic ? '0 5px' : '2px 4px',
+          padding: isSpecialType ? '0 5px' : '2px 4px',
           overflow: 'hidden',
-          fontSize: isEpic ? '0.75em' : '0.7em',
-          fontWeight: isEpic ? 700 : 500,
-          lineHeight: isEpic ? '28px' : '18px',
+          fontSize: isSpecialType ? '0.75em' : '0.7em',
+          fontWeight: isSpecialType ? 700 : 500,
+          lineHeight: isSpecialType ? '28px' : '18px',
           whiteSpace: 'nowrap',
           textOverflow: 'ellipsis',
           borderRadius: '3px',
-          boxShadow: isEpic ? '0 1px 3px rgba(0, 0, 0, 0.2)' : 'none',
-          display: isEpic ? 'flex' : 'block',
-          alignItems: isEpic ? 'center' : 'initial',
+          boxShadow: isSpecialType ? '0 1px 3px rgba(0, 0, 0, 0.2)' : 'none',
+          display: isSpecialType ? 'flex' : 'block',
+          alignItems: isSpecialType ? 'center' : 'initial',
         }}
       >
         {isEpic && <span style={{ marginRight: '3px', fontSize: '0.9em' }}>👑</span>}
+        {isFeature && <span style={{ marginRight: '3px', fontSize: '0.9em' }}>⭐</span>}
+        {isBug && <span style={{ marginRight: '3px', fontSize: '0.9em' }}>🐛</span>}
+        {isPBI && <span style={{ marginRight: '3px', fontSize: '0.9em' }}>📋</span>}
+        {isTBI && <span style={{ marginRight: '3px', fontSize: '0.9em' }}>🔧</span>}
         #{event.resource.id} {event.resource.title}
       </div>
     );
@@ -396,8 +465,11 @@ export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
             <option value="">All Types</option>
             {workItemTypeOptions.map(type => (
               <option key={type} value={type}>
-                {type === 'Product Backlog Item' ? 'Product Backlog Item' : 
-                 type === 'Technical Backlog Item' ? 'Technical Backlog Item' : 
+                {type === 'Product Backlog Item' ? '📋 Product Backlog Item' : 
+                 type === 'Technical Backlog Item' ? '🔧 Technical Backlog Item' : 
+                 type === 'Epic' ? '👑 Epic' :
+                 type === 'Feature' ? '⭐ Feature' :
+                 type === 'Bug' ? '🐛 Bug' :
                  type}
               </option>
             ))}
@@ -421,6 +493,23 @@ export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
           </select>
         </div>
         <div className="filter-group">
+          <label htmlFor="iteration">Iteration:</label>
+          <select 
+            id="iteration"
+            value={selectedIteration} 
+            onChange={(e) => {
+              setSelectedIteration(e.target.value);
+              onSelectItem(null as any);
+            }}
+            className="filter-select"
+          >
+            <option value="">All Iterations</option>
+            {iterationOptions.map(iteration => (
+              <option key={iteration} value={iteration}>{iteration}</option>
+            ))}
+          </select>
+        </div>
+        <div className="filter-group">
           <label htmlFor="assignedTo">Assigned To:</label>
           <select 
             id="assignedTo"
@@ -437,17 +526,18 @@ export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
             ))}
           </select>
         </div>
-        {(selectedAssignedTo || selectedWorkItemType || selectedState) && (
+        {(selectedAssignedTo || selectedWorkItemType || selectedState || selectedIteration) && (
           <button 
             className="clear-filters-btn"
             onClick={() => {
               setSelectedAssignedTo('');
               setSelectedWorkItemType('');
               setSelectedState('');
+              setSelectedIteration('');
               onSelectItem(null as any); // Close details panel
             }}
           >
-            Clear Filters
+            Clear
           </button>
         )}
       </div>

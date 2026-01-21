@@ -334,7 +334,9 @@ body {
 .analytics-view {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .analytics-tabs {
@@ -343,6 +345,7 @@ body {
   padding: 16px 16px 0 16px;
   background: var(--bg-secondary);
   border-bottom: 2px solid var(--border-color);
+  flex-shrink: 0;
 }
 
 .tab-button {
@@ -381,7 +384,8 @@ body {
 
 .analytics-content {
   flex: 1;
-  overflow: auto;
+  min-height: 0;
+  overflow-y: auto;
   background: var(--bg-primary);
 }
 

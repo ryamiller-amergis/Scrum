@@ -182,29 +182,49 @@ function App() {
     console.log(`Updating work item ${id} field ${field} to:`, value);
     
     setIsSaving(true);
-    const response = await fetch(`/api/workitems/${id}/field`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ field, value, project: selectedProject, areaPath: selectedAreaPath }),
-    });
+    try {
+      const response = await fetch(`/api/workitems/${id}/field`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ field, value, project: selectedProject, areaPath: selectedAreaPath }),
+      });
 
-    if (!response.ok) {
-      console.error('Failed to update field');
-      setIsSaving(false);
-    } else {
-      // Trigger immediate refetch to get updated data
-      setTimeout(() => {
-        refetch?.();
+      if (!response.ok) {
+        console.error('Failed to update field');
         setIsSaving(false);
-      }, 500); // Small delay to allow ADO to process
+        return;
+      }
+      
+      // Wait for ADO to process the change
+      await new Promise(resolve => setTimeout(resolve, 800));
+      
+      // Trigger refetch and wait for it to complete
+      if (refetch) {
+        await refetch();
+      }
+      
+      // Small additional delay to ensure UI updates
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      setIsSaving(false);
+    } catch (error) {
+      console.error('Error updating field:', error);
+      setIsSaving(false);
     }
   };
 
   const handleDueDateChange = (id: number, newDueDate: string | null, reason?: string) => {
     const workItem = workItems.find(item => item.id === id);
     if (!workItem) return;
+
+    // Skip modal for Bugs, Features, and Epics - they use targetDate updated via onUpdateField
+    const usesTargetDate = workItem.workItemType === 'Epic' || workItem.workItemType === 'Feature' || workItem.workItemType === 'Bug';
+    if (usesTargetDate) {
+      console.log('Work item uses targetDate, skipping due date change modal');
+      return;
+    }
 
     // Use the current due date from the work item, not the original
     const oldDueDate = workItem.dueDate || null;
@@ -423,9 +443,23 @@ function App() {
                   workItems={workItems}
                   project={selectedProject}
                   areaPath={selectedAreaPath}
+                  onSelectItem={setSelectedItem}
                 />
               )}
             </div>
+            {selectedItem && currentView === 'analytics' && (
+              <DetailsPanel
+                workItem={selectedItem}
+                onClose={() => setSelectedItem(null)}
+                onUpdateDueDate={handleDueDateChange}
+                allWorkItems={workItems}
+                onUpdateField={handleFieldUpdate}
+                isSaving={isSaving}
+                project={selectedProject}
+                areaPath={selectedAreaPath}
+                onSelectItem={setSelectedItem}
+              />
+            )}
           </div>
         )}
       </div>

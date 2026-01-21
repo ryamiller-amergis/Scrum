@@ -164,27 +164,24 @@ export const UnscheduledList: React.FC<UnscheduledListProps> = ({
           <div className="filter-row">
             <select
               value={selectedWorkItemType}
-              onChange={(e) => {
-                setSelectedWorkItemType(e.target.value);
-                onSelectItem(null as any);
-              }}
+              onChange={(e) => setSelectedWorkItemType(e.target.value)}
               className="filter-select"
             >
               <option value="">All Types</option>
               {workItemTypeOptions.map(type => (
                 <option key={type} value={type}>
-                  {type === 'Product Backlog Item' ? 'PBI' : 
-                   type === 'Technical Backlog Item' ? 'TBI' : 
+                  {type === 'Product Backlog Item' ? '📋 PBI' : 
+                   type === 'Technical Backlog Item' ? '🔧 TBI' : 
+                   type === 'Epic' ? '👑 Epic' :
+                   type === 'Feature' ? '⭐ Feature' :
+                   type === 'Bug' ? '🐛 Bug' :
                    type}
                 </option>
               ))}
             </select>
             <select
               value={selectedAssignedTo}
-              onChange={(e) => {
-                setSelectedAssignedTo(e.target.value);
-                onSelectItem(null as any);
-              }}
+              onChange={(e) => setSelectedAssignedTo(e.target.value)}
               className="filter-select"
             >
               <option value="">Assigned To</option>
@@ -194,10 +191,7 @@ export const UnscheduledList: React.FC<UnscheduledListProps> = ({
             </select>
             <select
               value={selectedState}
-              onChange={(e) => {
-                setSelectedState(e.target.value);
-                onSelectItem(null as any);
-              }}
+              onChange={(e) => setSelectedState(e.target.value)}
               className="filter-select"
             >
               <option value="">All States</option>
@@ -208,10 +202,7 @@ export const UnscheduledList: React.FC<UnscheduledListProps> = ({
           </div>
           <select
             value={selectedIteration}
-            onChange={(e) => {
-              setSelectedIteration(e.target.value);
-              onSelectItem(null as any); // Close details panel
-            }}
+            onChange={(e) => setSelectedIteration(e.target.value)}
             className="iteration-select"
           >
             <option value="">All Iterations</option>
@@ -219,6 +210,19 @@ export const UnscheduledList: React.FC<UnscheduledListProps> = ({
               <option key={iteration} value={iteration}>{iteration}</option>
             ))}
           </select>
+          {(selectedWorkItemType || selectedAssignedTo || selectedState || selectedIteration) && (
+            <button 
+              className="clear-filters-btn"
+              onClick={() => {
+                setSelectedWorkItemType('');
+                setSelectedAssignedTo('');
+                setSelectedState('');
+                setSelectedIteration('');
+              }}
+            >
+              Clear Filters
+            </button>
+          )}
             </>
           )}
           <div className="unscheduled-items">

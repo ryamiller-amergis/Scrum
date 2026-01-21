@@ -1,6 +1,6 @@
 import express, { Request, Response } from 'express';
 import { AzureDevOpsService } from '../services/azureDevOps';
-import { WorkItemsQuery, UpdateDueDateRequest, DeveloperDueDateStats } from '../types/workitem';
+import { WorkItemsQuery, UpdateDueDateRequest, DeveloperDueDateStats, DueDateHitRateStats } from '../types/workitem';
 
 const router = express.Router();
 
@@ -153,6 +153,66 @@ router.get('/due-date-stats', async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/due-date-hit-rate - Get statistics on whether developers hit their due dates
+router.get('/due-date-hit-rate', async (req: Request, res: Response) => {
+  try {
+    const { from, to, developer } = req.query as WorkItemsQuery & { developer?: string };
+    
+    // Define specific teams to query
+    const devStatsTeams = [
+      { project: 'MaxView', areaPath: '' } // Empty to get all from project
+    ];
+    
+    // Fetch hit rate stats from all teams and aggregate
+    const allStats: DueDateHitRateStats[] = [];
+    
+    for (const team of devStatsTeams) {
+      try {
+        const adoService = new AzureDevOpsService(team.project, team.areaPath);
+        const teamStats = await adoService.getDueDateHitRate(from, to, developer);
+        allStats.push(...teamStats);
+      } catch (error) {
+        console.error(`Error fetching hit rate stats for ${team.project}/${team.areaPath}:`, error);
+        // Continue with other teams even if one fails
+      }
+    }
+    
+    // Aggregate stats by developer
+    const aggregatedStats = new Map<string, DueDateHitRateStats>();
+    
+    for (const stat of allStats) {
+      if (aggregatedStats.has(stat.developer)) {
+        const existing = aggregatedStats.get(stat.developer)!;
+        existing.totalWorkItems += stat.totalWorkItems;
+        existing.hitDueDate += stat.hitDueDate;
+        existing.missedDueDate += stat.missedDueDate;
+        existing.workItemDetails.push(...stat.workItemDetails);
+      } else {
+        aggregatedStats.set(stat.developer, {
+          developer: stat.developer,
+          totalWorkItems: stat.totalWorkItems,
+          hitDueDate: stat.hitDueDate,
+          missedDueDate: stat.missedDueDate,
+          hitRate: 0, // Will recalculate
+          workItemDetails: [...stat.workItemDetails]
+        });
+      }
+    }
+    
+    // Recalculate hit rates
+    const stats = Array.from(aggregatedStats.values()).map(stat => ({
+      ...stat,
+      hitRate: stat.totalWorkItems > 0 ? (stat.hitDueDate / stat.totalWorkItems) * 100 : 0
+    }));
+    
+    console.log(`Returning ${stats.length} developer hit rate stats`);
+    res.json(stats);
+  } catch (error: any) {
+    console.error('Error fetching due date hit rate:', error);
+    res.status(500).json({ error: 'Failed to fetch due date hit rate statistics' });
+  }
+});
+
 // GET /api/team-members - Get list of members from a specific team
 router.get('/team-members', async (req: Request, res: Response) => {
   try {
@@ -221,6 +281,30 @@ router.get('/epics/:id/children', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error fetching Epic children:', error);
     res.status(500).json({ error: 'Failed to fetch Epic children' });
+  }
+});
+
+// GET /api/workitems/:id/relations - Get related/child work items for a PBI or TBI
+router.get('/workitems/:id/relations', async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const { project, areaPath } = req.query as { project?: string; areaPath?: string };
+
+    console.log(`Fetching relations for work item ${id}, project: ${project}, areaPath: ${areaPath}`);
+
+    if (isNaN(id)) {
+      return res.status(400).json({ error: 'Invalid work item ID' });
+    }
+
+    const adoService = new AzureDevOpsService(project, areaPath);
+    const relatedItems = await adoService.getWorkItemRelations(id);
+    
+    console.log(`Returning ${relatedItems.length} related items for work item ${id}`);
+    res.json(relatedItems);
+  } catch (error: any) {
+    console.error('Error fetching work item relations:', error);
+    console.error('Stack trace:', error.stack);
+    res.status(500).json({ error: 'Failed to fetch work item relations' });
   }
 });
 

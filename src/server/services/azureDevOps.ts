@@ -1,5 +1,6 @@
 import * as azdev from 'azure-devops-node-api';
-import { WorkItem, CycleTimeData, DueDateChange, DeveloperDueDateStats } from '../types/workitem';
+import { WorkItemExpand } from 'azure-devops-node-api/interfaces/WorkItemTrackingInterfaces';
+import { WorkItem, CycleTimeData, DueDateChange, DeveloperDueDateStats, DueDateHitRateStats } from '../types/workitem';
 import { retryWithBackoff } from '../utils/retry';
 
 export class AzureDevOpsService {
@@ -37,8 +38,8 @@ export class AzureDevOpsService {
     return retryWithBackoff(async () => {
       const witApi = await this.connection.getWorkItemTrackingApi();
 
-      // Build WIQL query to include Product Backlog Items, Technical Backlog Items, and Epics
-      let wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${this.project}' AND ([System.WorkItemType] = 'Product Backlog Item' OR [System.WorkItemType] = 'Technical Backlog Item' OR [System.WorkItemType] = 'Epic')`;
+      // Build WIQL query to include Product Backlog Items, Technical Backlog Items, Epics, Features, and Bugs
+      let wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${this.project}' AND ([System.WorkItemType] = 'Product Backlog Item' OR [System.WorkItemType] = 'Technical Backlog Item' OR [System.WorkItemType] = 'Epic' OR [System.WorkItemType] = 'Feature' OR [System.WorkItemType] = 'Bug')`;
 
       if (this.areaPath) {
         // Use exact match (=) instead of UNDER to avoid getting child area paths
@@ -277,6 +278,7 @@ export class AzureDevOpsService {
         areaPath: 'System.AreaPath',
         title: 'System.Title',
         qaCompleteDate: 'Custom.QACompleteDate',
+        targetDate: 'Microsoft.VSTS.Scheduling.TargetDate',
       };
 
       const adoFieldName = fieldMap[field] || field;
@@ -677,5 +679,325 @@ export class AzureDevOpsService {
       console.error(`Error fetching team members for ${teamName}:`, error);
       return [];
     }
+  }
+
+  /**
+   * Analyzes work item history to determine if developers hit their due dates.
+   * Criteria: 
+   * - Hit = Work item transitions from "In Progress" to completion state on or before the due date without any due date changes
+   * - Miss = Count each due date change as a miss
+   */
+  async getDueDateHitRate(from?: string, to?: string, developerFilter?: string): Promise<DueDateHitRateStats[]> {
+    return retryWithBackoff(async () => {
+      const witApi = await this.connection.getWorkItemTrackingApi();
+
+      // Build WIQL query to get PBIs and Technical Backlog Items with due dates
+      let wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${this.project}' AND ([System.WorkItemType] = 'Product Backlog Item' OR [System.WorkItemType] = 'Technical Backlog Item') AND [Microsoft.VSTS.Scheduling.DueDate] <> ''`;
+
+      if (this.areaPath) {
+        wiql += ` AND [System.AreaPath] = '${this.areaPath}'`;
+      }
+
+      // Filter by date range based on when items were changed
+      if (from && to) {
+        wiql += ` AND [System.ChangedDate] >= '${from}' AND [System.ChangedDate] <= '${to}'`;
+      }
+
+      wiql += ' ORDER BY [System.ChangedDate] DESC';
+
+      const queryResult = await witApi.queryByWiql(
+        { query: wiql },
+        { project: this.project }
+      );
+
+      if (!queryResult.workItems || queryResult.workItems.length === 0) {
+        return [];
+      }
+
+      const ids = queryResult.workItems.map((wi) => wi.id!);
+      console.log(`Analyzing ${ids.length} work items with due dates for hit rate`);
+
+      // Fetch work items in batches
+      const batchSize = 200;
+      const batches: number[][] = [];
+      for (let i = 0; i < ids.length; i += batchSize) {
+        batches.push(ids.slice(i, i + batchSize));
+      }
+
+      const fields = [
+        'System.Id',
+        'System.Title',
+        'System.State',
+        'System.AssignedTo',
+        'Microsoft.VSTS.Scheduling.DueDate',
+      ];
+
+      interface WorkItemAnalysis {
+        id: number;
+        title: string;
+        assignedTo?: string;
+        dueDate?: string;
+        dueDateChangeCount: number;
+        hit: boolean;
+        completionInfo: string;
+      }
+
+      const developerMap = new Map<string, WorkItemAnalysis[]>();
+
+      for (const batch of batches) {
+        const workItems = await witApi.getWorkItems(
+          batch,
+          fields,
+          undefined,
+          undefined,
+          undefined
+        );
+
+        // Analyze each work item's history
+        for (const wi of workItems) {
+          if (!wi.id || !wi.fields) continue;
+
+          const assignedTo = wi.fields['System.AssignedTo']?.displayName;
+          const currentDueDate = wi.fields['Microsoft.VSTS.Scheduling.DueDate'];
+
+          // Skip if no assignee or no due date
+          if (!assignedTo || !currentDueDate) continue;
+
+          // Apply developer filter if specified
+          if (developerFilter && assignedTo !== developerFilter) continue;
+
+          try {
+            // Get full revision history
+            const revisions = await witApi.getRevisions(wi.id);
+
+            if (!revisions || revisions.length === 0) continue;
+
+            // Track due date changes and state transitions
+            let dueDateChangeCount = 0;
+            let previousDueDate: string | null = null;
+            let transitionDate: string | null = null;
+            let dueDateAtTransition: string | null = null;
+            let hitDueDate = false;
+
+            // Process revisions in chronological order
+            for (let i = 0; i < revisions.length; i++) {
+              const revision = revisions[i];
+              const prevRevision = i > 0 ? revisions[i - 1] : null;
+
+              const revState = revision.fields?.['System.State'];
+              const prevState = prevRevision?.fields?.['System.State'];
+              const revDueDate = revision.fields?.['Microsoft.VSTS.Scheduling.DueDate'];
+              const revChangedDate = revision.fields?.['System.ChangedDate'];
+
+              // Track due date changes
+              if (revDueDate) {
+                const dueDateStr = new Date(revDueDate).toISOString().split('T')[0];
+                
+                if (previousDueDate && previousDueDate !== dueDateStr) {
+                  dueDateChangeCount++;
+                }
+                
+                previousDueDate = dueDateStr;
+              }
+
+              // Check for transition from "In Progress" to completion states
+              if (prevState === 'In Progress' && 
+                  (revState === 'Ready for Test' || revState === 'In Test' || revState === 'Done')) {
+                
+                transitionDate = revChangedDate ? new Date(revChangedDate).toISOString().split('T')[0] : null;
+                
+                // Get the due date at the time of transition
+                const prevDueDate = prevRevision?.fields?.['Microsoft.VSTS.Scheduling.DueDate'];
+                if (prevDueDate) {
+                  dueDateAtTransition = new Date(prevDueDate).toISOString().split('T')[0];
+                  
+                  // Check if transition happened on or before the due date
+                  if (transitionDate && dueDateAtTransition) {
+                    const transitionTime = new Date(transitionDate).getTime();
+                    const dueTime = new Date(dueDateAtTransition).getTime();
+                    
+                    if (transitionTime <= dueTime) {
+                      hitDueDate = true;
+                    }
+                  }
+                }
+              }
+            }
+
+            const currentDueDateStr = new Date(currentDueDate).toISOString().split('T')[0];
+            
+            // Determine hit/miss
+            // Hit = transitioned from In Progress to completion on/before due date AND no due date changes
+            const hit = hitDueDate && dueDateChangeCount === 0;
+            
+            let completionInfo: string;
+            if (dueDateChangeCount > 0) {
+              completionInfo = `${dueDateChangeCount} change${dueDateChangeCount > 1 ? 's' : ''}`;
+            } else if (transitionDate && dueDateAtTransition) {
+              completionInfo = `Completed ${transitionDate} (Due: ${dueDateAtTransition})`;
+            } else {
+              completionInfo = 'Not completed';
+            }
+
+            const analysis: WorkItemAnalysis = {
+              id: wi.id,
+              title: wi.fields['System.Title'] || '',
+              assignedTo,
+              dueDate: currentDueDateStr,
+              dueDateChangeCount,
+              hit,
+              completionInfo
+            };
+
+            if (!developerMap.has(assignedTo)) {
+              developerMap.set(assignedTo, []);
+            }
+            developerMap.get(assignedTo)!.push(analysis);
+          } catch (error) {
+            console.error(`Error analyzing work item ${wi.id}:`, error);
+            // Continue with next work item
+          }
+        }
+      }
+
+      // Build stats for each developer
+      const stats: DueDateHitRateStats[] = [];
+
+      for (const [developer, workItems] of developerMap.entries()) {
+        // Hit count = work items that completed on time with no due date changes
+        const hitCount = workItems.filter(wi => wi.hit).length;
+        
+        // Missed count = total number of due date changes across all work items
+        const missCount = workItems.reduce((sum, wi) => sum + wi.dueDateChangeCount, 0);
+        
+        const totalCount = workItems.length;
+
+        stats.push({
+          developer,
+          totalWorkItems: totalCount,
+          hitDueDate: hitCount,
+          missedDueDate: missCount,
+          hitRate: totalCount > 0 ? (hitCount / totalCount) * 100 : 0,
+          workItemDetails: workItems.map(wi => ({
+            id: wi.id,
+            title: wi.title,
+            dueDate: wi.dueDate!,
+            completionDate: wi.completionInfo,
+            hit: wi.hit
+          }))
+        });
+      }
+
+      console.log(`Calculated hit rate stats for ${stats.length} developers`);
+      return stats.sort((a, b) => a.developer.localeCompare(b.developer));
+    });
+  }
+
+  async getWorkItemRelations(workItemId: number): Promise<WorkItem[]> {
+    return retryWithBackoff(async () => {
+      const witApi = await this.connection.getWorkItemTrackingApi();
+
+      // Get the work item with relations - must explicitly expand relations
+      const workItem = await witApi.getWorkItem(
+        workItemId,
+        undefined,
+        undefined,
+        WorkItemExpand.Relations, // Expand relations
+        this.project
+      );
+
+      console.log(`Fetching relations for work item ${workItemId}`);
+      console.log(`Relations found: ${workItem?.relations?.length || 0}`);
+
+      if (!workItem || !workItem.relations) {
+        console.log(`No relations found for work item ${workItemId}`);
+        return [];
+      }
+
+      // Filter for child relations
+      const childRelations = workItem.relations.filter(
+        (rel) => rel.rel === 'System.LinkTypes.Hierarchy-Forward'
+      );
+
+      console.log(`All relations:`, workItem.relations.map(r => ({ rel: r.rel, url: r.url })));
+      console.log(`Child relations found: ${childRelations.length}`);
+
+      if (childRelations.length === 0) {
+        return [];
+      }
+
+      // Extract child work item IDs from URLs
+      const childIds = childRelations
+        .map((rel) => {
+          const url = rel.url;
+          if (!url) return null;
+          const match = url.match(/\/(\d+)$/);
+          return match ? parseInt(match[1], 10) : null;
+        })
+        .filter((id): id is number => id !== null);
+
+      console.log(`Extracted child IDs: ${childIds.join(', ')}`);
+
+      if (childIds.length === 0) {
+        return [];
+      }
+
+      // Fetch child work items
+      const fields = [
+        'System.Id',
+        'System.Title',
+        'System.State',
+        'System.AssignedTo',
+        'System.WorkItemType',
+        'System.ChangedDate',
+        'System.CreatedDate',
+        'Microsoft.VSTS.Common.ClosedDate',
+        'System.AreaPath',
+        'System.IterationPath',
+        'Microsoft.VSTS.Scheduling.DueDate',
+        'Microsoft.VSTS.Scheduling.TargetDate',
+        'Custom.QACompleteDate',
+      ];
+
+      const workItems = await witApi.getWorkItems(
+        childIds,
+        fields,
+        undefined,
+        undefined,
+        undefined
+      );
+
+      const extractDate = (dateValue: any): string | undefined => {
+        if (!dateValue) return undefined;
+        const date = new Date(dateValue);
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      };
+
+      const relatedItems: WorkItem[] = [];
+      for (const wi of workItems) {
+        if (!wi.id || !wi.fields) continue;
+
+        relatedItems.push({
+          id: wi.id,
+          title: wi.fields['System.Title'] || '',
+          state: wi.fields['System.State'] || '',
+          assignedTo: wi.fields['System.AssignedTo']?.displayName,
+          dueDate: extractDate(wi.fields['Microsoft.VSTS.Scheduling.DueDate']),
+          targetDate: extractDate(wi.fields['Microsoft.VSTS.Scheduling.TargetDate']),
+          qaCompleteDate: extractDate(wi.fields['Custom.QACompleteDate']),
+          workItemType: wi.fields['System.WorkItemType'] || '',
+          changedDate: wi.fields['System.ChangedDate'] || '',
+          createdDate: wi.fields['System.CreatedDate'] || '',
+          closedDate: extractDate(wi.fields['Microsoft.VSTS.Common.ClosedDate']),
+          areaPath: wi.fields['System.AreaPath'] || '',
+          iterationPath: wi.fields['System.IterationPath'] || '',
+        });
+      }
+
+      return relatedItems;
+    });
   }
 }

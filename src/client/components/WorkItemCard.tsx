@@ -15,6 +15,11 @@ export const WorkItemCard: React.FC<WorkItemCardProps> = ({
   isDragging = false,
 }) => {
   const isEpic = workItem.workItemType === 'Epic';
+  const isFeature = workItem.workItemType === 'Feature';
+  const isBug = workItem.workItemType === 'Bug';
+  const isPBI = workItem.workItemType === 'Product Backlog Item';
+  const isTBI = workItem.workItemType === 'Technical Backlog Item';
+  const isSpecialType = isEpic || isFeature;
   const colors = isEpic ? getEpicColor(workItem.id) : getAssigneeColor(workItem.assignedTo);
   
   return (
@@ -25,19 +30,23 @@ export const WorkItemCard: React.FC<WorkItemCardProps> = ({
         opacity: isDragging ? 0.5 : 1,
         cursor: 'pointer',
         backgroundColor: colors.bg,
-        borderLeft: `${isEpic ? '5px' : '4px'} solid ${colors.border}`,
-        boxShadow: isEpic ? `0 2px 6px ${colors.border}40` : 'none',
+        borderLeft: `${isSpecialType ? '5px' : '4px'} solid ${colors.border}`,
+        boxShadow: isSpecialType ? `0 2px 6px ${colors.border}40` : 'none',
       }}
     >
       <div className="work-item-id" style={{ color: colors.text }}>
         {isEpic && <span style={{ marginRight: '4px' }}>👑</span>}
+        {isFeature && <span style={{ marginRight: '4px' }}>⭐</span>}
+        {isBug && <span style={{ marginRight: '4px' }}>🐛</span>}
+        {isPBI && <span style={{ marginRight: '4px' }}>📋</span>}
+        {isTBI && <span style={{ marginRight: '4px' }}>🔧</span>}
         #{workItem.id}
       </div>
       <div className="work-item-title" style={{ color: colors.text }}>
         {workItem.title}
       </div>
       <div className="work-item-state" style={{ 
-        backgroundColor: isEpic ? 'rgba(255, 255, 255, 0.2)' : undefined,
+        backgroundColor: isSpecialType ? 'rgba(255, 255, 255, 0.2)' : undefined,
         color: colors.text
       }}>
         {workItem.state}
@@ -47,7 +56,7 @@ export const WorkItemCard: React.FC<WorkItemCardProps> = ({
           {workItem.assignedTo}
         </div>
       )}
-      {isEpic && workItem.targetDate && (
+      {(isEpic || isFeature || isBug) && workItem.targetDate && (
         <div className="work-item-target-date" style={{ 
           fontSize: '10px', 
           color: colors.text, 

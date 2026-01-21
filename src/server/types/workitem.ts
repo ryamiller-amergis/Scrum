@@ -55,3 +55,18 @@ export interface DeveloperDueDateStats {
   totalChanges: number;
   reasonBreakdown: { [reason: string]: number };
 }
+
+export interface DueDateHitRateStats {
+  developer: string;
+  totalWorkItems: number;
+  hitDueDate: number;
+  missedDueDate: number;
+  hitRate: number;
+  workItemDetails: Array<{
+    id: number;
+    title: string;
+    dueDate: string;
+    completionDate: string;
+    hit: boolean;
+  }>;
+}
