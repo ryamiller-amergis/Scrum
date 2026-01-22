@@ -1,0 +1,308 @@
+import { WorkItem } from '../types/workitem';
+
+export interface RoadmapItem {
+  id: number;
+  title: string;
+  workItemType: string;
+  targetDate: string;
+  assignedTo?: string;
+  state: string;
+  createdDate: string;
+  completionPercentage: number;
+  childCount: number;
+  completedCount: number;
+  healthStatus: 'on-track' | 'at-risk' | 'behind' | 'ahead';
+  daysRemaining: number;
+  timeElapsedPercentage: number;
+  children?: WorkItem[];
+}
+
+export interface TimelineColumn {
+  label: string;
+  startDate: Date;
+  endDate: Date;
+  isCurrentPeriod: boolean;
+}
+
+/**
+ * Calculate the health status of a work item based on progress vs. time elapsed
+ * @param completionPercentage - Percentage of child items completed (0-100)
+ * @param timeElapsedPercentage - Percentage of time elapsed from creation to target date (0-100)
+ * @param daysRemaining - Days remaining until target date
+ * @returns Health status indicator
+ */
+export function calculateHealthStatus(
+  completionPercentage: number,
+  timeElapsedPercentage: number,
+  daysRemaining: number
+): 'on-track' | 'at-risk' | 'behind' | 'ahead' {
+  const DEADLINE_WARNING_THRESHOLD = 5; // Days before deadline to start warning
+  const PLANNING_HORIZON_DAYS = 60; // Don't flag items as at-risk if deadline is beyond this
+  
+  // If past target date
+  if (daysRemaining < 0) {
+    return completionPercentage >= 100 ? 'on-track' : 'behind';
+  }
+
+  // If completed, always on track
+  if (completionPercentage >= 100) {
+    return 'on-track';
+  }
+
+  // Within warning threshold of deadline - must be complete
+  if (daysRemaining <= DEADLINE_WARNING_THRESHOLD) {
+    if (completionPercentage < 100) {
+      return 'behind';
+    }
+  }
+
+  // If deadline is far in the future and work hasn't started, don't flag as at-risk
+  // This follows Agile best practice - work is planned but not yet in active sprint
+  if (daysRemaining > PLANNING_HORIZON_DAYS && completionPercentage === 0) {
+    return 'on-track';
+  }
+
+  // If work has started or deadline is within planning horizon, evaluate progress
+  if (completionPercentage > 0 || daysRemaining <= PLANNING_HORIZON_DAYS) {
+    // Calculate ideal progress (should match time elapsed)
+    const progressDelta = completionPercentage - timeElapsedPercentage;
+
+    // Ahead if progress is significantly ahead of time
+    if (progressDelta > 15) {
+      return 'ahead';
+    }
+
+    // At risk if progress is moderately behind time
+    if (progressDelta < -10) {
+      return 'at-risk';
+    }
+  }
+
+  // On track if progress roughly matches expectations
+  return 'on-track';
+}
+
+/**
+ * Calculate time elapsed percentage from creation to target date
+ * @param createdDate - When the work item was created
+ * @param targetDate - Target completion date
+ * @returns Percentage of time elapsed (0-100)
+ */
+export function calculateTimeElapsed(createdDate: string, targetDate: string): number {
+  const created = new Date(createdDate);
+  const target = new Date(targetDate);
+  const now = new Date();
+
+  const totalDuration = target.getTime() - created.getTime();
+  const elapsed = now.getTime() - created.getTime();
+
+  if (totalDuration <= 0) return 100;
+  
+  const percentage = (elapsed / totalDuration) * 100;
+  return Math.max(0, Math.min(100, percentage));
+}
+
+/**
+ * Calculate days remaining until target date
+ * @param targetDate - Target completion date
+ * @returns Number of days remaining (negative if past due)
+ */
+export function calculateDaysRemaining(targetDate: string): number {
+  const target = new Date(targetDate);
+  const now = new Date();
+  
+  // Reset time to midnight for accurate day calculation
+  target.setHours(0, 0, 0, 0);
+  now.setHours(0, 0, 0, 0);
+  
+  const diffTime = target.getTime() - now.getTime();
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  
+  return diffDays;
+}
+
+/**
+ * Calculate completion percentage for a work item based on its children
+ * @param children - Array of child work items
+ * @returns Completion percentage (0-100)
+ */
+export function calculateCompletionPercentage(children: WorkItem[]): number {
+  if (!children || children.length === 0) return 0;
+
+  // For Features (children of Epics), only Done/Closed count as complete
+  // For PBIs/TBIs (children of Features), use the full completed states
+  const isFeatureLevel = children.some(child => child.workItemType === 'Feature');
+  
+  const completedStates = isFeatureLevel 
+    ? ['Done', 'Closed']  // Features: only Done/Closed
+    : ['UAT - Test Done', 'Done', 'Closed'];  // PBIs: include UAT complete
+    
+  const completedCount = children.filter(child => 
+    completedStates.includes(child.state)
+  ).length;
+
+  return Math.round((completedCount / children.length) * 100);
+}
+
+/**
+ * Generate monthly timeline columns for a given date range
+ * @param startDate - Start of the timeline
+ * @param endDate - End of the timeline
+ * @returns Array of timeline columns
+ */
+export function generateMonthlyTimeline(startDate: Date, endDate: Date): TimelineColumn[] {
+  const columns: TimelineColumn[] = [];
+  const current = new Date(startDate);
+  const now = new Date();
+  const currentMonth = now.getMonth();
+  const currentYear = now.getFullYear();
+
+  while (current <= endDate) {
+    const year = current.getFullYear();
+    const month = current.getMonth();
+    
+    const monthStart = new Date(year, month, 1);
+    const monthEnd = new Date(year, month + 1, 0); // Last day of month
+
+    const isCurrentPeriod = year === currentYear && month === currentMonth;
+
+    columns.push({
+      label: monthStart.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+      startDate: monthStart,
+      endDate: monthEnd,
+      isCurrentPeriod
+    });
+
+    // Move to next month
+    current.setMonth(current.getMonth() + 1);
+  }
+
+  return columns;
+}
+
+/**
+ * Generate quarterly timeline columns for a given date range
+ * @param startDate - Start of the timeline
+ * @param endDate - End of the timeline
+ * @returns Array of timeline columns
+ */
+export function generateQuarterlyTimeline(startDate: Date, endDate: Date): TimelineColumn[] {
+  const columns: TimelineColumn[] = [];
+  const current = new Date(startDate);
+  const now = new Date();
+  const currentQuarter = Math.floor(now.getMonth() / 3);
+  const currentYear = now.getFullYear();
+
+  // Start at the beginning of the current quarter
+  const startQuarter = Math.floor(current.getMonth() / 3);
+  current.setMonth(startQuarter * 3);
+  current.setDate(1);
+
+  while (current <= endDate) {
+    const year = current.getFullYear();
+    const quarter = Math.floor(current.getMonth() / 3);
+    
+    const quarterStart = new Date(year, quarter * 3, 1);
+    const quarterEnd = new Date(year, quarter * 3 + 3, 0); // Last day of quarter
+
+    const isCurrentPeriod = year === currentYear && quarter === currentQuarter;
+
+    columns.push({
+      label: `Q${quarter + 1} ${year}`,
+      startDate: quarterStart,
+      endDate: quarterEnd,
+      isCurrentPeriod
+    });
+
+    // Move to next quarter
+    current.setMonth(current.getMonth() + 3);
+  }
+
+  return columns;
+}
+
+/**
+ * Check if a target date falls within a timeline column
+ * @param targetDate - The target date to check (YYYY-MM-DD format)
+ * @param column - The timeline column
+ * @returns True if the date falls within the column
+ */
+export function isDateInColumn(targetDate: string, column: TimelineColumn): boolean {
+  // Parse date as local time to avoid timezone issues
+  const [year, month, day] = targetDate.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  
+  // Set hours to noon to avoid any edge cases with date comparisons
+  date.setHours(12, 0, 0, 0);
+  
+  return date >= column.startDate && date <= column.endDate;
+}
+
+/**
+ * Filter and prepare roadmap items from work items
+ * @param workItems - All work items
+ * @param includeTypes - Work item types to include ('Epic', 'Feature', or both)
+ * @returns Array of roadmap items with health status
+ */
+export function prepareRoadmapItems(
+  workItems: WorkItem[],
+  includeTypes: ('Epic' | 'Feature')[]
+): RoadmapItem[] {
+  return workItems
+    .filter(item => 
+      includeTypes.includes(item.workItemType as any) && 
+      item.targetDate
+    )
+    .map(item => {
+      const completionPercentage = 0; // Will be calculated from children
+      const timeElapsedPercentage = calculateTimeElapsed(item.createdDate, item.targetDate!);
+      const daysRemaining = calculateDaysRemaining(item.targetDate!);
+      
+      return {
+        id: item.id,
+        title: item.title,
+        workItemType: item.workItemType,
+        targetDate: item.targetDate!,
+        assignedTo: item.assignedTo,
+        state: item.state,
+        completionPercentage,
+        childCount: 0,
+        completedCount: 0,
+        healthStatus: calculateHealthStatus(completionPercentage, timeElapsedPercentage, daysRemaining),
+        daysRemaining,
+        timeElapsedPercentage,
+        children: []
+      };
+    })
+    .sort((a, b) => new Date(a.targetDate).getTime() - new Date(b.targetDate).getTime());
+}
+
+/**
+ * Get health status color for UI display
+ * @param status - Health status
+ * @returns CSS color value
+ */
+export function getHealthStatusColor(status: 'on-track' | 'at-risk' | 'behind' | 'ahead'): string {
+  const colors = {
+    'on-track': '#4CAF50',
+    'ahead': '#2196F3',
+    'at-risk': '#FF9800',
+    'behind': '#F44336'
+  };
+  return colors[status];
+}
+
+/**
+ * Get health status label for UI display
+ * @param status - Health status
+ * @returns Human-readable label
+ */
+export function getHealthStatusLabel(status: 'on-track' | 'at-risk' | 'behind' | 'ahead'): string {
+  const labels = {
+    'on-track': 'On Track',
+    'ahead': 'Ahead',
+    'at-risk': 'At Risk',
+    'behind': 'Behind'
+  };
+  return labels[status];
+}

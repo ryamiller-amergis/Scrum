@@ -7,6 +7,7 @@ import { UnscheduledList } from './components/UnscheduledList';
 import { DetailsPanel } from './components/DetailsPanel';
 import { CycleTimeAnalytics } from './components/CycleTimeAnalytics';
 import { DevStats } from './components/DevStats';
+import { RoadmapView } from './components/RoadmapView';
 import { DueDateReasonModal } from './components/DueDateReasonModal';
 import { Login } from './components/Login';
 import { useWorkItems } from './hooks/useWorkItems';
@@ -462,12 +463,14 @@ function App() {
                   <h2>QA Analytics</h2>
                   <p>Coming soon...</p>
                 </div>
-              ) : (
-                <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                  <h2>Roadmap</h2>
-                  <p>Coming soon...</p>
-                </div>
-              )}
+              ) : analyticsTab === 'roadmap' ? (
+                <RoadmapView 
+                  workItems={workItems}
+                  project={selectedProject}
+                  areaPath={selectedAreaPath}
+                  onSelectItem={setSelectedItem}
+                />
+              ) : null}
             </div>
             {selectedItem && currentView === 'analytics' && (
               <DetailsPanel

@@ -607,6 +607,7 @@ export class AzureDevOpsService {
         'System.AreaPath',
         'System.IterationPath',
         'Microsoft.VSTS.Scheduling.DueDate',
+        'Microsoft.VSTS.Scheduling.TargetDate',
       ];
 
       const allWorkItems: WorkItem[] = [];
@@ -638,6 +639,7 @@ export class AzureDevOpsService {
             state: wi.fields['System.State'] || '',
             assignedTo: wi.fields['System.AssignedTo']?.displayName,
             dueDate: extractDate(wi.fields['Microsoft.VSTS.Scheduling.DueDate']),
+            targetDate: extractDate(wi.fields['Microsoft.VSTS.Scheduling.TargetDate']),
             workItemType: wi.fields['System.WorkItemType'] || '',
             changedDate: wi.fields['System.ChangedDate'] || '',
             createdDate: wi.fields['System.CreatedDate'] || '',
@@ -648,13 +650,111 @@ export class AzureDevOpsService {
         }
       }
 
-      // Filter to only include PBIs and Technical Backlog Items (exclude Features to avoid double counting)
-      const pbiItems = allWorkItems.filter(item => 
-        item.workItemType === 'Product Backlog Item' || 
-        item.workItemType === 'Technical Backlog Item'
+      // For Epic children, return Features (direct children for rollup calculation)
+      const featureItems = allWorkItems.filter(item => 
+        item.workItemType === 'Feature'
       );
 
-      return pbiItems;
+      return featureItems;
+    });
+  }
+
+  async getFeatureChildren(featureId: number): Promise<WorkItem[]> {
+    return retryWithBackoff(async () => {
+      const witApi = await this.connection.getWorkItemTrackingApi();
+
+      // Query for all work items that are descendants of this Feature (recursive query to get PBIs/TBIs)
+      const wiql = `SELECT [System.Id] FROM WorkItemLinks WHERE ([Source].[System.Id] = ${featureId}) AND ([System.Links.LinkType] = 'System.LinkTypes.Hierarchy-Forward') MODE (Recursive)`;
+
+      const queryResult = await witApi.queryByWiql(
+        { query: wiql },
+        { project: this.project }
+      );
+
+      if (!queryResult.workItemRelations || queryResult.workItemRelations.length === 0) {
+        return [];
+      }
+
+      // Extract all descendant IDs (skip the first relation which is the Feature itself)
+      const descendantIds = queryResult.workItemRelations
+        .slice(1) // Skip the source Feature
+        .map(rel => rel.target?.id)
+        .filter((id): id is number => id !== undefined);
+
+      if (descendantIds.length === 0) {
+        return [];
+      }
+
+      // Fetch work items in batches of 200 (ADO limit)
+      const batchSize = 200;
+      const batches: number[][] = [];
+      for (let i = 0; i < descendantIds.length; i += batchSize) {
+        batches.push(descendantIds.slice(i, i + batchSize));
+      }
+
+      const fields = [
+        'System.Id',
+        'System.Title',
+        'System.State',
+        'System.AssignedTo',
+        'System.WorkItemType',
+        'System.ChangedDate',
+        'System.CreatedDate',
+        'Microsoft.VSTS.Common.ClosedDate',
+        'System.AreaPath',
+        'System.IterationPath',
+        'Microsoft.VSTS.Scheduling.DueDate',
+        'Custom.QACompleteDate',
+      ];
+
+      const allWorkItems: WorkItem[] = [];
+
+      for (const batch of batches) {
+        const workItems = await witApi.getWorkItems(
+          batch,
+          fields,
+          undefined,
+          undefined,
+          undefined
+        );
+
+        for (const wi of workItems) {
+          if (!wi.id || !wi.fields) continue;
+
+          const extractDate = (dateValue: any): string | undefined => {
+            if (!dateValue) return undefined;
+            const date = new Date(dateValue);
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+          };
+
+          allWorkItems.push({
+            id: wi.id,
+            title: wi.fields['System.Title'] || '',
+            state: wi.fields['System.State'] || '',
+            assignedTo: wi.fields['System.AssignedTo']?.displayName,
+            dueDate: extractDate(wi.fields['Microsoft.VSTS.Scheduling.DueDate']),
+            qaCompleteDate: extractDate(wi.fields['Custom.QACompleteDate']),
+            workItemType: wi.fields['System.WorkItemType'] || '',
+            changedDate: wi.fields['System.ChangedDate'] || '',
+            createdDate: wi.fields['System.CreatedDate'] || '',
+            closedDate: extractDate(wi.fields['Microsoft.VSTS.Common.ClosedDate']),
+            areaPath: wi.fields['System.AreaPath'] || '',
+            iterationPath: wi.fields['System.IterationPath'] || '',
+          });
+        }
+      }
+
+      // Return all PBIs, Technical Backlog Items, and Bugs
+      const childItems = allWorkItems.filter(item => 
+        item.workItemType === 'Product Backlog Item' || 
+        item.workItemType === 'Technical Backlog Item' ||
+        item.workItemType === 'Bug'
+      );
+
+      return childItems;
     });
   }
 

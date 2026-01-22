@@ -304,6 +304,25 @@ router.get('/epics/:id/children', async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/features/:id/children - Get child work items for a Feature
+router.get('/features/:id/children', async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const { project, areaPath } = req.query as { project?: string; areaPath?: string };
+
+    if (isNaN(id)) {
+      return res.status(400).json({ error: 'Invalid Feature ID' });
+    }
+
+    const adoService = new AzureDevOpsService(project, areaPath);
+    const children = await adoService.getFeatureChildren(id);
+    res.json(children);
+  } catch (error: any) {
+    console.error('Error fetching Feature children:', error);
+    res.status(500).json({ error: 'Failed to fetch Feature children' });
+  }
+});
+
 // GET /api/workitems/:id/relations - Get related/child work items for a PBI or TBI
 router.get('/workitems/:id/relations', async (req: Request, res: Response) => {
   try {
