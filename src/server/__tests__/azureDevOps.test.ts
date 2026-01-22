@@ -309,7 +309,7 @@ describe('AzureDevOpsService', () => {
         expect.arrayContaining([
           expect.objectContaining({
             op: 'add',
-            path: '/fields/Custom.DueDateMovementReasons',
+            path: '/fields/Custom.DueDateChangeReason',
             value: 'Client request',
           }),
           expect.objectContaining({
