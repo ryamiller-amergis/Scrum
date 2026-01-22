@@ -265,6 +265,7 @@ export function prepareRoadmapItems(
         targetDate: item.targetDate!,
         assignedTo: item.assignedTo,
         state: item.state,
+        createdDate: item.createdDate,
         completionPercentage,
         childCount: 0,
         completedCount: 0,

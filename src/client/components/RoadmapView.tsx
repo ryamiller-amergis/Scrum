@@ -537,7 +537,7 @@ const RoadmapView: React.FC<RoadmapViewProps> = ({ workItems, project, areaPath,
                                       }}
                                     >
                                       <div className="roadmap-card-header">
-                                        <span className="target-date">{formatDate(child.targetDate)}</span>
+                                        <span className="target-date">{dateToCheck ? formatDate(dateToCheck) : ''}</span>
                                         <span 
                                           className="health-badge"
                                           style={{ 
