@@ -54,5 +54,6 @@ export interface DueDateHitRateStats {
     dueDate: string;
     completionDate: string;
     hit: boolean;
+    status: 'hit' | 'miss' | 'in-progress';
   }>;
 }
