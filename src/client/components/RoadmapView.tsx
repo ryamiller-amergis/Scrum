@@ -140,7 +140,7 @@ const RoadmapView: React.FC<RoadmapViewProps> = ({ workItems, project, areaPath,
         completionPercentage,
         childCount: 0,
         completedCount: 0,
-        healthStatus: calculateHealthStatus(completionPercentage, timeElapsedPercentage, daysRemaining) as 'on-track' | 'at-risk' | 'behind' | 'ahead',
+        healthStatus: calculateHealthStatus(completionPercentage, timeElapsedPercentage, daysRemaining, 0) as 'on-track' | 'in-progress' | 'behind' | 'ahead',
         daysRemaining,
         timeElapsedPercentage,
         children: []
@@ -225,12 +225,20 @@ const RoadmapView: React.FC<RoadmapViewProps> = ({ workItems, project, areaPath,
     const completedCount = children.filter(child => completedStates.includes(child.state)).length;
     const daysRemaining = calculateDaysRemaining(item.targetDate);
     
+    // Calculate remaining work - count in-progress items as 0.5 remaining since they're already half done
+    const inProgressStates = ['In Progress', 'In Pull Request', 'Ready For Test', 'In Test'];
+    const inProgressCount = children.filter(child => inProgressStates.includes(child.state)).length;
+    const notStartedCount = children.filter(child => 
+      !completedStates.includes(child.state) && !inProgressStates.includes(child.state)
+    ).length;
+    const remainingItems = (inProgressCount * 0.5) + notStartedCount;
+    
     // Find earliest created date from children or use item's date
     const createdDates = children.map(c => new Date(c.createdDate).getTime()).filter(d => !isNaN(d));
     const earliestCreated = createdDates.length > 0 ? new Date(Math.min(...createdDates)) : new Date(item.targetDate);
     
     const actualTimeElapsed = calculateTimeElapsed(earliestCreated.toISOString(), item.targetDate);
-    const healthStatus = calculateHealthStatus(completionPercentage, actualTimeElapsed, daysRemaining);
+    const healthStatus = calculateHealthStatus(completionPercentage, actualTimeElapsed, daysRemaining, remainingItems);
 
     return {
       ...item,
@@ -357,8 +365,8 @@ const RoadmapView: React.FC<RoadmapViewProps> = ({ workItems, project, areaPath,
                 <p>Exceptional progress! Completion percentage significantly exceeds time elapsed (more than 20% faster than expected).</p>
               </div>
               <div className="status-item">
-                <span className="status-badge" style={{ backgroundColor: getHealthStatusColor('at-risk') }}>At Risk</span>
-                <p>Progress is lagging the timeline. More than 75% of time has elapsed but completion is below 100%, and deadline is within 60 days.</p>
+                <span className="status-badge" style={{ backgroundColor: getHealthStatusColor('in-progress') }}>In Progress</span>
+                <p>Work is actively happening but pacing slightly behind the ideal timeline. Items in this state are being worked on and have time remaining, but may need attention to stay on schedule.</p>
               </div>
               <div className="status-item">
                 <span className="status-badge" style={{ backgroundColor: getHealthStatusColor('behind') }}>Behind</span>
@@ -395,8 +403,8 @@ const RoadmapView: React.FC<RoadmapViewProps> = ({ workItems, project, areaPath,
           <span>Ahead</span>
         </div>
         <div className="legend-item">
-          <span className="legend-dot" style={{ backgroundColor: getHealthStatusColor('at-risk') }}></span>
-          <span>At Risk</span>
+          <span className="legend-dot" style={{ backgroundColor: getHealthStatusColor('in-progress') }}></span>
+          <span>In Progress</span>
         </div>
         <div className="legend-item">
           <span className="legend-dot" style={{ backgroundColor: getHealthStatusColor('behind') }}></span>

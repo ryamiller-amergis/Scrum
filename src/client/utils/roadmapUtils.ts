@@ -11,7 +11,7 @@ export interface RoadmapItem {
   completionPercentage: number;
   childCount: number;
   completedCount: number;
-  healthStatus: 'on-track' | 'at-risk' | 'behind' | 'ahead';
+  healthStatus: 'on-track' | 'in-progress' | 'behind' | 'ahead';
   daysRemaining: number;
   timeElapsedPercentage: number;
   children?: WorkItem[];
@@ -37,9 +37,9 @@ export function calculateHealthStatus(
   timeElapsedPercentage: number,
   daysRemaining: number,
   remainingItems?: number
-): 'on-track' | 'at-risk' | 'behind' | 'ahead' {
+): 'on-track' | 'in-progress' | 'behind' | 'ahead' {
   const DEADLINE_WARNING_THRESHOLD = 5; // Days before deadline to start warning
-  const PLANNING_HORIZON_DAYS = 60; // Don't flag items as at-risk if deadline is beyond this
+  const PLANNING_HORIZON_DAYS = 60; // Don't flag items as in-progress if deadline is beyond this
   const REASONABLE_ITEMS_PER_DAY = 1; // Expected velocity: items we can complete per day
   
   // If past target date
@@ -85,9 +85,9 @@ export function calculateHealthStatus(
       return 'ahead';
     }
 
-    // At risk if progress is moderately behind time
+    // In progress if work has started and is being tracked
     if (progressDelta < -10) {
-      return 'at-risk';
+      return 'in-progress';
     }
   }
 
@@ -149,12 +149,24 @@ export function calculateCompletionPercentage(children: WorkItem[]): number {
   const completedStates = isFeatureLevel 
     ? ['Done', 'Closed']  // Features: only Done/Closed
     : ['UAT - Test Done', 'Done', 'Closed'];  // PBIs: include UAT complete
-    
-  const completedCount = children.filter(child => 
-    completedStates.includes(child.state)
-  ).length;
+  
+  // In Progress states indicate active work
+  const inProgressStates = ['In Progress', 'In Pull Request', 'Ready For Test', 'In Test'];
+  
+  let totalProgress = 0;
+  
+  children.forEach(child => {
+    if (completedStates.includes(child.state)) {
+      // Completed items count as 100%
+      totalProgress += 100;
+    } else if (inProgressStates.includes(child.state)) {
+      // In-progress items count as 50% (actively being worked on)
+      totalProgress += 50;
+    }
+    // New, Committed, and other states count as 0%
+  });
 
-  return Math.round((completedCount / children.length) * 100);
+  return Math.round(totalProgress / children.length);
 }
 
 /**
@@ -270,7 +282,8 @@ export function prepareRoadmapItems(
       const completionPercentage = 0; // Will be calculated from children
       const timeElapsedPercentage = calculateTimeElapsed(item.createdDate, item.targetDate!);
       const daysRemaining = calculateDaysRemaining(item.targetDate!);
-      const remainingItems = item.children ? item.children.length : 0;
+      // remainingItems will be calculated when children are populated
+      const remainingItems = 0;
       
       return {
         id: item.id,
@@ -297,11 +310,11 @@ export function prepareRoadmapItems(
  * @param status - Health status
  * @returns CSS color value
  */
-export function getHealthStatusColor(status: 'on-track' | 'at-risk' | 'behind' | 'ahead'): string {
+export function getHealthStatusColor(status: 'on-track' | 'in-progress' | 'behind' | 'ahead'): string {
   const colors = {
     'on-track': '#4CAF50',
     'ahead': '#2196F3',
-    'at-risk': '#FF9800',
+    'in-progress': '#2196F3',
     'behind': '#F44336'
   };
   return colors[status];
@@ -312,11 +325,11 @@ export function getHealthStatusColor(status: 'on-track' | 'at-risk' | 'behind' |
  * @param status - Health status
  * @returns Human-readable label
  */
-export function getHealthStatusLabel(status: 'on-track' | 'at-risk' | 'behind' | 'ahead'): string {
+export function getHealthStatusLabel(status: 'on-track' | 'in-progress' | 'behind' | 'ahead'): string {
   const labels = {
     'on-track': 'On Track',
     'ahead': 'Ahead',
-    'at-risk': 'At Risk',
+    'in-progress': 'In Progress',
     'behind': 'Behind'
   };
   return labels[status];

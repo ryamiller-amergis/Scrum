@@ -346,6 +346,41 @@ export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
     (window as any).__DRAGGED_CALENDAR_ITEM__ = null;
   }, [onUpdateDueDate, onUpdateField]);
 
+  // Helper function to check if item is overdue and in active work state
+  const isItemOverdue = (item: WorkItem): boolean => {
+    const overdueStates = ['Committed', 'In Progress', 'In Pull Request'];
+    const isInActiveState = overdueStates.includes(item.state);
+    
+    if (!isInActiveState) return false;
+    
+    // Determine which date to check based on work item type and state
+    let dateToCheck: string | undefined;
+    const isTestState = item.state?.toLowerCase().includes('test') || 
+                       item.state?.toLowerCase().includes('qa') ||
+                       item.state === 'Ready For Test' || 
+                       item.state === 'In Test';
+    
+    if (isTestState && item.qaCompleteDate) {
+      dateToCheck = item.qaCompleteDate;
+    } else if (item.workItemType === 'Epic' || item.workItemType === 'Feature' || item.workItemType === 'Bug') {
+      dateToCheck = item.targetDate;
+    } else {
+      dateToCheck = item.dueDate;
+    }
+    
+    if (!dateToCheck) return false;
+    
+    // Parse the date and check if it's in the past
+    const [year, month, day] = dateToCheck.split('-').map(Number);
+    const deadline = new Date(year, month - 1, day);
+    deadline.setHours(0, 0, 0, 0);
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    return deadline < today;
+  };
+
   const AgendaEvent = ({ event }: { event: CalendarEvent }) => {
     const colors = getAssigneeColor(event.resource.assignedTo);
     const isEpic = event.resource.workItemType === 'Epic';
@@ -353,14 +388,22 @@ export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
     const isBug = event.resource.workItemType === 'Bug';
     const isPBI = event.resource.workItemType === 'Product Backlog Item';
     const isTBI = event.resource.workItemType === 'Technical Backlog Item';
+    const overdue = isItemOverdue(event.resource);
     
     return (
       <div>
         <div style={{ 
           fontWeight: isEpic || isFeature ? 700 : 500, 
           marginBottom: '4px',
-          color: isEpic ? '#7B68EE' : 'inherit'
+          color: isEpic ? '#7B68EE' : 'inherit',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px'
         }}>
+          {overdue && <span style={{ 
+            fontSize: '1.2em',
+            animation: 'pulse 1.5s infinite'
+          }}>⚠️</span>}
           {isEpic && <span style={{ marginRight: '4px' }}>👑</span>}
           {isFeature && <span style={{ marginRight: '4px' }}>⭐</span>}
           {isBug && <span style={{ marginRight: '4px' }}>🐛</span>}
@@ -394,6 +437,15 @@ export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
             borderRadius: '3px',
             fontWeight: 600
           }}>BUG</span>}
+          {overdue && <span style={{ 
+            marginLeft: '8px', 
+            fontSize: '0.8em', 
+            padding: '2px 6px', 
+            backgroundColor: '#E74C3C', 
+            color: 'white', 
+            borderRadius: '3px',
+            fontWeight: 600
+          }}>OVERDUE</span>}
         </div>
         <div style={{ fontSize: '0.85em', color: colors.text }}>
           <strong>Assigned To:</strong> {event.resource.assignedTo || 'Unassigned'}
@@ -415,6 +467,7 @@ export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
     const isTBI = event.resource.workItemType === 'Technical Backlog Item';
     const isSpecialType = isEpic || isFeature;
     const colors = isEpic ? getEpicColor(event.resource.id) : getAssigneeColor(event.resource.assignedTo);
+    const overdue = isItemOverdue(event.resource);
     
     return (
       <div
@@ -422,9 +475,10 @@ export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
         className={isEpic ? 'epic-event' : ''}
         style={{
           height: isSpecialType ? '28px' : '22px',
-          backgroundColor: colors.bg,
-          borderLeft: `${isSpecialType ? '4px' : '3px'} solid ${colors.border}`,
-          color: colors.text,
+          backgroundColor: overdue ? '#FFCCCB' : colors.bg,
+          borderLeft: `${isSpecialType ? '4px' : '3px'} solid ${overdue ? '#E74C3C' : colors.border}`,
+          borderRight: overdue ? '3px solid #E74C3C' : 'none',
+          color: overdue ? '#8B0000' : colors.text,
           padding: isSpecialType ? '0 5px' : '2px 4px',
           overflow: 'hidden',
           fontSize: isSpecialType ? '0.75em' : '0.7em',
@@ -433,11 +487,17 @@ export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
           whiteSpace: 'nowrap',
           textOverflow: 'ellipsis',
           borderRadius: '3px',
-          boxShadow: isSpecialType ? '0 1px 3px rgba(0, 0, 0, 0.2)' : 'none',
+          boxShadow: overdue ? '0 0 0 2px #E74C3C, 0 1px 3px rgba(231, 76, 60, 0.4)' : (isSpecialType ? '0 1px 3px rgba(0, 0, 0, 0.2)' : 'none'),
           display: isSpecialType ? 'flex' : 'block',
           alignItems: isSpecialType ? 'center' : 'initial',
+          position: 'relative',
         }}
       >
+        {overdue && <span style={{ 
+          marginRight: '3px', 
+          fontSize: '0.9em',
+          animation: 'pulse 1.5s infinite'
+        }}>⚠️</span>}
         {isEpic && <span style={{ marginRight: '3px', fontSize: '0.9em' }}>👑</span>}
         {isFeature && <span style={{ marginRight: '3px', fontSize: '0.9em' }}>⭐</span>}
         {isBug && <span style={{ marginRight: '3px', fontSize: '0.9em' }}>🐛</span>}

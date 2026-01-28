@@ -245,16 +245,9 @@ export class AzureDevOpsService {
         });
       }
 
-      // If a reason is provided, update the custom field AND add to history
+      // If a reason is provided, add to history
       if (reason) {
-        // Try to update custom field if it exists
-        patchDocument.push({
-          op: 'add',
-          path: '/fields/Custom.DueDateChangeReason',
-          value: reason,
-        });
-        
-        // Also add to history as a fallback (this field always exists)
+        // Add to history (this field always exists)
         patchDocument.push({
           op: 'add',
           path: '/fields/System.History',
