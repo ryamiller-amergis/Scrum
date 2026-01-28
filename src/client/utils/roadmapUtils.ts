@@ -29,15 +29,18 @@ export interface TimelineColumn {
  * @param completionPercentage - Percentage of child items completed (0-100)
  * @param timeElapsedPercentage - Percentage of time elapsed from creation to target date (0-100)
  * @param daysRemaining - Days remaining until target date
+ * @param remainingItems - Number of items remaining to complete (optional)
  * @returns Health status indicator
  */
 export function calculateHealthStatus(
   completionPercentage: number,
   timeElapsedPercentage: number,
-  daysRemaining: number
+  daysRemaining: number,
+  remainingItems?: number
 ): 'on-track' | 'at-risk' | 'behind' | 'ahead' {
   const DEADLINE_WARNING_THRESHOLD = 5; // Days before deadline to start warning
   const PLANNING_HORIZON_DAYS = 60; // Don't flag items as at-risk if deadline is beyond this
+  const REASONABLE_ITEMS_PER_DAY = 1; // Expected velocity: items we can complete per day
   
   // If past target date
   if (daysRemaining < 0) {
@@ -60,6 +63,16 @@ export function calculateHealthStatus(
   // This follows Agile best practice - work is planned but not yet in active sprint
   if (daysRemaining > PLANNING_HORIZON_DAYS && completionPercentage === 0) {
     return 'on-track';
+  }
+
+  // Check if we have enough time to complete remaining items
+  // If remainingItems is provided and we have more than enough time, mark as on-track
+  if (remainingItems !== undefined && remainingItems > 0) {
+    const daysNeeded = remainingItems / REASONABLE_ITEMS_PER_DAY;
+    // If we have at least 20% buffer time, we're on track
+    if (daysRemaining >= daysNeeded * 1.2) {
+      return 'on-track';
+    }
   }
 
   // If work has started or deadline is within planning horizon, evaluate progress
@@ -257,6 +270,7 @@ export function prepareRoadmapItems(
       const completionPercentage = 0; // Will be calculated from children
       const timeElapsedPercentage = calculateTimeElapsed(item.createdDate, item.targetDate!);
       const daysRemaining = calculateDaysRemaining(item.targetDate!);
+      const remainingItems = item.children ? item.children.length : 0;
       
       return {
         id: item.id,
@@ -269,7 +283,7 @@ export function prepareRoadmapItems(
         completionPercentage,
         childCount: 0,
         completedCount: 0,
-        healthStatus: calculateHealthStatus(completionPercentage, timeElapsedPercentage, daysRemaining),
+        healthStatus: calculateHealthStatus(completionPercentage, timeElapsedPercentage, daysRemaining, remainingItems),
         daysRemaining,
         timeElapsedPercentage,
         children: []
