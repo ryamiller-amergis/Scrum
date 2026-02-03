@@ -1,5 +1,52 @@
 [
   {
+    "version": "1.5.0",
+    "date": "2026-02-03",
+    "title": "Enhanced Work Item Details & Rich Content Display",
+    "changes": [
+      {
+        "type": "feature",
+        "description": "Added comprehensive work item details panel showing type-specific fields (Description, Acceptance Criteria, Repro Steps, Design, Discussions)"
+      },
+      {
+        "type": "feature",
+        "description": "Implemented rich text field component with collapsible sections for HTML content from Azure DevOps"
+      },
+      {
+        "type": "feature",
+        "description": "Added dynamic discussions/comments fetching from Azure DevOps comments API"
+      },
+      {
+        "type": "feature",
+        "description": "Expanded Related Items to show parent, child, and related work items (not just children)"
+      },
+      {
+        "type": "feature",
+        "description": "Added navigation history with Back button for browsing through related work items"
+      },
+      {
+        "type": "feature",
+        "description": "Added Tags section displaying work item tags as styled badges"
+      },
+      {
+        "type": "improvement",
+        "description": "Increased default Details Panel width to 45% of screen for better content viewing"
+      },
+      {
+        "type": "improvement",
+        "description": "Updated Details Panel max width to 70% of screen (from fixed 800px)"
+      },
+      {
+        "type": "improvement",
+        "description": "Redesigned Back button with modern outline style and smooth hover animations"
+      },
+      {
+        "type": "improvement",
+        "description": "Work item fields now always render even when empty, showing 'No content provided'"
+      }
+    ]
+  },
+  {
     "version": "1.4.0",
     "date": "2026-02-03",
     "title": "Update Indicator for Whats New",

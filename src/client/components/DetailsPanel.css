@@ -61,24 +61,38 @@
 
 .back-to-epic-btn {
   padding: 6px 12px;
-  background: var(--accent-color);
-  color: white;
-  border: none;
-  border-radius: 4px;
+  background: transparent;
+  color: var(--accent-color);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
   font-size: 0.85em;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .back-to-epic-btn:hover {
-  background: var(--accent-hover);
-  transform: translateX(-2px);
+  background: var(--bg-secondary);
+  border-color: var(--accent-color);
+  color: var(--accent-color);
 }
 
 .back-to-epic-btn:active {
-  transform: translateX(-2px) scale(0.98);
+  transform: scale(0.97);
+}
+
+.back-to-epic-btn::before {
+  content: '←';
+  font-size: 1.1em;
+  transition: transform 0.2s;
+}
+
+.back-to-epic-btn:hover::before {
+  transform: translateX(-2px);
 }
 
 @keyframes pulse {
@@ -129,6 +143,37 @@
   display: block;
   color: var(--text-secondary);
   font-size: 14px;
+}
+
+.detail-value-empty {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-style: italic;
+  opacity: 0.7;
+}
+
+.detail-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.tag-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  background: var(--accent-color);
+  color: white;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.work-item-details-section {
+  margin: 20px 0;
+  padding: 0 20px;
 }
 
 .ado-link {

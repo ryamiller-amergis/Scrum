@@ -14,6 +14,11 @@ export interface WorkItem {
   iterationPath: string;
   tags?: string;
   cycleTime?: CycleTimeData;
+  description?: string;
+  acceptanceCriteria?: string;
+  reproSteps?: string;
+  design?: string;
+  discussions?: string;
 }
 
 export interface StateTransition {

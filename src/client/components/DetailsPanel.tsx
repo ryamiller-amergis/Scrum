@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { WorkItem } from '../types/workitem';
 import { EpicProgress } from './EpicProgress';
+import { RichTextField } from './RichTextField';
 import './DetailsPanel.css';
 
 interface DetailsPanelProps {
@@ -48,8 +49,14 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
   }>>([]);
   const [isLoadingChanges, setIsLoadingChanges] = useState(false);
   const [showDueDateChanges, setShowDueDateChanges] = useState(false);
-  const [panelWidth, setPanelWidth] = useState(350);
+  const [panelWidth, setPanelWidth] = useState(() => {
+    // Set default to 45% of window width
+    return Math.floor(window.innerWidth * 0.45);
+  });
   const [isResizing, setIsResizing] = useState(false);
+  const [discussions, setDiscussions] = useState<string>('');
+  const [isLoadingDiscussions, setIsLoadingDiscussions] = useState(false);
+  const [navigationHistory, setNavigationHistory] = useState<number[]>([]);
 
   if (!workItem) return null;
 
@@ -111,6 +118,21 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
       setDueDateChanges([]);
     }
   }, [workItem.id, workItem.workItemType, project]);
+
+  // Fetch discussions/comments for all work items
+  useEffect(() => {
+    setIsLoadingDiscussions(true);
+    fetch(`/api/workitems/${workItem.id}/discussions?project=${encodeURIComponent(project)}`)
+      .then(res => res.json())
+      .then(data => {
+        setDiscussions(data.discussions || '');
+        setIsLoadingDiscussions(false);
+      })
+      .catch(err => {
+        console.error('Error fetching discussions:', err);
+        setIsLoadingDiscussions(false);
+      });
+  }, [workItem.id, project]);
 
   // Extract unique values for dropdowns
   const uniqueStates = useMemo(() => {
@@ -236,11 +258,33 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
   };
 
   const handleChildSelect = (child: WorkItem) => {
-    // Store the current Epic ID before navigating to child
+    // Add current work item to navigation history
+    setNavigationHistory(prev => [...prev, workItem.id]);
+    
+    // Store the current Epic ID before navigating to child (for backward compatibility)
     if (workItem.workItemType === 'Epic') {
       setParentEpicId(workItem.id);
     }
     onSelectItem(child);
+  };
+
+  const handleRelatedItemSelect = (item: WorkItem) => {
+    // Add current work item to navigation history
+    setNavigationHistory(prev => [...prev, workItem.id]);
+    onSelectItem(item);
+  };
+
+  const handleBackToPrevious = () => {
+    if (navigationHistory.length > 0) {
+      const previousId = navigationHistory[navigationHistory.length - 1];
+      const previousItem = allWorkItems.find(item => item.id === previousId);
+      
+      if (previousItem) {
+        // Remove the last item from history
+        setNavigationHistory(prev => prev.slice(0, -1));
+        onSelectItem(previousItem);
+      }
+    }
   };
 
   const handleBackToEpic = () => {
@@ -263,8 +307,9 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
       if (!isResizing) return;
       
       const newWidth = window.innerWidth - e.clientX;
-      // Min width: 300px, Max width: 800px
-      if (newWidth >= 300 && newWidth <= 800) {
+      // Min width: 300px, Max width: 70% of window
+      const maxWidth = Math.floor(window.innerWidth * 0.7);
+      if (newWidth >= 300 && newWidth <= maxWidth) {
         setPanelWidth(newWidth);
       }
     };
@@ -294,9 +339,14 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
       <div className="details-header">
         <h3>Work Item Details</h3>
         {isSaving && <span className="saving-badge">Saving...</span>}
-        {parentEpicId && (
+        {navigationHistory.length > 0 && (
+          <button onClick={handleBackToPrevious} className="back-to-epic-btn" title="Go back to previous work item">
+            Back
+          </button>
+        )}
+        {parentEpicId && !navigationHistory.length && (
           <button onClick={handleBackToEpic} className="back-to-epic-btn" title="Back to Epic">
-            ← Back to Epic
+            Back to Epic
           </button>
         )}
         <button onClick={onClose} className="close-btn">
@@ -311,6 +361,20 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
         <div className="detail-row">
           <span className="detail-label">Title:</span>
           <span className="detail-value">{workItem.title}</span>
+        </div>
+        <div className="detail-row">
+          <span className="detail-label">Tags:</span>
+          <div className="detail-tags">
+            {workItem.tags && workItem.tags.trim() !== '' ? (
+              workItem.tags.split(';').map((tag, index) => (
+                <span key={index} className="tag-badge">
+                  {tag.trim()}
+                </span>
+              ))
+            ) : (
+              <span className="detail-value-empty">No tags</span>
+            )}
+          </div>
         </div>
         <div className="detail-row">
           <span className="detail-label">Type:</span>
@@ -503,7 +567,7 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
                       <li 
                         key={item.id} 
                         className="related-item"
-                        onClick={() => onSelectItem(item)}
+                        onClick={() => handleRelatedItemSelect(item)}
                       >
                         <div className="related-item-header">
                           <span className="related-item-id">#{item.id}</span>
@@ -588,6 +652,53 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
             ))}
           </select>
         </div>
+
+        {/* Work Item Type Specific Fields */}
+        <div className="work-item-details-section">
+          {/* PBI Fields: Description, Acceptance Criteria, Discussions */}
+          {workItem.workItemType === 'Product Backlog Item' && (
+            <>
+              <RichTextField label="Description" content={workItem.description} defaultExpanded={true} />
+              <RichTextField label="Acceptance Criteria" content={workItem.acceptanceCriteria} />
+              <RichTextField label="Discussions" content={isLoadingDiscussions ? 'Loading discussions...' : discussions} />
+            </>
+          )}
+
+          {/* Bug Fields: Repro Steps, Discussion */}
+          {workItem.workItemType === 'Bug' && (
+            <>
+              <RichTextField label="Repro Steps" content={workItem.reproSteps} defaultExpanded={true} />
+              <RichTextField label="Discussion" content={isLoadingDiscussions ? 'Loading discussions...' : discussions} />
+            </>
+          )}
+
+          {/* TBI Fields: Description, Design, Discussion */}
+          {workItem.workItemType === 'Technical Backlog Item' && (
+            <>
+              <RichTextField label="Description" content={workItem.description} defaultExpanded={true} />
+              <RichTextField label="Design" content={workItem.design} />
+              <RichTextField label="Discussion" content={isLoadingDiscussions ? 'Loading discussions...' : discussions} />
+            </>
+          )}
+
+          {/* Epic Fields: Description, Acceptance Criteria, Discussions */}
+          {workItem.workItemType === 'Epic' && (
+            <>
+              <RichTextField label="Description" content={workItem.description} defaultExpanded={true} />
+              <RichTextField label="Acceptance Criteria" content={workItem.acceptanceCriteria} />
+              <RichTextField label="Discussions" content={isLoadingDiscussions ? 'Loading discussions...' : discussions} />
+            </>
+          )}
+
+          {/* Feature Fields: Description, Acceptance Criteria */}
+          {workItem.workItemType === 'Feature' && (
+            <>
+              <RichTextField label="Description" content={workItem.description} defaultExpanded={true} />
+              <RichTextField label="Acceptance Criteria" content={workItem.acceptanceCriteria} />
+            </>
+          )}
+        </div>
+
         <div className="detail-row">
           <a
             href={adoUrl}

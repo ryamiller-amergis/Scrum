@@ -234,6 +234,26 @@ router.get('/workitems/:id/due-date-changes', async (req: Request, res: Response
   }
 });
 
+// GET /api/workitems/:id/discussions - Get discussions/comments for a work item
+router.get('/workitems/:id/discussions', async (req: Request, res: Response) => {
+  try {
+    const workItemId = parseInt(req.params.id);
+    const { project } = req.query as { project?: string };
+
+    if (!project) {
+      return res.status(400).json({ error: 'project parameter is required' });
+    }
+
+    const adoService = new AzureDevOpsService(project);
+    const discussions = await adoService.getWorkItemComments(workItemId);
+    
+    res.json({ discussions });
+  } catch (error: any) {
+    console.error(`Error fetching discussions for work item ${req.params.id}:`, error);
+    res.status(500).json({ error: 'Failed to fetch discussions' });
+  }
+});
+
 // GET /api/team-members - Get list of members from a specific team
 router.get('/team-members', async (req: Request, res: Response) => {
   try {

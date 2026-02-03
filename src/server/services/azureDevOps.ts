@@ -86,6 +86,11 @@ export class AzureDevOpsService {
         'Microsoft.VSTS.Scheduling.TargetDate',
         'Custom.QACompleteDate',
         'System.Tags',
+        'System.Description',
+        'Microsoft.VSTS.Common.AcceptanceCriteria',
+        'Microsoft.VSTS.TCM.ReproSteps',
+        'Custom.Design',
+        'System.History',
       ];
 
       const allWorkItems: WorkItem[] = [];
@@ -138,6 +143,11 @@ export class AzureDevOpsService {
             areaPath: wi.fields['System.AreaPath'] || '',
             iterationPath: wi.fields['System.IterationPath'] || '',
             tags: wi.fields['System.Tags'] || '',
+            description: wi.fields['System.Description'] || '',
+            acceptanceCriteria: wi.fields['Microsoft.VSTS.Common.AcceptanceCriteria'] || '',
+            reproSteps: wi.fields['Microsoft.VSTS.TCM.ReproSteps'] || '',
+            design: wi.fields['Custom.Design'] || '',
+            discussions: wi.fields['System.History'] || '',
           });
         }
       }
@@ -610,6 +620,11 @@ export class AzureDevOpsService {
         'Microsoft.VSTS.Scheduling.DueDate',
         'Microsoft.VSTS.Scheduling.TargetDate',
         'System.Tags',
+        'System.Description',
+        'Microsoft.VSTS.Common.AcceptanceCriteria',
+        'Microsoft.VSTS.TCM.ReproSteps',
+        'Custom.Design',
+        'System.History',
       ];
 
       const allWorkItems: WorkItem[] = [];
@@ -649,6 +664,11 @@ export class AzureDevOpsService {
             areaPath: wi.fields['System.AreaPath'] || '',
             iterationPath: wi.fields['System.IterationPath'] || '',
             tags: wi.fields['System.Tags'] || '',
+            description: wi.fields['System.Description'] || '',
+            acceptanceCriteria: wi.fields['Microsoft.VSTS.Common.AcceptanceCriteria'] || '',
+            reproSteps: wi.fields['Microsoft.VSTS.TCM.ReproSteps'] || '',
+            design: wi.fields['Custom.Design'] || '',
+            discussions: wi.fields['System.History'] || '',
           });
         }
       }
@@ -709,6 +729,11 @@ export class AzureDevOpsService {
         'Microsoft.VSTS.Scheduling.DueDate',
         'Custom.QACompleteDate',
         'System.Tags',
+        'System.Description',
+        'Microsoft.VSTS.Common.AcceptanceCriteria',
+        'Microsoft.VSTS.TCM.ReproSteps',
+        'Custom.Design',
+        'System.History',
       ];
 
       const allWorkItems: WorkItem[] = [];
@@ -748,6 +773,11 @@ export class AzureDevOpsService {
             areaPath: wi.fields['System.AreaPath'] || '',
             iterationPath: wi.fields['System.IterationPath'] || '',
             tags: wi.fields['System.Tags'] || '',
+            description: wi.fields['System.Description'] || '',
+            acceptanceCriteria: wi.fields['Microsoft.VSTS.Common.AcceptanceCriteria'] || '',
+            reproSteps: wi.fields['Microsoft.VSTS.TCM.ReproSteps'] || '',
+            design: wi.fields['Custom.Design'] || '',
+            discussions: wi.fields['System.History'] || '',
           });
         }
       }
@@ -1115,20 +1145,25 @@ export class AzureDevOpsService {
         return [];
       }
 
-      // Filter for child relations
-      const childRelations = workItem.relations.filter(
-        (rel) => rel.rel === 'System.LinkTypes.Hierarchy-Forward'
+      // Filter for relevant relation types:
+      // - Hierarchy-Forward: Child items
+      // - Hierarchy-Reverse: Parent items
+      // - Related: Related work items
+      const relevantRelations = workItem.relations.filter(
+        (rel) => rel.rel === 'System.LinkTypes.Hierarchy-Forward' ||
+                 rel.rel === 'System.LinkTypes.Hierarchy-Reverse' ||
+                 rel.rel === 'System.LinkTypes.Related'
       );
 
       console.log(`All relations:`, workItem.relations.map(r => ({ rel: r.rel, url: r.url })));
-      console.log(`Child relations found: ${childRelations.length}`);
+      console.log(`Relevant relations found: ${relevantRelations.length}`);
 
-      if (childRelations.length === 0) {
+      if (relevantRelations.length === 0) {
         return [];
       }
 
-      // Extract child work item IDs from URLs
-      const childIds = childRelations
+      // Extract related work item IDs from URLs
+      const relatedIds = relevantRelations
         .map((rel) => {
           const url = rel.url;
           if (!url) return null;
@@ -1137,13 +1172,13 @@ export class AzureDevOpsService {
         })
         .filter((id): id is number => id !== null);
 
-      console.log(`Extracted child IDs: ${childIds.join(', ')}`);
+      console.log(`Extracted related IDs: ${relatedIds.join(', ')}`);
 
-      if (childIds.length === 0) {
+      if (relatedIds.length === 0) {
         return [];
       }
 
-      // Fetch child work items
+      // Fetch related work items
       const fields = [
         'System.Id',
         'System.Title',
@@ -1159,10 +1194,15 @@ export class AzureDevOpsService {
         'Microsoft.VSTS.Scheduling.TargetDate',
         'Custom.QACompleteDate',
         'System.Tags',
+        'System.Description',
+        'Microsoft.VSTS.Common.AcceptanceCriteria',
+        'Microsoft.VSTS.TCM.ReproSteps',
+        'Custom.Design',
+        'System.History',
       ];
 
       const workItems = await witApi.getWorkItems(
-        childIds,
+        relatedIds,
         fields,
         undefined,
         undefined,
@@ -1197,6 +1237,11 @@ export class AzureDevOpsService {
           areaPath: wi.fields['System.AreaPath'] || '',
           iterationPath: wi.fields['System.IterationPath'] || '',
           tags: wi.fields['System.Tags'] || '',
+          description: wi.fields['System.Description'] || '',
+          acceptanceCriteria: wi.fields['Microsoft.VSTS.Common.AcceptanceCriteria'] || '',
+          reproSteps: wi.fields['Microsoft.VSTS.TCM.ReproSteps'] || '',
+          design: wi.fields['Custom.Design'] || '',
+          discussions: wi.fields['System.History'] || '',
         });
       }
 
@@ -1265,6 +1310,44 @@ export class AzureDevOpsService {
       }
 
       return changes;
+    });
+  }
+
+  async getWorkItemComments(workItemId: number): Promise<string> {
+    return retryWithBackoff(async () => {
+      const witApi = await this.connection.getWorkItemTrackingApi();
+      
+      try {
+        // Get comments for the work item
+        const comments = await witApi.getComments(this.project, workItemId);
+        
+        if (!comments || !comments.comments || comments.comments.length === 0) {
+          return '';
+        }
+
+        // Format comments as HTML
+        const commentsHtml = comments.comments
+          .map(comment => {
+            const author = comment.createdBy?.displayName || 'Unknown';
+            const date = comment.createdDate ? new Date(comment.createdDate).toLocaleString() : '';
+            const text = comment.text || '';
+            
+            return `
+              <div class="discussion-comment">
+                <div class="discussion-header">
+                  <strong>${author}</strong> <span class="discussion-date">${date}</span>
+                </div>
+                <div class="discussion-text">${text}</div>
+              </div>
+            `;
+          })
+          .join('\n');
+
+        return commentsHtml;
+      } catch (error) {
+        console.error(`Error fetching comments for work item ${workItemId}:`, error);
+        return '';
+      }
     });
   }
 }
