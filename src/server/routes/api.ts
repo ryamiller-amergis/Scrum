@@ -522,6 +522,71 @@ router.post('/api/releases/:epicId/unlink', async (req: Request, res: Response) 
   }
 });
 
+// POST /api/releases/:epicId/link-related - Link work items as related items to release
+router.post('/releases/:epicId/link-related', async (req: Request, res: Response) => {
+  try {
+    const epicId = parseInt(req.params.epicId, 10);
+    const { workItemIds, project, areaPath } = req.body as { workItemIds: number[]; project?: string; areaPath?: string };
+
+    if (isNaN(epicId)) {
+      return res.status(400).json({ error: 'Invalid epic ID' });
+    }
+
+    if (!workItemIds || !Array.isArray(workItemIds) || workItemIds.length === 0) {
+      return res.status(400).json({ error: 'workItemIds array is required' });
+    }
+
+    const adoService = new AzureDevOpsService(project, areaPath);
+    await adoService.linkWorkItemsToRelease(epicId, workItemIds);
+    res.json({ success: true, linkedCount: workItemIds.length });
+  } catch (error: any) {
+    console.error('Error linking related items:', error);
+    res.status(500).json({ error: 'Failed to link related items' });
+  }
+});
+
+// POST /api/releases/:epicId/unlink-related - Unlink related items from release
+router.post('/releases/:epicId/unlink-related', async (req: Request, res: Response) => {
+  try {
+    const epicId = parseInt(req.params.epicId, 10);
+    const { workItemIds, project, areaPath } = req.body as { workItemIds: number[]; project?: string; areaPath?: string };
+
+    if (isNaN(epicId)) {
+      return res.status(400).json({ error: 'Invalid epic ID' });
+    }
+
+    if (!workItemIds || !Array.isArray(workItemIds) || workItemIds.length === 0) {
+      return res.status(400).json({ error: 'workItemIds array is required' });
+    }
+
+    const adoService = new AzureDevOpsService(project, areaPath);
+    await adoService.unlinkWorkItemsFromRelease(epicId, workItemIds);
+    res.json({ success: true, unlinkedCount: workItemIds.length });
+  } catch (error: any) {
+    console.error('Error unlinking related items:', error);
+    res.status(500).json({ error: 'Failed to unlink related items' });
+  }
+});
+
+// GET /api/releases/:epicId/related-items - Get related items linked to a release
+router.get('/releases/:epicId/related-items', async (req: Request, res: Response) => {
+  try {
+    const epicId = parseInt(req.params.epicId, 10);
+    const { project, areaPath } = req.query as { project?: string; areaPath?: string };
+
+    if (isNaN(epicId)) {
+      return res.status(400).json({ error: 'Invalid epic ID' });
+    }
+
+    const adoService = new AzureDevOpsService(project, areaPath);
+    const relatedItems = await adoService.getRelatedItems(epicId);
+    res.json(relatedItems);
+  } catch (error: any) {
+    console.error('Error fetching related items:', error);
+    res.status(500).json({ error: 'Failed to fetch related items' });
+  }
+});
+
 // DELETE /api/releases/:epicId - Delete a release epic
 router.delete('/releases/:epicId', async (req: Request, res: Response) => {
   try {

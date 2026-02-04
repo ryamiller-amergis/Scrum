@@ -358,7 +358,7 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
     setLinkResultMessage(null);
     
     try {
-      const response = await fetch(`/api/releases/${selectedEpicId}/link`, {
+      const response = await fetch(`/api/releases/${selectedEpicId}/link-related`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -407,7 +407,7 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
     setLinkResultMessage(null);
     
     try {
-      const response = await fetch(`/api/releases/${currentParentEpic.id}/unlink`, {
+      const response = await fetch(`/api/releases/${currentParentEpic.id}/unlink-related`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

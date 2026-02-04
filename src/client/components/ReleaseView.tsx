@@ -139,18 +139,18 @@ const ReleaseView: React.FC<ReleaseViewProps> = ({
     setLoadingLinkedItems(prev => new Set(prev).add(epicId));
     try {
       const response = await fetch(
-        `/api/releases/${epicId}/linked-items?project=${encodeURIComponent(project)}&areaPath=${encodeURIComponent(areaPath)}`
+        `/api/releases/${epicId}/related-items?project=${encodeURIComponent(project)}&areaPath=${encodeURIComponent(areaPath)}`
       );
       
       if (!response.ok) {
-        console.error('Failed to fetch linked items:', response.status);
+        console.error('Failed to fetch related items:', response.status);
         return;
       }
       
       const data = await response.json();
       setLinkedItems(prev => new Map(prev).set(epicId, data));
     } catch (error) {
-      console.error('Error fetching linked items:', error);
+      console.error('Error fetching related items:', error);
     } finally {
       setLoadingLinkedItems(prev => {
         const next = new Set(prev);
@@ -373,7 +373,7 @@ const ReleaseView: React.FC<ReleaseViewProps> = ({
     if (!linkingEpicId || selectedItemsToLink.length === 0) return;
 
     try {
-      const response = await fetch(`/api/releases/${linkingEpicId}/link`, {
+      const response = await fetch(`/api/releases/${linkingEpicId}/link-related`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -442,14 +442,14 @@ const ReleaseView: React.FC<ReleaseViewProps> = ({
         });
         
         try {
-          console.log(`Fetching children for epic ${epicId}`);
+          console.log(`Fetching related items for epic ${epicId}`);
           const response = await fetch(
-            `/api/releases/${epicId}/children?project=${encodeURIComponent(project)}&areaPath=${encodeURIComponent(areaPath)}`
+            `/api/releases/${epicId}/related-items?project=${encodeURIComponent(project)}&areaPath=${encodeURIComponent(areaPath)}`
           );
           
           if (response.ok) {
             const children = await response.json();
-            console.log(`Received ${children.length} children for epic ${epicId}`, children);
+            console.log(`Received ${children.length} related items for epic ${epicId}`, children);
             
             // Update child items state
             setChildItems(prev => {
@@ -563,24 +563,23 @@ const ReleaseView: React.FC<ReleaseViewProps> = ({
                     </button>
                   </div>
                   <div className="tooltip-content">
-                    <p>Release progress is calculated using a weighted system:</p>
+                    <p>Release progress is based on completed work items only:</p>
                     <div className="calculation-breakdown">
                       <div className="calc-item">
-                        <span className="calc-badge complete">100%</span>
+                        <span className="calc-badge complete">✓ Completed</span>
                         <span className="calc-label">Done, Closed, Ready For Release</span>
                       </div>
                       <div className="calc-item">
-                        <span className="calc-badge in-progress">50%</span>
-                        <span className="calc-label">Active, In Progress, Committed, In Review, Testing</span>
-                      </div>
-                      <div className="calc-item">
-                        <span className="calc-badge not-started">0%</span>
-                        <span className="calc-label">New, To Do</span>
+                        <span className="calc-badge not-started">○ Not Completed</span>
+                        <span className="calc-label">All other states</span>
                       </div>
                     </div>
                     <p className="tooltip-note">
                       <strong>Example:</strong> If you have 2 items Done and 2 items In Progress out of 4 total items:<br/>
-                      Progress = (2×100% + 2×50%) / 4 = 75%
+                      Progress = 2 completed / 4 total = 50%
+                    </p>
+                    <p className="tooltip-note">
+                      This conservative approach ensures the progress bar accurately reflects release readiness.
                     </p>
                   </div>
                 </div>

@@ -1734,7 +1734,7 @@ export class AzureDevOpsService {
           return `${year}-${month}-${day}`;
         };
 
-        // Get all child work items to calculate progress
+        // Get all related work items to calculate progress
         const childrenResponse = await fetch(
           `${this.organization}/${this.project}/_apis/wit/wiql?api-version=6.0`,
           {
@@ -1744,7 +1744,7 @@ export class AzureDevOpsService {
               'Authorization': `Basic ${Buffer.from(':' + process.env.ADO_PAT).toString('base64')}`,
             },
             body: JSON.stringify({
-              query: `SELECT [System.Id] FROM WorkItemLinks WHERE ([Source].[System.Id] = ${wi.id}) AND ([System.Links.LinkType] = 'System.LinkTypes.Hierarchy-Forward') MODE (MustContain)`,
+              query: `SELECT [System.Id] FROM WorkItemLinks WHERE ([Source].[System.Id] = ${wi.id}) AND ([System.Links.LinkType] = 'System.LinkTypes.Related') MODE (MustContain)`,
             }),
           }
         );
@@ -1765,20 +1765,16 @@ export class AzureDevOpsService {
             const actualChildren = childWorkItems.filter((child) => child.id !== wi.id);
             totalItems = actualChildren.length;
             
-            // Calculate weighted progress
-            let progressPoints = 0;
+            // Calculate simple completion ratio - only fully completed items count
+            completedItems = 0;
             actualChildren.forEach((child) => {
               const state = child.fields?.['System.State'];
               if (['Done', 'Closed', 'Ready For Release'].includes(state)) {
-                progressPoints += 1.0; // 100% complete
                 completedItems++;
-              } else if (['Active', 'In Progress', 'Committed', 'In Review', 'Testing'].includes(state)) {
-                progressPoints += 0.5; // 50% complete for in-progress items
               }
-              // New, To Do, etc. contribute 0
             });
             
-            progress = totalItems > 0 ? Math.round((progressPoints / totalItems) * 100) : 0;
+            progress = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
           }
         }
 
@@ -2094,7 +2090,42 @@ export class AzureDevOpsService {
   }
 
   /**
-   * Link work items to an epic as children
+   * Link work items to a release/epic as related items
+   * Uses "Related" link type instead of hierarchy
+   */
+  async linkWorkItemsToRelease(epicId: number, workItemIds: number[]): Promise<void> {
+    return retryWithBackoff(async () => {
+      const witApi = await this.connection.getWorkItemTrackingApi();
+
+      for (const workItemId of workItemIds) {
+        const patchDocument = [
+          {
+            op: 'add',
+            path: '/relations/-',
+            value: {
+              rel: 'System.LinkTypes.Related',
+              url: `${this.organization}/${this.project}/_apis/wit/workItems/${workItemId}`,
+              attributes: {
+                comment: 'Related to release',
+              },
+            },
+          },
+        ];
+
+        await witApi.updateWorkItem(
+          {},
+          patchDocument,
+          epicId,
+          this.project
+        );
+
+        console.log(`[linkWorkItemsToRelease] Linked work item ${workItemId} to release/epic ${epicId}`);
+      }
+    });
+  }
+
+  /**
+   * Link work items to an epic as children (kept for backward compatibility)
    */
   async linkWorkItemsToEpic(epicId: number, workItemIds: number[]): Promise<void> {
     return retryWithBackoff(async () => {
@@ -2121,6 +2152,138 @@ export class AzureDevOpsService {
           epicId,
           this.project
         );
+      }
+    });
+  }
+
+  /**
+   * Get related items linked to an epic/release via "Related" link type
+   */
+  async getRelatedItems(epicId: number): Promise<WorkItem[]> {
+    return retryWithBackoff(async () => {
+      const witApi = await this.connection.getWorkItemTrackingApi();
+
+      // Get the epic with all its relations
+      const epic = await witApi.getWorkItem(
+        epicId,
+        undefined,
+        undefined,
+        WorkItemExpand.Relations,
+        this.project
+      );
+
+      if (!epic || !epic.relations) {
+        console.log(`[getRelatedItems] Epic ${epicId} has no relations`);
+        return [];
+      }
+
+      console.log(`[getRelatedItems] Epic ${epicId} has ${epic.relations.length} total relations`);
+      console.log(`[getRelatedItems] Relation types:`, epic.relations.map((r: any) => r.rel));
+
+      // Filter for "Related" link type relations
+      const relatedLinks = epic.relations.filter(
+        (rel: any) => rel.rel === 'System.LinkTypes.Related'
+      );
+
+      console.log(`[getRelatedItems] Found ${relatedLinks.length} related links`);
+
+      if (relatedLinks.length === 0) {
+        console.log(`[getRelatedItems] Epic ${epicId} has no related items`);
+        return [];
+      }
+
+      // Extract work item IDs from relation URLs
+      const relatedIds = relatedLinks
+        .map((rel: any) => {
+          const match = rel.url?.match(/\/(\d+)$/);
+          return match ? parseInt(match[1], 10) : null;
+        })
+        .filter((id: number | null) => id !== null) as number[];
+
+      console.log(`[getRelatedItems] Extracted ${relatedIds.length} related IDs:`, relatedIds);
+
+      if (relatedIds.length === 0) {
+        return [];
+      }
+
+      // Fetch the related work items
+      const fields = [
+        'System.Id',
+        'System.Title',
+        'System.State',
+        'System.AssignedTo',
+        'System.WorkItemType',
+        'System.ChangedDate',
+        'System.CreatedDate',
+        'Microsoft.VSTS.Common.ClosedDate',
+        'System.AreaPath',
+        'System.IterationPath',
+        'System.Tags',
+        'System.Description',
+      ];
+
+      const relatedItems = await witApi.getWorkItems(relatedIds, fields);
+
+      return relatedItems.map((wi) => ({
+        id: wi.id!,
+        title: wi.fields?.['System.Title'] || '',
+        state: wi.fields?.['System.State'] || '',
+        assignedTo: wi.fields?.['System.AssignedTo']?.displayName,
+        workItemType: wi.fields?.['System.WorkItemType'] || '',
+        changedDate: wi.fields?.['System.ChangedDate'],
+        createdDate: wi.fields?.['System.CreatedDate'],
+        closedDate: wi.fields?.['Microsoft.VSTS.Common.ClosedDate'],
+        areaPath: wi.fields?.['System.AreaPath'],
+        iterationPath: wi.fields?.['System.IterationPath'],
+        tags: wi.fields?.['System.Tags'],
+        description: wi.fields?.['System.Description'],
+      }));
+    });
+  }
+
+  /**
+   * Unlink work items from a release (remove related link)
+   */
+  async unlinkWorkItemsFromRelease(epicId: number, workItemIds: number[]): Promise<void> {
+    return retryWithBackoff(async () => {
+      const witApi = await this.connection.getWorkItemTrackingApi();
+
+      // First, get the epic to find the relation indices
+      const epicWorkItem = await witApi.getWorkItem(epicId, undefined, undefined, undefined, this.project);
+
+      if (!epicWorkItem || !epicWorkItem.relations) {
+        console.log(`[unlinkWorkItemsFromRelease] Epic ${epicId} has no relations`);
+        return;
+      }
+
+      for (const workItemId of workItemIds) {
+        // Find the relation index for this work item (filter by "Related" link type)
+        const relationIndex = epicWorkItem.relations.findIndex(
+          (rel: any) => 
+            rel.rel === 'System.LinkTypes.Related' &&
+            rel.url?.includes(`/${workItemId}`)
+        );
+
+        if (relationIndex === -1) {
+          console.log(`[unlinkWorkItemsFromRelease] No related link found between epic ${epicId} and work item ${workItemId}`);
+          continue;
+        }
+
+        const patchDocument = [
+          {
+            op: 'remove',
+            path: `/relations/${relationIndex}`,
+          },
+        ];
+
+        await witApi.updateWorkItem(
+          {},
+          patchDocument,
+          epicId,
+          this.project
+        );
+
+        console.log(`[unlinkWorkItemsFromRelease] Removed related link between epic ${epicId} and work item ${workItemId}`);
       }
     });
   }
