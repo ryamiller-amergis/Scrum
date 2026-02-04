@@ -385,7 +385,7 @@ body {
   transform: translateY(0);
 }
 
-.analytics-view {
+.planning-view {
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -393,7 +393,7 @@ body {
   overflow: hidden;
 }
 
-.analytics-tabs {
+.planning-tabs {
   display: flex;
   gap: 4px;
   padding: 16px 16px 0 16px;
@@ -436,7 +436,7 @@ body {
   background: var(--accent-color);
 }
 
-.analytics-content {
+.planning-content {
   flex: 1;
   min-height: 0;
   overflow-y: auto;

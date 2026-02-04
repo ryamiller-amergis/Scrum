@@ -8,6 +8,7 @@ import { DetailsPanel } from './components/DetailsPanel';
 import { CycleTimeAnalytics } from './components/CycleTimeAnalytics';
 import { DevStats } from './components/DevStats';
 import { RoadmapView } from './components/RoadmapView';
+import ReleaseView from './components/ReleaseView';
 import { DueDateReasonModal } from './components/DueDateReasonModal';
 import { Changelog } from './components/Changelog';
 import { UserMenu } from './components/UserMenu';
@@ -17,7 +18,7 @@ import { WorkItem } from './types/workitem';
 import './App.css';
 
 // Current version - update this when releasing new versions
-const CURRENT_VERSION = '1.5.0';
+const CURRENT_VERSION = '1.6.0';
 
 interface DueDateChange {
   workItemId: number;
@@ -30,8 +31,8 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [currentDate] = useState(new Date());
   const [selectedItem, setSelectedItem] = useState<WorkItem | null>(null);
-  const [currentView, setCurrentView] = useState<'calendar' | 'analytics'>('calendar');
-  const [analyticsTab, setAnalyticsTab] = useState<'cycle-time' | 'dev-stats' | 'qa' | 'roadmap'>('cycle-time');
+  const [currentView, setCurrentView] = useState<'calendar' | 'planning'>('calendar');
+  const [planningTab, setPlanningTab] = useState<'cycle-time' | 'dev-stats' | 'qa' | 'roadmap' | 'releases'>('cycle-time');
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const saved = localStorage.getItem('theme');
     return (saved as 'light' | 'dark') || 'dark';
@@ -332,10 +333,10 @@ function App() {
               Calendar
             </button>
             <button 
-              className={`view-btn ${currentView === 'analytics' ? 'active' : ''}`}
-              onClick={() => setCurrentView('analytics')}
+              className={`view-btn ${currentView === 'planning' ? 'active' : ''}`}
+              onClick={() => setCurrentView('planning')}
             >
-              Analytics
+              Planning
             </button>
           </div>
           <div className="header-controls">
@@ -441,54 +442,67 @@ function App() {
             )}
           </div>
         ) : !isLoading && (
-          <div className="analytics-view">
-            <div className="analytics-tabs">
+          <div className="planning-view">
+            <div className="planning-tabs">
               <button
-                className={`tab-button ${analyticsTab === 'cycle-time' ? 'active' : ''}`}
-                onClick={() => setAnalyticsTab('cycle-time')}
+                className={`tab-button ${planningTab === 'cycle-time' ? 'active' : ''}`}
+                onClick={() => setPlanningTab('cycle-time')}
               >
-                Cycle Time Analytics
+                Cycle Time
               </button>
               <button
-                className={`tab-button ${analyticsTab === 'dev-stats' ? 'active' : ''}`}
-                onClick={() => setAnalyticsTab('dev-stats')}
+                className={`tab-button ${planningTab === 'dev-stats' ? 'active' : ''}`}
+                onClick={() => setPlanningTab('dev-stats')}
               >
-                Developer Statistics
+                Developer Stats
               </button>
               <button
-                className={`tab-button ${analyticsTab === 'qa' ? 'active' : ''}`}
-                onClick={() => setAnalyticsTab('qa')}
+                className={`tab-button ${planningTab === 'qa' ? 'active' : ''}`}
+                onClick={() => setPlanningTab('qa')}
               >
-                QA Analytics
+                QA Metrics
               </button>
               <button
-                className={`tab-button ${analyticsTab === 'roadmap' ? 'active' : ''}`}
-                onClick={() => setAnalyticsTab('roadmap')}
+                className={`tab-button ${planningTab === 'roadmap' ? 'active' : ''}`}
+                onClick={() => setPlanningTab('roadmap')}
               >
                 Roadmap
               </button>
+              <button
+                className={`tab-button ${planningTab === 'releases' ? 'active' : ''}`}
+                onClick={() => setPlanningTab('releases')}
+              >
+                Releases
+              </button>
             </div>
-            <div className="analytics-content">
-              {analyticsTab === 'cycle-time' ? (
+            <div className="planning-content">
+              {planningTab === 'cycle-time' ? (
                 <CycleTimeAnalytics 
                   workItems={workItems}
                   project={selectedProject}
                   areaPath={selectedAreaPath}
                 />
-              ) : analyticsTab === 'dev-stats' ? (
+              ) : planningTab === 'dev-stats' ? (
                 <DevStats 
                   workItems={workItems}
                   project={selectedProject}
                   areaPath={selectedAreaPath}
                   onSelectItem={setSelectedItem}
                 />
-              ) : analyticsTab === 'qa' ? (
-                <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                  <h2>QA Analytics</h2>
-                  <p>Coming soon...</p>
+              ) : planningTab === 'qa' ? (
+                <div style={{ padding: '24px' }}>
+                  <h2 style={{ margin: '0 0 20px 0', fontSize: '24px', color: 'var(--text-primary)', fontWeight: '600' }}>QA Metrics</h2>
+                  <p style={{ color: 'var(--text-secondary)' }}>Coming soon...</p>
                 </div>
-              ) : analyticsTab === 'roadmap' ? (
+              ) : planningTab === 'roadmap' ? (
                 <RoadmapView 
+                  workItems={workItems}
+                  project={selectedProject}
+                  areaPath={selectedAreaPath}
+                  onSelectItem={setSelectedItem}
+                />
+              ) : planningTab === 'releases' ? (
+                <ReleaseView 
                   workItems={workItems}
                   project={selectedProject}
                   areaPath={selectedAreaPath}
@@ -496,7 +510,7 @@ function App() {
                 />
               ) : null}
             </div>
-            {selectedItem && currentView === 'analytics' && (
+            {selectedItem && currentView === 'planning' && (
               <DetailsPanel
                 workItem={selectedItem}
                 onClose={() => setSelectedItem(null)}

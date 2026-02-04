@@ -57,6 +57,17 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
   const [discussions, setDiscussions] = useState<string>('');
   const [isLoadingDiscussions, setIsLoadingDiscussions] = useState(false);
   const [navigationHistory, setNavigationHistory] = useState<number[]>([]);
+  const [availableReleaseEpics, setAvailableReleaseEpics] = useState<Array<{id: number; version: string; status: string}>>([]);
+  const [isLoadingReleaseEpics, setIsLoadingReleaseEpics] = useState(false);
+  const [showLinkToEpic, setShowLinkToEpic] = useState(false);
+  const [selectedEpicId, setSelectedEpicId] = useState<number | null>(null);
+  const [isLinkingToEpic, setIsLinkingToEpic] = useState(false);
+  const [showLinkConfirmModal, setShowLinkConfirmModal] = useState(false);
+  const [linkResultMessage, setLinkResultMessage] = useState<{type: 'success' | 'error', message: string} | null>(null);
+  const [currentParentEpic, setCurrentParentEpic] = useState<{id: number; title: string; version: string} | null>(null);
+  const [isLoadingParentEpic, setIsLoadingParentEpic] = useState(false);
+  const [showUnlinkConfirmModal, setShowUnlinkConfirmModal] = useState(false);
+  const [isUnlinking, setIsUnlinking] = useState(false);
 
   if (!workItem) return null;
 
@@ -95,6 +106,49 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
       setRelatedItems([]);
     }
   }, [workItem.id, workItem.workItemType, project, areaPath]);
+
+  // Fetch available release epics (not in Done status)
+  useEffect(() => {
+    setIsLoadingReleaseEpics(true);
+    fetch(`/api/releases/epics?project=${encodeURIComponent(project)}&areaPath=${encodeURIComponent(areaPath)}`)
+      .then(res => res.json())
+      .then(data => {
+        // Filter out Done epics
+        const activeEpics = data.filter((epic: any) => 
+          epic.status !== 'Done' && epic.status !== 'Closed'
+        );
+        setAvailableReleaseEpics(activeEpics);
+        setIsLoadingReleaseEpics(false);
+      })
+      .catch(err => {
+        console.error('Error fetching release epics:', err);
+        setIsLoadingReleaseEpics(false);
+      });
+  }, [project, areaPath]);
+
+  // Fetch current parent epic when Link to Release section is opened
+  useEffect(() => {
+    if (showLinkToEpic && !currentParentEpic) {
+      setIsLoadingParentEpic(true);
+      console.log(`Fetching parent epic for work item ${workItem.id}`);
+      fetch(`/api/workitems/${workItem.id}/parent-epic?project=${encodeURIComponent(project)}&areaPath=${encodeURIComponent(areaPath)}`)
+        .then(res => {
+          console.log(`Parent epic API response status: ${res.status}`);
+          return res.json();
+        })
+        .then(data => {
+          console.log(`Parent epic data received:`, data);
+          if (data && data.id) {
+            setCurrentParentEpic(data);
+          }
+          setIsLoadingParentEpic(false);
+        })
+        .catch(err => {
+          console.error('Error fetching parent epic:', err);
+          setIsLoadingParentEpic(false);
+        });
+    }
+  }, [showLinkToEpic, workItem.id, project, areaPath, currentParentEpic]);
 
   // Fetch due date change history for PBI/TBI
   useEffect(() => {
@@ -294,6 +348,102 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
         setParentEpicId(null);
         onSelectItem(epicItem);
       }
+    }
+  };
+
+  const handleLinkToReleaseEpic = async () => {
+    if (!selectedEpicId) return;
+    
+    setIsLinkingToEpic(true);
+    setLinkResultMessage(null);
+    
+    try {
+      const response = await fetch(`/api/releases/${selectedEpicId}/link`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          workItemIds: [workItem.id],
+          project,
+          areaPath,
+        }),
+      });
+
+      if (response.ok) {
+        setLinkResultMessage({
+          type: 'success',
+          message: `Successfully linked work item #${workItem.id} to release epic!`
+        });
+        setShowLinkConfirmModal(false);
+        setSelectedEpicId(null);
+        // Refresh current parent epic
+        setCurrentParentEpic(null);
+        setTimeout(() => setLinkResultMessage(null), 5000);
+      } else {
+        const error = await response.json();
+        setLinkResultMessage({
+          type: 'error',
+          message: `Failed to link: ${error.error || 'Unknown error'}`
+        });
+        setShowLinkConfirmModal(false);
+      }
+    } catch (error) {
+      console.error('Error linking to release epic:', error);
+      setLinkResultMessage({
+        type: 'error',
+        message: 'Failed to link work item to release epic'
+      });
+      setShowLinkConfirmModal(false);
+    } finally {
+      setIsLinkingToEpic(false);
+    }
+  };
+
+  const handleUnlinkFromReleaseEpic = async () => {
+    if (!currentParentEpic) return;
+    
+    setIsUnlinking(true);
+    setLinkResultMessage(null);
+    
+    try {
+      const response = await fetch(`/api/releases/${currentParentEpic.id}/unlink`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          workItemIds: [workItem.id],
+          project,
+          areaPath,
+        }),
+      });
+
+      if (response.ok) {
+        setLinkResultMessage({
+          type: 'success',
+          message: `Successfully unlinked work item #${workItem.id} from release epic!`
+        });
+        setShowUnlinkConfirmModal(false);
+        setCurrentParentEpic(null);
+        setTimeout(() => setLinkResultMessage(null), 5000);
+      } else {
+        const error = await response.json();
+        setLinkResultMessage({
+          type: 'error',
+          message: `Failed to unlink: ${error.error || 'Unknown error'}`
+        });
+        setShowUnlinkConfirmModal(false);
+      }
+    } catch (error) {
+      console.error('Error unlinking from release epic:', error);
+      setLinkResultMessage({
+        type: 'error',
+        message: 'Failed to unlink work item from release epic'
+      });
+      setShowUnlinkConfirmModal(false);
+    } finally {
+      setIsUnlinking(false);
     }
   };
 
@@ -632,6 +782,180 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
                 )}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Link to Release Epic */}
+        <div className="link-to-release-section">
+          <div 
+            className="link-to-release-header"
+            onClick={() => setShowLinkToEpic(!showLinkToEpic)}
+          >
+            <span className="link-to-release-title">
+              {showLinkToEpic ? '▼' : '▶'} Link to Release Epic
+            </span>
+          </div>
+          {showLinkToEpic && (
+            <div className="link-to-release-content">
+              {/* Show current parent epic if exists */}
+              {isLoadingParentEpic ? (
+                <div className="current-parent-loading">Loading current parent...</div>
+              ) : currentParentEpic ? (
+                <div className="current-parent-info">
+                  <div className="current-parent-header">Currently Linked To:</div>
+                  <div className="current-parent-details">
+                    <div className="current-parent-text">
+                      <span className="current-parent-id">#{currentParentEpic.id}</span>
+                      <span className="current-parent-title">{currentParentEpic.version || currentParentEpic.title}</span>
+                    </div>
+                    <button
+                      className="btn-unlink"
+                      onClick={() => setShowUnlinkConfirmModal(true)}
+                      title="Remove link to this release epic"
+                    >
+                      🗑️
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="current-parent-info no-parent">
+                  <span className="no-parent-icon">🔗</span>
+                  <span className="no-parent-text">Not currently linked to any release epic</span>
+                </div>
+              )}
+
+              {/* Result message */}
+              {linkResultMessage && (
+                <div className={`link-result-message ${linkResultMessage.type}`}>
+                  {linkResultMessage.type === 'success' ? '✓' : '✕'} {linkResultMessage.message}
+                </div>
+              )}
+
+              {isLoadingReleaseEpics ? (
+                <div className="link-loading">Loading release epics...</div>
+              ) : availableReleaseEpics.length === 0 ? (
+                <div className="link-empty">No active release epics available</div>
+              ) : (
+                <div className="link-form">
+                  <label className="link-label">Select Release Epic:</label>
+                  <select
+                    className="link-select"
+                    value={selectedEpicId || ''}
+                    onChange={(e) => setSelectedEpicId(e.target.value ? parseInt(e.target.value) : null)}
+                    disabled={isLinkingToEpic}
+                  >
+                    <option value="">-- Select a release --</option>
+                    {availableReleaseEpics.map(epic => (
+                      <option key={epic.id} value={epic.id}>
+                        {epic.version} ({epic.status})
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className="link-button"
+                    onClick={() => setShowLinkConfirmModal(true)}
+                    disabled={!selectedEpicId || isLinkingToEpic}
+                  >
+                    Link to Release
+                  </button>
+                  <div className="link-info">
+                    ℹ️ This will add this work item as a child of the selected release epic.
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Confirmation Modal */}
+        {showLinkConfirmModal && selectedEpicId && (
+          <div className="modal-overlay" onClick={() => setShowLinkConfirmModal(false)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h3>Confirm Link to Release</h3>
+                <button className="modal-close" onClick={() => setShowLinkConfirmModal(false)}>✕</button>
+              </div>
+              <div className="modal-body">
+                <div className="modal-icon">🔗</div>
+                <p className="modal-message">
+                  Are you sure you want to link work item <strong>#{workItem.id}</strong> to release epic:
+                </p>
+                <div className="modal-epic-info">
+                  <span className="modal-epic-version">
+                    {availableReleaseEpics.find(e => e.id === selectedEpicId)?.version}
+                  </span>
+                  <span className="modal-epic-status">
+                    {availableReleaseEpics.find(e => e.id === selectedEpicId)?.status}
+                  </span>
+                </div>
+                {currentParentEpic && (
+                  <div className="modal-warning">
+                    ⚠️ This work item is currently linked to: <strong>{currentParentEpic.version || currentParentEpic.title}</strong>
+                  </div>
+                )}
+              </div>
+              <div className="modal-footer">
+                <button 
+                  className="modal-btn modal-btn-cancel" 
+                  onClick={() => setShowLinkConfirmModal(false)}
+                  disabled={isLinkingToEpic}
+                >
+                  Cancel
+                </button>
+                <button 
+                  className="modal-btn modal-btn-confirm" 
+                  onClick={handleLinkToReleaseEpic}
+                  disabled={isLinkingToEpic}
+                >
+                  {isLinkingToEpic ? 'Linking...' : 'Confirm Link'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Unlink Confirmation Modal */}
+        {showUnlinkConfirmModal && currentParentEpic && (
+          <div className="modal-overlay" onClick={() => setShowUnlinkConfirmModal(false)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h3>Confirm Unlink from Release</h3>
+                <button className="modal-close" onClick={() => setShowUnlinkConfirmModal(false)}>✕</button>
+              </div>
+              <div className="modal-body">
+                <div className="modal-icon modal-icon-danger">🗑️</div>
+                <p className="modal-message">
+                  Are you sure you want to remove the link between work item <strong>#{workItem.id}</strong> and release epic:
+                </p>
+                <div className="modal-epic-info">
+                  <span className="modal-epic-version">
+                    {currentParentEpic.version || currentParentEpic.title}
+                  </span>
+                  <span className="modal-epic-id">
+                    #{currentParentEpic.id}
+                  </span>
+                </div>
+                <div className="modal-warning">
+                  ⚠️ This will remove the hierarchical relationship. This action cannot be undone from here.
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button 
+                  className="modal-btn modal-btn-cancel" 
+                  onClick={() => setShowUnlinkConfirmModal(false)}
+                  disabled={isUnlinking}
+                >
+                  Cancel
+                </button>
+                <button 
+                  className="modal-btn modal-btn-danger" 
+                  onClick={handleUnlinkFromReleaseEpic}
+                  disabled={isUnlinking}
+                >
+                  {isUnlinking ? 'Unlinking...' : 'Remove Link'}
+                </button>
+              </div>
+            </div>
           </div>
         )}
 

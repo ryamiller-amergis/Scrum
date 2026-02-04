@@ -77,3 +77,44 @@ export interface DueDateHitRateStats {
     status: 'hit' | 'miss' | 'in-progress';
   }>;
 }
+
+export type DeploymentEnvironment = 'dev' | 'staging' | 'production';
+
+export interface Deployment {
+  id: string;
+  releaseVersion: string;
+  environment: DeploymentEnvironment;
+  workItemIds: number[];
+  deployedBy: string;
+  deployedAt: string;
+  notes?: string;
+}
+
+export interface Release {
+  version: string;
+  name: string;
+  targetDate?: string;
+  features: WorkItem[];
+  status: 'planning' | 'in-progress' | 'ready' | 'deployed' | 'completed';
+  completionPercentage: number;
+  health: 'on-track' | 'at-risk' | 'blocked';
+  deployments: Deployment[];
+}
+
+export interface ReleaseMetrics {
+  releaseVersion: string;
+  totalFeatures: number;
+  completedFeatures: number;
+  inProgressFeatures: number;
+  blockedFeatures: number;
+  readyForReleaseFeatures: number;
+  averageLeadTime?: number;
+  deploymentHistory: Deployment[];
+}
+
+export interface CreateDeploymentRequest {
+  releaseVersion: string;
+  environment: DeploymentEnvironment;
+  workItemIds: number[];
+  notes?: string;
+}

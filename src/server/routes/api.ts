@@ -1,7 +1,8 @@
 import express, { Request, Response } from 'express';
 import { AzureDevOpsService } from '../services/azureDevOps';
-import { WorkItemsQuery, UpdateDueDateRequest, DeveloperDueDateStats, DueDateHitRateStats } from '../types/workitem';
+import { WorkItemsQuery, UpdateDueDateRequest, DeveloperDueDateStats, DueDateHitRateStats, CreateDeploymentRequest } from '../types/workitem';
 import { getFeatureAutoCompleteService } from '../services/featureAutoComplete';
+import { DeploymentTrackingService } from '../services/deploymentTracking';
 
 const router = express.Router();
 
@@ -15,6 +16,24 @@ router.get('/workitems', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error fetching work items:', error);
     res.status(500).json({ error: 'Failed to fetch work items' });
+  }
+});
+
+// GET /api/workitems/search - Search for work items by query
+router.get('/workitems/search', async (req: Request, res: Response) => {
+  try {
+    const { query, type, project, areaPath } = req.query as { query?: string; type?: string; project?: string; areaPath?: string };
+    
+    if (!query) {
+      return res.status(400).json({ error: 'Query parameter is required' });
+    }
+
+    const adoService = new AzureDevOpsService(project, areaPath);
+    const workItems = await adoService.searchWorkItems(query, type);
+    res.json(workItems);
+  } catch (error: any) {
+    console.error('Error searching work items:', error);
+    res.status(500).json({ error: 'Failed to search work items' });
   }
 });
 
@@ -368,6 +387,33 @@ router.get('/workitems/:id/relations', async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/workitems/:id/parent-epic - Get parent epic for a work item
+router.get('/workitems/:id/parent-epic', async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const { project, areaPath } = req.query as { project?: string; areaPath?: string };
+
+    if (isNaN(id)) {
+      return res.status(400).json({ error: 'Invalid work item ID' });
+    }
+
+    console.log(`[API] Fetching parent epic for work item ${id}`);
+    const adoService = new AzureDevOpsService(project, areaPath);
+    const parentEpic = await adoService.getParentReleaseEpic(id);
+    
+    if (parentEpic) {
+      console.log(`[API] Found parent epic:`, parentEpic);
+      res.json(parentEpic);
+    } else {
+      console.log(`[API] No parent epic found for work item ${id}`);
+      res.json(null);
+    }
+  } catch (error: any) {
+    console.error('[API] Error fetching parent epic:', error);
+    res.status(500).json({ error: 'Failed to fetch parent epic' });
+  }
+});
+
 // POST /api/admin/trigger-feature-check - Manually trigger feature auto-complete check
 router.post('/admin/trigger-feature-check', async (req: Request, res: Response) => {
   try {
@@ -386,6 +432,367 @@ router.post('/admin/trigger-feature-check', async (req: Request, res: Response) 
   } catch (error: any) {
     console.error('Error triggering feature check:', error);
     res.status(500).json({ error: 'Failed to trigger feature check' });
+  }
+});
+
+// ============= RELEASE MANAGEMENT ROUTES =============
+
+// GET /api/releases/epics - Get all release Epics with progress
+router.get('/releases/epics', async (req: Request, res: Response) => {
+  try {
+    const { project, areaPath } = req.query as { project?: string; areaPath?: string };
+    const adoService = new AzureDevOpsService(project, areaPath);
+    const epics = await adoService.getReleaseEpics();
+    res.json(epics);
+  } catch (error: any) {
+    console.error('Error fetching release epics:', error);
+    res.status(500).json({ error: 'Failed to fetch release epics' });
+  }
+});
+
+// PATCH /api/releases/:epicId - Update a release Epic
+router.patch('/releases/:epicId', async (req: Request, res: Response) => {
+  try {
+    const epicId = parseInt(req.params.epicId, 10);
+    const { title, startDate, targetDate, description, project, areaPath } = req.body as {
+      title?: string;
+      startDate?: string;
+      targetDate?: string;
+      description?: string;
+      project?: string;
+      areaPath?: string;
+    };
+
+    if (isNaN(epicId)) {
+      return res.status(400).json({ error: 'Invalid epic ID' });
+    }
+
+    const adoService = new AzureDevOpsService(project, areaPath);
+    await adoService.updateReleaseEpic(epicId, title, startDate, targetDate, description);
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Error updating release epic:', error);
+    res.status(500).json({ error: 'Failed to update release epic' });
+  }
+});
+
+// POST /api/releases/:epicId/link - Link work items to release epic
+router.post('/releases/:epicId/link', async (req: Request, res: Response) => {
+  try {
+    const epicId = parseInt(req.params.epicId, 10);
+    const { workItemIds, project, areaPath } = req.body as { workItemIds: number[]; project?: string; areaPath?: string };
+
+    if (isNaN(epicId)) {
+      return res.status(400).json({ error: 'Invalid epic ID' });
+    }
+
+    if (!workItemIds || !Array.isArray(workItemIds) || workItemIds.length === 0) {
+      return res.status(400).json({ error: 'workItemIds array is required' });
+    }
+
+    const adoService = new AzureDevOpsService(project, areaPath);
+    await adoService.linkWorkItemsToEpic(epicId, workItemIds);
+    res.json({ success: true, linkedCount: workItemIds.length });
+  } catch (error: any) {
+    console.error('Error linking work items:', error);
+    res.status(500).json({ error: 'Failed to link work items' });
+  }
+});
+
+// POST /api/releases/:epicId/unlink - Unlink work items from release epic
+router.post('/api/releases/:epicId/unlink', async (req: Request, res: Response) => {
+  try {
+    const epicId = parseInt(req.params.epicId, 10);
+    const { workItemIds, project, areaPath } = req.body as { workItemIds: number[]; project?: string; areaPath?: string };
+
+    if (isNaN(epicId)) {
+      return res.status(400).json({ error: 'Invalid epic ID' });
+    }
+
+    if (!workItemIds || !Array.isArray(workItemIds) || workItemIds.length === 0) {
+      return res.status(400).json({ error: 'workItemIds array is required' });
+    }
+
+    const adoService = new AzureDevOpsService(project, areaPath);
+    await adoService.unlinkWorkItemsFromEpic(epicId, workItemIds);
+    res.json({ success: true, unlinkedCount: workItemIds.length });
+  } catch (error: any) {
+    console.error('Error unlinking work items:', error);
+    res.status(500).json({ error: 'Failed to unlink work items' });
+  }
+});
+
+// DELETE /api/releases/:epicId - Delete a release epic
+router.delete('/releases/:epicId', async (req: Request, res: Response) => {
+  try {
+    const epicId = parseInt(req.params.epicId, 10);
+    const { project, areaPath } = req.query as { project?: string; areaPath?: string };
+
+    if (isNaN(epicId)) {
+      return res.status(400).json({ error: 'Invalid epic ID' });
+    }
+
+    const adoService = new AzureDevOpsService(project, areaPath);
+    await adoService.deleteWorkItem(epicId);
+    res.json({ success: true, deletedEpicId: epicId });
+  } catch (error: any) {
+    console.error('Error deleting release epic:', error);
+    res.status(500).json({ error: 'Failed to delete release epic' });
+  }
+});
+
+// GET /api/releases - Get all release versions
+router.get('/releases', async (req: Request, res: Response) => {
+  try {
+    const { project, areaPath } = req.query as { project?: string; areaPath?: string };
+    const adoService = new AzureDevOpsService(project, areaPath);
+    const versions = await adoService.getReleaseVersions();
+    res.json(versions);
+  } catch (error: any) {
+    console.error('Error fetching release versions:', error);
+    res.status(500).json({ error: 'Failed to fetch release versions' });
+  }
+});
+
+// GET /api/releases/:version/workitems - Get work items for a specific release
+router.get('/releases/:version/workitems', async (req: Request, res: Response) => {
+  try {
+    const version = req.params.version;
+    const { project, areaPath } = req.query as { project?: string; areaPath?: string };
+    const adoService = new AzureDevOpsService(project, areaPath);
+    const workItems = await adoService.getWorkItemsByRelease(version);
+    res.json(workItems);
+  } catch (error: any) {
+    console.error('Error fetching release work items:', error);
+    res.status(500).json({ error: 'Failed to fetch release work items' });
+  }
+});
+
+// GET /api/releases/:version/metrics - Get metrics for a specific release
+router.get('/releases/:version/metrics', async (req: Request, res: Response) => {
+  try {
+    const version = req.params.version;
+    const { project, areaPath } = req.query as { project?: string; areaPath?: string };
+    const adoService = new AzureDevOpsService(project, areaPath);
+    const deploymentService = new DeploymentTrackingService();
+    
+    const metrics = await adoService.getReleaseMetrics(version);
+    
+    // Add deployment history from tracking service
+    metrics.deploymentHistory = await deploymentService.getDeploymentsByRelease(version);
+    
+    res.json(metrics);
+  } catch (error: any) {
+    console.error('Error fetching release metrics:', error);
+    res.status(500).json({ error: 'Failed to fetch release metrics' });
+  }
+});
+
+// POST /api/releases/:version/tag - Add release tag to work items
+router.post('/releases/:version/tag', async (req: Request, res: Response) => {
+  try {
+    const version = req.params.version;
+    const { workItemIds, project, areaPath, startDate, targetDate, description } = req.body as { 
+      workItemIds?: number[]; 
+      project?: string; 
+      areaPath?: string;
+      startDate?: string;
+      targetDate?: string;
+      description?: string;
+    };
+    
+    const adoService = new AzureDevOpsService(project, areaPath);
+    
+    // Create release Epic
+    const epicId = await adoService.createReleaseEpic(version, startDate, targetDate, description);
+    
+    // If workItemIds were provided, add release tag to each work item
+    if (workItemIds && Array.isArray(workItemIds) && workItemIds.length > 0) {
+      await Promise.all(
+        workItemIds.map(id => adoService.addReleaseTag(id, version))
+      );
+    }
+    
+    res.json({ success: true, epicId, taggedCount: workItemIds?.length || 0 });
+  } catch (error: any) {
+    console.error('Error creating release:', error);
+    res.status(500).json({ error: 'Failed to create release' });
+  }
+});
+
+// DELETE /api/releases/:version/tag/:workItemId - Remove release tag from work item
+router.delete('/releases/:version/tag/:workItemId', async (req: Request, res: Response) => {
+  try {
+    const version = req.params.version;
+    const workItemId = parseInt(req.params.workItemId, 10);
+    const { project, areaPath } = req.query as { project?: string; areaPath?: string };
+    
+    if (isNaN(workItemId)) {
+      return res.status(400).json({ error: 'Invalid work item ID' });
+    }
+    
+    const adoService = new AzureDevOpsService(project, areaPath);
+    await adoService.removeReleaseTag(workItemId, version);
+    
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Error removing release tag:', error);
+    res.status(500).json({ error: 'Failed to remove release tag' });
+  }
+});
+
+// ============= DEPLOYMENT TRACKING ROUTES =============
+
+// POST /api/deployments - Create a new deployment record
+router.post('/deployments', async (req: Request, res: Response) => {
+  try {
+    const { releaseVersion, environment, workItemIds, notes } = req.body as CreateDeploymentRequest;
+    
+    if (!releaseVersion || !environment || !workItemIds || !Array.isArray(workItemIds)) {
+      return res.status(400).json({ error: 'releaseVersion, environment, and workItemIds are required' });
+    }
+    
+    const deploymentService = new DeploymentTrackingService();
+    
+    // Get user from session or use a default
+    const deployedBy = (req.user as any)?.displayName || 'Unknown User';
+    
+    const deployment = await deploymentService.createDeployment(
+      releaseVersion,
+      environment,
+      workItemIds,
+      deployedBy,
+      notes
+    );
+    
+    res.json(deployment);
+  } catch (error: any) {
+    console.error('Error creating deployment:', error);
+    res.status(500).json({ error: 'Failed to create deployment' });
+  }
+});
+
+// GET /api/deployments - Get all deployments (or filter by release/environment)
+router.get('/deployments', async (req: Request, res: Response) => {
+  try {
+    const { releaseVersion, environment, limit } = req.query as { 
+      releaseVersion?: string; 
+      environment?: string;
+      limit?: string;
+    };
+    
+    const deploymentService = new DeploymentTrackingService();
+    
+    let deployments;
+    
+    if (releaseVersion) {
+      deployments = await deploymentService.getDeploymentsByRelease(releaseVersion);
+    } else if (environment) {
+      deployments = await deploymentService.getDeploymentsByEnvironment(environment as any);
+    } else if (limit) {
+      deployments = await deploymentService.getDeploymentHistory(parseInt(limit, 10));
+    } else {
+      deployments = await deploymentService.getAllDeployments();
+    }
+    
+    res.json(deployments);
+  } catch (error: any) {
+    console.error('Error fetching deployments:', error);
+    res.status(500).json({ error: 'Failed to fetch deployments' });
+  }
+});
+
+// GET /api/deployments/:releaseVersion/latest - Get latest deployments by environment for a release
+router.get('/deployments/:releaseVersion/latest', async (req: Request, res: Response) => {
+  try {
+    const releaseVersion = req.params.releaseVersion;
+    const deploymentService = new DeploymentTrackingService();
+    const latest = await deploymentService.getLatestDeploymentsByRelease(releaseVersion);
+    res.json(latest);
+  } catch (error: any) {
+    console.error('Error fetching latest deployments:', error);
+    res.status(500).json({ error: 'Failed to fetch latest deployments' });
+  }
+});
+
+// GET /api/releases/:epicId/children - Get child work items for a release Epic
+router.get('/releases/:epicId/children', async (req: Request, res: Response) => {
+  try {
+    const epicId = parseInt(req.params.epicId, 10);
+    const { project, areaPath } = req.query as { project?: string; areaPath?: string };
+
+    if (isNaN(epicId)) {
+      return res.status(400).json({ error: 'Invalid Epic ID' });
+    }
+
+    console.log(`Fetching children for release Epic ${epicId}`);
+    const adoService = new AzureDevOpsService(project, areaPath);
+    const children = await adoService.getReleaseEpicChildren(epicId);
+    console.log(`Returning ${children.length} children for release Epic ${epicId}`);
+    res.json(children);
+  } catch (error: any) {
+    console.error('Error fetching release Epic children:', error);
+    res.status(500).json({ error: 'Failed to fetch release Epic children' });
+  }
+});
+
+// GET /api/releases/:version/notes - Generate release notes
+router.get('/releases/:version/notes', async (req: Request, res: Response) => {
+  try {
+    const version = req.params.version;
+    const { project, areaPath, format = 'json' } = req.query as { project?: string; areaPath?: string; format?: string };
+    
+    const adoService = new AzureDevOpsService(project, areaPath);
+    const workItems = await adoService.getWorkItemsByRelease(version);
+    
+    // Group by work item type
+    const features = workItems.filter(wi => wi.workItemType === 'Feature');
+    const epics = workItems.filter(wi => wi.workItemType === 'Epic');
+    const bugs = workItems.filter(wi => wi.workItemType === 'Bug');
+    
+    if (format === 'markdown') {
+      // Generate markdown format
+      let markdown = `# Release ${version}\n\n`;
+      
+      if (features.length > 0) {
+        markdown += `## Features\n\n`;
+        features.forEach(f => {
+          markdown += `- **[${f.id}]** ${f.title} - ${f.state}\n`;
+        });
+        markdown += '\n';
+      }
+      
+      if (epics.length > 0) {
+        markdown += `## Epics\n\n`;
+        epics.forEach(e => {
+          markdown += `- **[${e.id}]** ${e.title} - ${e.state}\n`;
+        });
+        markdown += '\n';
+      }
+      
+      if (bugs.length > 0) {
+        markdown += `## Bug Fixes\n\n`;
+        bugs.forEach(b => {
+          markdown += `- **[${b.id}]** ${b.title} - ${b.state}\n`;
+        });
+        markdown += '\n';
+      }
+      
+      res.setHeader('Content-Type', 'text/markdown');
+      res.send(markdown);
+    } else {
+      // Return JSON format
+      res.json({
+        version,
+        generatedAt: new Date().toISOString(),
+        features: features.map(f => ({ id: f.id, title: f.title, state: f.state })),
+        epics: epics.map(e => ({ id: e.id, title: e.title, state: e.state })),
+        bugs: bugs.map(b => ({ id: b.id, title: b.title, state: b.state })),
+      });
+    }
+  } catch (error: any) {
+    console.error('Error generating release notes:', error);
+    res.status(500).json({ error: 'Failed to generate release notes' });
   }
 });
 

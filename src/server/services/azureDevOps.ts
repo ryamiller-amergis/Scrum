@@ -1,6 +1,6 @@
 import * as azdev from 'azure-devops-node-api';
 import { WorkItemExpand } from 'azure-devops-node-api/interfaces/WorkItemTrackingInterfaces';
-import { WorkItem, CycleTimeData, DueDateChange, DeveloperDueDateStats, DueDateHitRateStats } from '../types/workitem';
+import { WorkItem, CycleTimeData, DueDateChange, DeveloperDueDateStats, DueDateHitRateStats, Release, ReleaseMetrics } from '../types/workitem';
 import { retryWithBackoff } from '../utils/retry';
 
 export class AzureDevOpsService {
@@ -1347,6 +1347,848 @@ export class AzureDevOpsService {
       } catch (error) {
         console.error(`Error fetching comments for work item ${workItemId}:`, error);
         return '';
+      }
+    });
+  }
+
+  /**
+   * Get all unique release versions from work item tags
+   * Tags follow format: Release:v1.0, Release:v2.0, etc.
+   */
+  async getReleaseVersions(): Promise<string[]> {
+    return retryWithBackoff(async () => {
+      try {
+        const witApi = await this.connection.getWorkItemTrackingApi();
+
+        // Query all Features and Epics to extract release tags
+        let wiql = `SELECT [System.Id], [System.Tags] FROM WorkItems WHERE [System.TeamProject] = '${this.project}' AND ([System.WorkItemType] = 'Feature' OR [System.WorkItemType] = 'Epic')`;
+
+        if (this.areaPath) {
+          wiql += ` AND [System.AreaPath] = '${this.areaPath}'`;
+        }
+
+        console.log('[getReleaseVersions] Executing WIQL query for releases');
+
+        const queryResult = await witApi.queryByWiql(
+          { query: wiql },
+          { project: this.project }
+        );
+
+        if (!queryResult.workItems || queryResult.workItems.length === 0) {
+          console.log('[getReleaseVersions] No Features or Epics found');
+          return [];
+        }
+
+        console.log(`[getReleaseVersions] Found ${queryResult.workItems.length} Features/Epics`);
+
+        const ids = queryResult.workItems.map((wi) => wi.id!);
+        const workItems = await witApi.getWorkItems(ids, ['System.Tags']);
+
+        const releaseVersions = new Set<string>();
+
+        workItems.forEach((wi) => {
+          const tags = wi.fields?.['System.Tags'] as string;
+          if (tags) {
+            // Extract release tags (format: Release:v1.0)
+            const releaseTags = tags.split(';').map(t => t.trim()).filter(t => t.startsWith('Release:'));
+            releaseTags.forEach(tag => {
+              const version = tag.substring('Release:'.length);
+              if (version) {
+                releaseVersions.add(version);
+              }
+            });
+          }
+        });
+
+        const versions = Array.from(releaseVersions).sort();
+        console.log(`[getReleaseVersions] Found ${versions.length} unique release versions:`, versions);
+        
+        return versions;
+      } catch (error) {
+        console.error('[getReleaseVersions] Error:', error);
+        throw error;
+      }
+    });
+  }
+
+  /**
+   * Get work items (Features/Epics) tagged with a specific release version
+   */
+  async getWorkItemsByRelease(releaseVersion: string): Promise<WorkItem[]> {
+    return retryWithBackoff(async () => {
+      const witApi = await this.connection.getWorkItemTrackingApi();
+
+      // Query Features and Epics with the release tag
+      let wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${this.project}' AND ([System.WorkItemType] = 'Feature' OR [System.WorkItemType] = 'Epic') AND [System.Tags] CONTAINS 'Release:${releaseVersion}'`;
+
+      if (this.areaPath) {
+        wiql += ` AND [System.AreaPath] = '${this.areaPath}'`;
+      }
+
+      wiql += ' ORDER BY [System.WorkItemType], [System.ChangedDate] DESC';
+
+      const queryResult = await witApi.queryByWiql(
+        { query: wiql },
+        { project: this.project }
+      );
+
+      if (!queryResult.workItems || queryResult.workItems.length === 0) {
+        return [];
+      }
+
+      const ids = queryResult.workItems.map((wi) => wi.id!);
+
+      const fields = [
+        'System.Id',
+        'System.Title',
+        'System.State',
+        'System.AssignedTo',
+        'System.WorkItemType',
+        'System.ChangedDate',
+        'System.CreatedDate',
+        'Microsoft.VSTS.Common.ClosedDate',
+        'System.AreaPath',
+        'System.IterationPath',
+        'Microsoft.VSTS.Scheduling.TargetDate',
+        'System.Tags',
+        'System.Description',
+      ];
+
+      const workItems = await witApi.getWorkItems(ids, fields, undefined, WorkItemExpand.All);
+
+      return workItems.map((wi) => {
+        const extractDate = (dateValue: any): string | undefined => {
+          if (!dateValue) return undefined;
+          const date = new Date(dateValue);
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          return `${year}-${month}-${day}`;
+        };
+
+        return {
+          id: wi.id!,
+          title: wi.fields?.['System.Title'] || '',
+          state: wi.fields?.['System.State'] || '',
+          assignedTo: wi.fields?.['System.AssignedTo']?.displayName,
+          workItemType: wi.fields?.['System.WorkItemType'] || '',
+          changedDate: wi.fields?.['System.ChangedDate'] || '',
+          createdDate: wi.fields?.['System.CreatedDate'] || '',
+          closedDate: extractDate(wi.fields?.['Microsoft.VSTS.Common.ClosedDate']),
+          areaPath: wi.fields?.['System.AreaPath'] || '',
+          iterationPath: wi.fields?.['System.IterationPath'] || '',
+          targetDate: extractDate(wi.fields?.['Microsoft.VSTS.Scheduling.TargetDate']),
+          tags: wi.fields?.['System.Tags'] || '',
+          description: wi.fields?.['System.Description'] || '',
+        };
+      });
+    });
+  }
+
+  /**
+   * Calculate release metrics for a specific release version
+   */
+  async getReleaseMetrics(releaseVersion: string): Promise<ReleaseMetrics> {
+    return retryWithBackoff(async () => {
+      const features = await this.getWorkItemsByRelease(releaseVersion);
+
+      const totalFeatures = features.length;
+      let completedFeatures = 0;
+      let inProgressFeatures = 0;
+      let blockedFeatures = 0;
+      let readyForReleaseFeatures = 0;
+
+      const completedStates = ['Ready For Release', 'UAT - Test Done', 'Done', 'Closed'];
+      const inProgressStates = ['Committed', 'In Progress', 'Ready For Test', 'In Test', 'UAT - Ready For Test'];
+      const blockedStates = ['Blocked'];
+
+      features.forEach((feature) => {
+        const state = feature.state;
+
+        if (completedStates.includes(state)) {
+          completedFeatures++;
+        }
+        if (state === 'Ready For Release') {
+          readyForReleaseFeatures++;
+        }
+        if (inProgressStates.includes(state)) {
+          inProgressFeatures++;
+        }
+        if (blockedStates.includes(state)) {
+          blockedFeatures++;
+        }
+      });
+
+      return {
+        releaseVersion,
+        totalFeatures,
+        completedFeatures,
+        inProgressFeatures,
+        blockedFeatures,
+        readyForReleaseFeatures,
+        deploymentHistory: [], // Will be populated from deployment tracking
+      };
+    });
+  }
+
+  /**
+   * Add a release tag to a work item
+   */
+  async addReleaseTag(workItemId: number, releaseVersion: string): Promise<void> {
+    return retryWithBackoff(async () => {
+      const witApi = await this.connection.getWorkItemTrackingApi();
+
+      // Get current tags
+      const workItem = await witApi.getWorkItem(workItemId, ['System.Tags'], undefined, undefined, this.project);
+      const currentTags = (workItem.fields?.['System.Tags'] as string) || '';
+
+      const releaseTag = `Release:${releaseVersion}`;
+
+      // Check if release tag already exists
+      if (currentTags.includes(releaseTag)) {
+        return; // Tag already exists
+      }
+
+      // Add new release tag
+      const newTags = currentTags ? `${currentTags}; ${releaseTag}` : releaseTag;
+
+      const patchDocument = [
+        {
+          op: 'add',
+          path: '/fields/System.Tags',
+          value: newTags,
+        },
+      ];
+
+      await witApi.updateWorkItem(
+        {},
+        patchDocument,
+        workItemId,
+        this.project
+      );
+    });
+  }
+
+  /**
+   * Remove a release tag from a work item
+   */
+  async removeReleaseTag(workItemId: number, releaseVersion: string): Promise<void> {
+    return retryWithBackoff(async () => {
+      const witApi = await this.connection.getWorkItemTrackingApi();
+
+      // Get current tags
+      const workItem = await witApi.getWorkItem(workItemId, ['System.Tags'], undefined, undefined, this.project);
+      const currentTags = (workItem.fields?.['System.Tags'] as string) || '';
+
+      const releaseTag = `Release:${releaseVersion}`;
+
+      // Remove the release tag
+      const tagArray = currentTags.split(';').map(t => t.trim()).filter(t => t !== releaseTag);
+      const newTags = tagArray.join('; ');
+
+      const patchDocument = [
+        {
+          op: 'add',
+          path: '/fields/System.Tags',
+          value: newTags,
+        },
+      ];
+
+      await witApi.updateWorkItem(
+        {},
+        patchDocument,
+        workItemId,
+        this.project
+      );
+    });
+  }
+
+  /**
+   * Create a release Epic in Azure DevOps
+   */
+  async createReleaseEpic(releaseVersion: string, startDate?: string, targetDate?: string, description?: string): Promise<number> {
+    return retryWithBackoff(async () => {
+      const witApi = await this.connection.getWorkItemTrackingApi();
+
+      const patchDocument: any[] = [
+        {
+          op: 'add',
+          path: '/fields/System.Title',
+          value: releaseVersion,
+        },
+        {
+          op: 'add',
+          path: '/fields/System.Tags',
+          value: `ReleaseVersion`,
+        },
+      ];
+
+      // Add area path if configured
+      if (this.areaPath) {
+        patchDocument.push({
+          op: 'add',
+          path: '/fields/System.AreaPath',
+          value: this.areaPath,
+        });
+      }
+
+      // Add start date if provided
+      if (startDate) {
+        const [year, month, day] = startDate.split('-').map(Number);
+        const localDate = new Date(year, month - 1, day, 0, 0, 0);
+        const dateValue = localDate.toISOString();
+        patchDocument.push({
+          op: 'add',
+          path: '/fields/Microsoft.VSTS.Scheduling.StartDate',
+          value: dateValue,
+        });
+      }
+
+      // Add target date if provided
+      if (targetDate) {
+        const [year, month, day] = targetDate.split('-').map(Number);
+        const localDate = new Date(year, month - 1, day, 0, 0, 0);
+        const dateValue = localDate.toISOString();
+        patchDocument.push({
+          op: 'add',
+          path: '/fields/Microsoft.VSTS.Scheduling.TargetDate',
+          value: dateValue,
+        });
+      }
+
+      // Add description if provided
+      if (description) {
+        patchDocument.push({
+          op: 'add',
+          path: '/fields/System.Description',
+          value: description,
+        });
+      }
+
+      const workItem = await witApi.createWorkItem(
+        {},
+        patchDocument,
+        this.project,
+        'Epic'
+      );
+
+      if (!workItem.id) {
+        throw new Error('Failed to create release Epic');
+      }
+
+      return workItem.id;
+    });
+  }
+
+  /**
+   * Get all release Epics with their details and progress
+   */
+  async getReleaseEpics(): Promise<any[]> {
+    return retryWithBackoff(async () => {
+      const witApi = await this.connection.getWorkItemTrackingApi();
+
+      // Query all Epics with ReleaseVersion tag
+      let wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${this.project}' AND [System.WorkItemType] = 'Epic' AND [System.Tags] CONTAINS 'ReleaseVersion'`;
+
+      if (this.areaPath) {
+        wiql += ` AND [System.AreaPath] = '${this.areaPath}'`;
+      }
+
+      wiql += ' ORDER BY [Microsoft.VSTS.Scheduling.TargetDate] DESC';
+
+      const queryResult = await witApi.queryByWiql(
+        { query: wiql },
+        { project: this.project }
+      );
+
+      if (!queryResult.workItems || queryResult.workItems.length === 0) {
+        return [];
+      }
+
+      const ids = queryResult.workItems.map((wi) => wi.id!);
+
+      const fields = [
+        'System.Id',
+        'System.Title',
+        'System.State',
+        'System.Description',
+        'Microsoft.VSTS.Scheduling.StartDate',
+        'Microsoft.VSTS.Scheduling.TargetDate',
+        'System.Tags',
+      ];
+
+      const workItems = await witApi.getWorkItems(ids, fields);
+
+      const releaseEpics = [];
+
+      for (const wi of workItems) {
+        if (!wi.id || !wi.fields) continue;
+
+        // Helper function to extract date
+        const extractDate = (dateValue: any): string | undefined => {
+          if (!dateValue) return undefined;
+          const date = new Date(dateValue);
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          return `${year}-${month}-${day}`;
+        };
+
+        // Get all child work items to calculate progress
+        const childrenResponse = await fetch(
+          `${this.organization}/${this.project}/_apis/wit/wiql?api-version=6.0`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Basic ${Buffer.from(':' + process.env.ADO_PAT).toString('base64')}`,
+            },
+            body: JSON.stringify({
+              query: `SELECT [System.Id] FROM WorkItemLinks WHERE ([Source].[System.Id] = ${wi.id}) AND ([System.Links.LinkType] = 'System.LinkTypes.Hierarchy-Forward') MODE (MustContain)`,
+            }),
+          }
+        );
+
+        let totalItems = 0;
+        let completedItems = 0;
+        let progress = 0;
+
+        if (childrenResponse.ok) {
+          const childrenData = await childrenResponse.json() as any;
+          const childIds = childrenData.workItemRelations
+            ?.filter((rel: any) => rel.target && rel.target.id !== wi.id) // Exclude parent Epic
+            .map((rel: any) => rel.target.id) || [];
+
+          if (childIds.length > 0) {
+            const childWorkItems = await witApi.getWorkItems(childIds, ['System.State', 'System.WorkItemType', 'System.Id']);
+            // Filter out the parent Epic in case it got through
+            const actualChildren = childWorkItems.filter((child) => child.id !== wi.id);
+            totalItems = actualChildren.length;
+            
+            // Calculate weighted progress
+            let progressPoints = 0;
+            actualChildren.forEach((child) => {
+              const state = child.fields?.['System.State'];
+              if (['Done', 'Closed', 'Ready For Release'].includes(state)) {
+                progressPoints += 1.0; // 100% complete
+                completedItems++;
+              } else if (['Active', 'In Progress', 'Committed', 'In Review', 'Testing'].includes(state)) {
+                progressPoints += 0.5; // 50% complete for in-progress items
+              }
+              // New, To Do, etc. contribute 0
+            });
+            
+            progress = totalItems > 0 ? Math.round((progressPoints / totalItems) * 100) : 0;
+          }
+        }
+
+        releaseEpics.push({
+          id: wi.id,
+          version: wi.fields['System.Title'] || '',
+          status: wi.fields['System.State'] || '',
+          startDate: extractDate(wi.fields['Microsoft.VSTS.Scheduling.StartDate']),
+          targetDate: extractDate(wi.fields['Microsoft.VSTS.Scheduling.TargetDate']),
+          description: wi.fields['System.Description'] || '',
+          progress,
+          totalItems,
+          completedItems,
+        });
+      }
+
+      return releaseEpics;
+    });
+  }
+
+  /**
+   * Update a release Epic in Azure DevOps
+   */
+  async updateReleaseEpic(epicId: number, title?: string, startDate?: string, targetDate?: string, description?: string): Promise<void> {
+    return retryWithBackoff(async () => {
+      const witApi = await this.connection.getWorkItemTrackingApi();
+
+      const patchDocument: any[] = [];
+
+      // Update title if provided
+      if (title) {
+        patchDocument.push({
+          op: 'add',
+          path: '/fields/System.Title',
+          value: title,
+        });
+      }
+
+      // Update start date if provided
+      if (startDate) {
+        const [year, month, day] = startDate.split('-').map(Number);
+        const localDate = new Date(year, month - 1, day, 0, 0, 0);
+        const dateValue = localDate.toISOString();
+        patchDocument.push({
+          op: 'add',
+          path: '/fields/Microsoft.VSTS.Scheduling.StartDate',
+          value: dateValue,
+        });
+      }
+
+      // Update target date if provided
+      if (targetDate) {
+        const [year, month, day] = targetDate.split('-').map(Number);
+        const localDate = new Date(year, month - 1, day, 0, 0, 0);
+        const dateValue = localDate.toISOString();
+        patchDocument.push({
+          op: 'add',
+          path: '/fields/Microsoft.VSTS.Scheduling.TargetDate',
+          value: dateValue,
+        });
+      }
+
+      // Update description if provided
+      if (description !== undefined) {
+        patchDocument.push({
+          op: 'add',
+          path: '/fields/System.Description',
+          value: description,
+        });
+      }
+
+      if (patchDocument.length > 0) {
+        await witApi.updateWorkItem(
+          {},
+          patchDocument,
+          epicId,
+          this.project
+        );
+      }
+    });
+  }
+
+  /**
+   * Search for work items by query string
+   */
+  async searchWorkItems(query: string, typeFilter?: string): Promise<WorkItem[]> {
+    return retryWithBackoff(async () => {
+      const witApi = await this.connection.getWorkItemTrackingApi();
+
+      // Build WIQL query
+      let wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${this.project}'`;
+
+      if (this.areaPath) {
+        wiql += ` AND [System.AreaPath] = '${this.areaPath}'`;
+      }
+
+      // Filter by work item type if specified
+      if (typeFilter && typeFilter !== 'All') {
+        wiql += ` AND [System.WorkItemType] = '${typeFilter}'`;
+      } else {
+        wiql += ` AND ([System.WorkItemType] = 'Epic' OR [System.WorkItemType] = 'Feature' OR [System.WorkItemType] = 'Product Backlog Item' OR [System.WorkItemType] = 'Technical Backlog Item' OR [System.WorkItemType] = 'Bug')`;
+      }
+
+      // Search by ID or title/description
+      const numericQuery = parseInt(query, 10);
+      if (!isNaN(numericQuery)) {
+        wiql += ` AND [System.Id] = ${numericQuery}`;
+      } else {
+        wiql += ` AND ([System.Title] CONTAINS '${query}' OR [System.Description] CONTAINS '${query}')`;
+      }
+
+      wiql += ' ORDER BY [System.ChangedDate] DESC';
+
+      const queryResult = await witApi.queryByWiql(
+        { query: wiql },
+        { project: this.project }
+      );
+
+      if (!queryResult.workItems || queryResult.workItems.length === 0) {
+        return [];
+      }
+
+      const ids = queryResult.workItems.map((wi) => wi.id!).slice(0, 50); // Limit to 50 results
+
+      const fields = [
+        'System.Id',
+        'System.Title',
+        'System.State',
+        'System.AssignedTo',
+        'System.WorkItemType',
+      ];
+
+      const workItems = await witApi.getWorkItems(ids, fields);
+
+      return workItems.map((wi) => ({
+        id: wi.id!,
+        title: wi.fields!['System.Title'] || '',
+        state: wi.fields!['System.State'] || '',
+        assignedTo: wi.fields!['System.AssignedTo']?.displayName,
+        workItemType: wi.fields!['System.WorkItemType'] || '',
+        changedDate: '',
+        createdDate: '',
+        areaPath: '',
+        iterationPath: '',
+        tags: '',
+      }));
+    });
+  }
+
+  /**
+   * Get direct child work items for a release Epic (not including nested Epic children)
+   * This is different from getEpicChildren which only returns Features
+   */
+  async getReleaseEpicChildren(epicId: number): Promise<WorkItem[]> {
+    return retryWithBackoff(async () => {
+      const witApi = await this.connection.getWorkItemTrackingApi();
+
+      // Query for only DIRECT children of this Epic (non-recursive)
+      const wiql = `SELECT [System.Id] FROM WorkItemLinks WHERE ([Source].[System.Id] = ${epicId}) AND ([System.Links.LinkType] = 'System.LinkTypes.Hierarchy-Forward') MODE (MustContain)`;
+
+      console.log(`Executing WIQL query for release epic ${epicId}`);
+      const queryResult = await witApi.queryByWiql(
+        { query: wiql },
+        { project: this.project }
+      );
+
+      if (!queryResult.workItemRelations || queryResult.workItemRelations.length === 0) {
+        console.log(`No work item relations found for epic ${epicId}`);
+        return [];
+      }
+
+      // Extract all direct child IDs
+      const childIds = queryResult.workItemRelations
+        .filter(rel => rel.target) // Only get targets (children)
+        .map(rel => rel.target?.id)
+        .filter((id): id is number => id !== undefined);
+
+      console.log(`Found ${childIds.length} direct child IDs for epic ${epicId}:`, childIds);
+
+      if (childIds.length === 0) {
+        return [];
+      }
+
+      // Fetch work items in batches of 200 (ADO limit)
+      const batchSize = 200;
+      const batches: number[][] = [];
+      for (let i = 0; i < childIds.length; i += batchSize) {
+        batches.push(childIds.slice(i, i + batchSize));
+      }
+
+      const fields = [
+        'System.Id',
+        'System.Title',
+        'System.State',
+        'System.AssignedTo',
+        'System.WorkItemType',
+        'System.ChangedDate',
+        'System.CreatedDate',
+        'Microsoft.VSTS.Common.ClosedDate',
+        'System.AreaPath',
+        'System.IterationPath',
+        'Microsoft.VSTS.Scheduling.DueDate',
+        'Microsoft.VSTS.Scheduling.TargetDate',
+        'System.Tags',
+      ];
+
+      const allWorkItems: WorkItem[] = [];
+
+      for (const batch of batches) {
+        const workItems = await witApi.getWorkItems(
+          batch,
+          fields,
+          undefined,
+          undefined,
+          undefined
+        );
+
+        for (const wi of workItems) {
+          if (!wi.id || !wi.fields) continue;
+          
+          // Skip the parent Epic itself
+          if (wi.id === epicId) continue;
+
+          const extractDate = (dateValue: any): string | undefined => {
+            if (!dateValue) return undefined;
+            const date = new Date(dateValue);
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+          };
+
+          allWorkItems.push({
+            id: wi.id,
+            title: wi.fields['System.Title'] || '',
+            state: wi.fields['System.State'] || '',
+            assignedTo: wi.fields['System.AssignedTo']?.displayName,
+            workItemType: wi.fields['System.WorkItemType'] || '',
+            changedDate: extractDate(wi.fields['System.ChangedDate']) || '',
+            createdDate: extractDate(wi.fields['System.CreatedDate']) || '',
+            closedDate: extractDate(wi.fields['Microsoft.VSTS.Common.ClosedDate']),
+            areaPath: wi.fields['System.AreaPath'] || '',
+            iterationPath: wi.fields['System.IterationPath'] || '',
+            dueDate: extractDate(wi.fields['Microsoft.VSTS.Scheduling.DueDate']),
+            targetDate: extractDate(wi.fields['Microsoft.VSTS.Scheduling.TargetDate']),
+            tags: wi.fields['System.Tags'] || '',
+          });
+        }
+      }
+
+      console.log(`Returning ${allWorkItems.length} work items for epic ${epicId}`);
+      return allWorkItems;
+    });
+  }
+
+  /**
+   * Get parent release epic for a work item (if it has ReleaseVersion tag)
+   */
+  async getParentReleaseEpic(workItemId: number): Promise<{id: number; title: string; version: string} | null> {
+    return retryWithBackoff(async () => {
+      const witApi = await this.connection.getWorkItemTrackingApi();
+
+      console.log(`[getParentReleaseEpic] Fetching parent release epic for work item ${workItemId}`);
+
+      // Query for parent Epic with ReleaseVersion tag
+      // Using Hierarchy-Reverse to get parent from child's perspective
+      const wiql = `SELECT [System.Id] FROM WorkItemLinks WHERE ([Source].[System.Id] = ${workItemId}) AND ([Target].[System.WorkItemType] = 'Epic') AND ([Target].[System.Tags] CONTAINS 'ReleaseVersion') AND ([System.Links.LinkType] = 'System.LinkTypes.Hierarchy-Reverse') MODE (MustContain)`;
+
+      console.log(`[getParentReleaseEpic] Executing WIQL: ${wiql}`);
+
+      const queryResult = await witApi.queryByWiql(
+        { query: wiql },
+        { project: this.project }
+      );
+
+      console.log(`[getParentReleaseEpic] Query result:`, JSON.stringify(queryResult, null, 2));
+
+      if (!queryResult.workItemRelations || queryResult.workItemRelations.length === 0) {
+        console.log(`[getParentReleaseEpic] No parent epic found for work item ${workItemId}`);
+        return null;
+      }
+
+      // Get the target (parent) Epic ID - now using target since we reversed the query
+      const parentId = queryResult.workItemRelations[0]?.target?.id;
+      
+      console.log(`[getParentReleaseEpic] Found parent epic ID: ${parentId}`);
+      
+      if (!parentId) {
+        console.log(`[getParentReleaseEpic] Parent ID is null or undefined`);
+        return null;
+      }
+
+      // Fetch the parent Epic details
+      const parentWorkItem = await witApi.getWorkItem(parentId, undefined, undefined, undefined, this.project);
+      
+      if (!parentWorkItem || !parentWorkItem.fields) {
+        console.log(`[getParentReleaseEpic] Failed to fetch parent work item details`);
+        return null;
+      }
+
+      console.log(`[getParentReleaseEpic] Parent epic details:`, {
+        id: parentWorkItem.id,
+        title: parentWorkItem.fields['System.Title'],
+        tags: parentWorkItem.fields['System.Tags']
+      });
+
+      return {
+        id: parentWorkItem.id!,
+        title: parentWorkItem.fields['System.Title'] || '',
+        version: parentWorkItem.fields['System.Title'] || ''
+      };
+    });
+  }
+
+  /**
+   * Link work items to an epic as children
+   */
+  async linkWorkItemsToEpic(epicId: number, workItemIds: number[]): Promise<void> {
+    return retryWithBackoff(async () => {
+      const witApi = await this.connection.getWorkItemTrackingApi();
+
+      for (const workItemId of workItemIds) {
+        const patchDocument = [
+          {
+            op: 'add',
+            path: '/relations/-',
+            value: {
+              rel: 'System.LinkTypes.Hierarchy-Forward',
+              url: `${this.organization}/${this.project}/_apis/wit/workItems/${workItemId}`,
+              attributes: {
+                comment: 'Linked to release epic',
+              },
+            },
+          },
+        ];
+
+        await witApi.updateWorkItem(
+          {},
+          patchDocument,
+          epicId,
+          this.project
+        );
+      }
+    });
+  }
+
+  /**
+   * Unlink work items from an epic (remove hierarchical relationship)
+   */
+  async unlinkWorkItemsFromEpic(epicId: number, workItemIds: number[]): Promise<void> {
+    return retryWithBackoff(async () => {
+      const witApi = await this.connection.getWorkItemTrackingApi();
+
+      // First, get the epic to find the relation indices
+      const epicWorkItem = await witApi.getWorkItem(epicId, undefined, undefined, undefined, this.project);
+
+      if (!epicWorkItem || !epicWorkItem.relations) {
+        console.log(`[unlinkWorkItemsFromEpic] Epic ${epicId} has no relations`);
+        return;
+      }
+
+      for (const workItemId of workItemIds) {
+        // Find the relation index for this work item
+        const relationIndex = epicWorkItem.relations.findIndex(
+          (rel: any) => 
+            rel.rel === 'System.LinkTypes.Hierarchy-Forward' &&
+            rel.url?.includes(`/${workItemId}`)
+        );
+
+        if (relationIndex === -1) {
+          console.log(`[unlinkWorkItemsFromEpic] No relation found between epic ${epicId} and work item ${workItemId}`);
+          continue;
+        }
+
+        const patchDocument = [
+          {
+            op: 'remove',
+            path: `/relations/${relationIndex}`,
+          },
+        ];
+
+        await witApi.updateWorkItem(
+          {},
+          patchDocument,
+          epicId,
+          this.project
+        );
+
+        console.log(`[unlinkWorkItemsFromEpic] Removed link between epic ${epicId} and work item ${workItemId}`);
+      }
+    });
+  }
+
+  /**
+   * Delete a work item (soft delete)
+   */
+  async deleteWorkItem(workItemId: number): Promise<void> {
+    return retryWithBackoff(async () => {
+      try {
+        const witApi = await this.connection.getWorkItemTrackingApi();
+        
+        console.log(`[deleteWorkItem] Deleting work item ${workItemId}`);
+        
+        // Azure DevOps performs a soft delete by default
+        await witApi.deleteWorkItem(workItemId, this.project);
+        
+        console.log(`[deleteWorkItem] Successfully deleted work item ${workItemId}`);
+      } catch (error) {
+        console.error(`[deleteWorkItem] Error deleting work item ${workItemId}:`, error);
+        throw error;
       }
     });
   }

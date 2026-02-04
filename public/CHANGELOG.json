@@ -1,5 +1,48 @@
 [
   {
+    "version": "1.6.0",
+    "date": "2026-02-04",
+    "title": "UI Consistency & Release Management Improvements",
+    "changes": [
+      {
+        "type": "improvement",
+        "description": "Renamed 'Analytics' view to 'Planning' for clearer purpose alignment"
+      },
+      {
+        "type": "improvement",
+        "description": "Standardized all tab headers to be left-aligned with consistent 24px font size and 600 font-weight"
+      },
+      {
+        "type": "improvement",
+        "description": "Unified tab names: 'Cycle Time', 'Developer Stats', 'QA Metrics', 'Roadmap', 'Releases'"
+      },
+      {
+        "type": "improvement",
+        "description": "Removed center-alignment and max-width constraints from Developer Stats view for full-width consistency"
+      },
+      {
+        "type": "improvement",
+        "description": "Applied consistent 24px padding across all planning tab views"
+      },
+      {
+        "type": "feature",
+        "description": "Added delete functionality for release epics with confirmation modal"
+      },
+      {
+        "type": "fix",
+        "description": "Fixed React DOM nesting warning with whitespace in tbody elements"
+      },
+      {
+        "type": "fix",
+        "description": "Added missing handleDeleteReleaseEpic function to ReleaseView component"
+      },
+      {
+        "type": "feature",
+        "description": "Implemented DELETE /api/releases/:epicId endpoint for removing release epics"
+      }
+    ]
+  },
+  {
     "version": "1.5.0",
     "date": "2026-02-03",
     "title": "Enhanced Work Item Details & Rich Content Display",
