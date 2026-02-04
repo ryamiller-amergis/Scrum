@@ -2035,6 +2035,65 @@ export class AzureDevOpsService {
   }
 
   /**
+   * Get parent release epic for a work item (if it has ReleaseVersion tag)
+   */
+  async getParentReleaseEpic(workItemId: number): Promise<{id: number; title: string; version: string} | null> {
+    return retryWithBackoff(async () => {
+      const witApi = await this.connection.getWorkItemTrackingApi();
+
+      console.log(`[getParentReleaseEpic] Fetching parent release epic for work item ${workItemId}`);
+
+      // Query for parent Epic with ReleaseVersion tag
+      // Using Hierarchy-Reverse to get parent from child's perspective
+      const wiql = `SELECT [System.Id] FROM WorkItemLinks WHERE ([Source].[System.Id] = ${workItemId}) AND ([Target].[System.WorkItemType] = 'Epic') AND ([Target].[System.Tags] CONTAINS 'ReleaseVersion') AND ([System.Links.LinkType] = 'System.LinkTypes.Hierarchy-Reverse') MODE (MustContain)`;
+
+      console.log(`[getParentReleaseEpic] Executing WIQL: ${wiql}`);
+
+      const queryResult = await witApi.queryByWiql(
+        { query: wiql },
+        { project: this.project }
+      );
+
+      console.log(`[getParentReleaseEpic] Query result:`, JSON.stringify(queryResult, null, 2));
+
+      if (!queryResult.workItemRelations || queryResult.workItemRelations.length === 0) {
+        console.log(`[getParentReleaseEpic] No parent epic found for work item ${workItemId}`);
+        return null;
+      }
+
+      // Get the target (parent) Epic ID - now using target since we reversed the query
+      const parentId = queryResult.workItemRelations[0]?.target?.id;
+      
+      console.log(`[getParentReleaseEpic] Found parent epic ID: ${parentId}`);
+      
+      if (!parentId) {
+        console.log(`[getParentReleaseEpic] Parent ID is null or undefined`);
+        return null;
+      }
+
+      // Fetch the parent Epic details
+      const parentWorkItem = await witApi.getWorkItem(parentId, undefined, undefined, undefined, this.project);
+      
+      if (!parentWorkItem || !parentWorkItem.fields) {
+        console.log(`[getParentReleaseEpic] Failed to fetch parent work item details`);
+        return null;
+      }
+
+      console.log(`[getParentReleaseEpic] Parent epic details:`, {
+        id: parentWorkItem.id,
+        title: parentWorkItem.fields['System.Title'],
+        tags: parentWorkItem.fields['System.Tags']
+      });
+
+      return {
+        id: parentWorkItem.id!,
+        title: parentWorkItem.fields['System.Title'] || '',
+        version: parentWorkItem.fields['System.Title'] || ''
+      };
+    });
+  }
+
+  /**
    * Link work items to an epic as children
    */
   async linkWorkItemsToEpic(epicId: number, workItemIds: number[]): Promise<void> {
@@ -2062,6 +2121,74 @@ export class AzureDevOpsService {
           epicId,
           this.project
         );
+      }
+    });
+  }
+
+  /**
+   * Unlink work items from an epic (remove hierarchical relationship)
+   */
+  async unlinkWorkItemsFromEpic(epicId: number, workItemIds: number[]): Promise<void> {
+    return retryWithBackoff(async () => {
+      const witApi = await this.connection.getWorkItemTrackingApi();
+
+      // First, get the epic to find the relation indices
+      const epicWorkItem = await witApi.getWorkItem(epicId, undefined, undefined, undefined, this.project);
+
+      if (!epicWorkItem || !epicWorkItem.relations) {
+        console.log(`[unlinkWorkItemsFromEpic] Epic ${epicId} has no relations`);
+        return;
+      }
+
+      for (const workItemId of workItemIds) {
+        // Find the relation index for this work item
+        const relationIndex = epicWorkItem.relations.findIndex(
+          (rel: any) => 
+            rel.rel === 'System.LinkTypes.Hierarchy-Forward' &&
+            rel.url?.includes(`/${workItemId}`)
+        );
+
+        if (relationIndex === -1) {
+          console.log(`[unlinkWorkItemsFromEpic] No relation found between epic ${epicId} and work item ${workItemId}`);
+          continue;
+        }
+
+        const patchDocument = [
+          {
+            op: 'remove',
+            path: `/relations/${relationIndex}`,
+          },
+        ];
+
+        await witApi.updateWorkItem(
+          {},
+          patchDocument,
+          epicId,
+          this.project
+        );
+
+        console.log(`[unlinkWorkItemsFromEpic] Removed link between epic ${epicId} and work item ${workItemId}`);
+      }
+    });
+  }
+
+  /**
+   * Delete a work item (soft delete)
+   */
+  async deleteWorkItem(workItemId: number): Promise<void> {
+    return retryWithBackoff(async () => {
+      try {
+        const witApi = await this.connection.getWorkItemTrackingApi();
+        
+        console.log(`[deleteWorkItem] Deleting work item ${workItemId}`);
+        
+        // Azure DevOps performs a soft delete by default
+        await witApi.deleteWorkItem(workItemId, this.project);
+        
+        console.log(`[deleteWorkItem] Successfully deleted work item ${workItemId}`);
+      } catch (error) {
+        console.error(`[deleteWorkItem] Error deleting work item ${workItemId}:`, error);
+        throw error;
       }
     });
   }

@@ -387,6 +387,33 @@ router.get('/workitems/:id/relations', async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/workitems/:id/parent-epic - Get parent epic for a work item
+router.get('/workitems/:id/parent-epic', async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const { project, areaPath } = req.query as { project?: string; areaPath?: string };
+
+    if (isNaN(id)) {
+      return res.status(400).json({ error: 'Invalid work item ID' });
+    }
+
+    console.log(`[API] Fetching parent epic for work item ${id}`);
+    const adoService = new AzureDevOpsService(project, areaPath);
+    const parentEpic = await adoService.getParentReleaseEpic(id);
+    
+    if (parentEpic) {
+      console.log(`[API] Found parent epic:`, parentEpic);
+      res.json(parentEpic);
+    } else {
+      console.log(`[API] No parent epic found for work item ${id}`);
+      res.json(null);
+    }
+  } catch (error: any) {
+    console.error('[API] Error fetching parent epic:', error);
+    res.status(500).json({ error: 'Failed to fetch parent epic' });
+  }
+});
+
 // POST /api/admin/trigger-feature-check - Manually trigger feature auto-complete check
 router.post('/admin/trigger-feature-check', async (req: Request, res: Response) => {
   try {
@@ -469,6 +496,48 @@ router.post('/releases/:epicId/link', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error linking work items:', error);
     res.status(500).json({ error: 'Failed to link work items' });
+  }
+});
+
+// POST /api/releases/:epicId/unlink - Unlink work items from release epic
+router.post('/api/releases/:epicId/unlink', async (req: Request, res: Response) => {
+  try {
+    const epicId = parseInt(req.params.epicId, 10);
+    const { workItemIds, project, areaPath } = req.body as { workItemIds: number[]; project?: string; areaPath?: string };
+
+    if (isNaN(epicId)) {
+      return res.status(400).json({ error: 'Invalid epic ID' });
+    }
+
+    if (!workItemIds || !Array.isArray(workItemIds) || workItemIds.length === 0) {
+      return res.status(400).json({ error: 'workItemIds array is required' });
+    }
+
+    const adoService = new AzureDevOpsService(project, areaPath);
+    await adoService.unlinkWorkItemsFromEpic(epicId, workItemIds);
+    res.json({ success: true, unlinkedCount: workItemIds.length });
+  } catch (error: any) {
+    console.error('Error unlinking work items:', error);
+    res.status(500).json({ error: 'Failed to unlink work items' });
+  }
+});
+
+// DELETE /api/releases/:epicId - Delete a release epic
+router.delete('/releases/:epicId', async (req: Request, res: Response) => {
+  try {
+    const epicId = parseInt(req.params.epicId, 10);
+    const { project, areaPath } = req.query as { project?: string; areaPath?: string };
+
+    if (isNaN(epicId)) {
+      return res.status(400).json({ error: 'Invalid epic ID' });
+    }
+
+    const adoService = new AzureDevOpsService(project, areaPath);
+    await adoService.deleteWorkItem(epicId);
+    res.json({ success: true, deletedEpicId: epicId });
+  } catch (error: any) {
+    console.error('Error deleting release epic:', error);
+    res.status(500).json({ error: 'Failed to delete release epic' });
   }
 });
 

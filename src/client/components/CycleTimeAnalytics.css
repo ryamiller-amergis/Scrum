@@ -7,15 +7,13 @@
   padding-bottom: 60px;
   display: flex;
   flex-direction: column;
-  align-items: center;
 }
 
 .cycle-time-analytics h2 {
-  margin: 0 0 8px 0;
+  margin: 0 0 20px 0;
   font-size: 24px;
   color: var(--text-primary);
-  text-align: center;
-  width: 100%;
+  font-weight: 600;
 }
 
 .cycle-time-analytics h4 {
@@ -25,11 +23,6 @@
   color: var(--text-primary);
 }
 
-.cycle-time-analytics > p {
-  text-align: center;
-  width: 100%;
-}
-
 /* Iteration Selector */
 .iteration-selector {
   background: var(--bg-secondary);
@@ -37,7 +30,6 @@
   border-radius: 12px;
   padding: 20px;
   margin-bottom: 32px;
-  width: 75%;
 }
 
 .selector-header {
@@ -330,6 +322,8 @@
   color: var(--text-secondary);
   font-size: 16px;
   width: 75%;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .empty-state p {

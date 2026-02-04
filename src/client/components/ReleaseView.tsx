@@ -54,6 +54,9 @@ const ReleaseView: React.FC<ReleaseViewProps> = ({
   const [searchResults, setSearchResults] = useState<WorkItem[]>([]);
   const [selectedItemsToLink, setSelectedItemsToLink] = useState<number[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
+  const [deletingEpicId, setDeletingEpicId] = useState<number | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [showProgressInfo, setShowProgressInfo] = useState(false);
 
   // Fetch all release versions on mount
@@ -390,6 +393,33 @@ const ReleaseView: React.FC<ReleaseViewProps> = ({
     }
   };
 
+  const handleDeleteReleaseEpic = async () => {
+    if (!deletingEpicId) return;
+
+    setIsDeleting(true);
+    try {
+      const response = await fetch(`/api/releases/${deletingEpicId}?project=${encodeURIComponent(project)}&areaPath=${encodeURIComponent(areaPath)}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        console.log(`Deleted epic ${deletingEpicId}`);
+        setShowDeleteConfirmModal(false);
+        setDeletingEpicId(null);
+        fetchReleaseEpics(); // Refresh the list
+      } else {
+        const error = await response.json();
+        console.error('Failed to delete epic:', error);
+        alert(`Failed to delete epic: ${error.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error deleting epic:', error);
+      alert('Failed to delete epic. Please try again.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const toggleRowExpansion = async (epicId: number) => {
     const newExpandedRows = new Set(expandedRows);
     
@@ -668,7 +698,8 @@ const ReleaseView: React.FC<ReleaseViewProps> = ({
                           <button 
                             className="action-menu-item"
                             onClick={() => {
-                              console.log('Delete release:', epic.id);
+                              setDeletingEpicId(epic.id);
+                              setShowDeleteConfirmModal(true);
                               setOpenActionMenuId(null);
                             }}
                           >
@@ -678,8 +709,9 @@ const ReleaseView: React.FC<ReleaseViewProps> = ({
                       )}
                     </div>
                   </td>
-                </tr>                  {expandedRows.has(epic.id) && (
-                    <tr className="expanded-row">
+                </tr>
+                {expandedRows.has(epic.id) && (
+                  <tr className="expanded-row">
                       <td colSpan={8}>
                         <div className="expanded-content">
                           <div className="expanded-header">
@@ -1136,6 +1168,53 @@ const ReleaseView: React.FC<ReleaseViewProps> = ({
               </button>
               <button onClick={handleCloseLinkItemsModal} className="btn-secondary">
                 Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirmModal && deletingEpicId && (
+        <div className="modal-overlay" onClick={() => !isDeleting && setShowDeleteConfirmModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Confirm Delete Release Epic</h3>
+              <button className="modal-close" onClick={() => setShowDeleteConfirmModal(false)} disabled={isDeleting}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div className="modal-icon-danger">🗑️</div>
+              <p className="modal-message">
+                Are you sure you want to delete this release epic?
+              </p>
+              <div className="modal-epic-info-delete">
+                <span className="modal-epic-version">
+                  {releaseEpics.find(e => e.id === deletingEpicId)?.version}
+                </span>
+                <span className="modal-epic-id">
+                  #{deletingEpicId}
+                </span>
+              </div>
+              <div className="modal-warning-danger">
+                ⚠️ <strong>Warning:</strong> This will permanently delete the epic and remove all hierarchical relationships with child work items. The child work items themselves will NOT be deleted, only the links to this epic.
+              </div>
+              <div className="modal-info">
+                ℹ️ This action cannot be undone.
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button 
+                className="modal-btn modal-btn-cancel" 
+                onClick={() => setShowDeleteConfirmModal(false)}
+                disabled={isDeleting}
+              >
+                Cancel
+              </button>
+              <button 
+                className="modal-btn modal-btn-danger" 
+                onClick={handleDeleteReleaseEpic}
+                disabled={isDeleting}
+              >
+                {isDeleting ? 'Deleting...' : 'Delete Epic'}
               </button>
             </div>
           </div>
