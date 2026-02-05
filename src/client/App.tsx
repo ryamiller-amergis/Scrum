@@ -9,6 +9,7 @@ import { CycleTimeAnalytics } from './components/CycleTimeAnalytics';
 import { DevStats } from './components/DevStats';
 import { RoadmapView } from './components/RoadmapView';
 import ReleaseView from './components/ReleaseView';
+import { CloudCost } from './components/CloudCost';
 import { DueDateReasonModal } from './components/DueDateReasonModal';
 import { Changelog } from './components/Changelog';
 import { UserMenu } from './components/UserMenu';
@@ -31,7 +32,7 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [currentDate] = useState(new Date());
   const [selectedItem, setSelectedItem] = useState<WorkItem | null>(null);
-  const [currentView, setCurrentView] = useState<'calendar' | 'planning'>('calendar');
+  const [currentView, setCurrentView] = useState<'calendar' | 'planning' | 'cloudcost'>('calendar');
   const [planningTab, setPlanningTab] = useState<'cycle-time' | 'dev-stats' | 'qa' | 'roadmap' | 'releases'>('cycle-time');
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const saved = localStorage.getItem('theme');
@@ -338,6 +339,12 @@ function App() {
             >
               Planning
             </button>
+            <button 
+              className={`view-btn ${currentView === 'cloudcost' ? 'active' : ''}`}
+              onClick={() => setCurrentView('cloudcost')}
+            >
+              Cloud Cost
+            </button>
           </div>
           <div className="header-controls">
             <div className="selector-group">
@@ -440,6 +447,13 @@ function App() {
                 onCancel={handleCancelDueDateChange}
               />
             )}
+          </div>
+        ) : !isLoading && currentView === 'cloudcost' ? (
+          <div className="cloudcost-view">
+            <CloudCost 
+              project={selectedProject}
+              areaPath={selectedAreaPath}
+            />
           </div>
         ) : !isLoading && (
           <div className="planning-view">

@@ -115,6 +115,9 @@ jobs:
               AZURE_CLIENT_ID="${{ env.AZURE_CLIENT_ID }}" \
               AZURE_CLIENT_SECRET="${{ env.AZURE_CLIENT_SECRET }}" \
               AZURE_REDIRECT_URL="${{ secrets.AZURE_REDIRECT_URL }}" \
+              AZURE_COST_TENANT_ID="${{ secrets.AZURE_COST_TENANT_ID }}" \
+              AZURE_COST_CLIENT_ID="${{ secrets.AZURE_COST_CLIENT_ID }}" \
+              AZURE_COST_CLIENT_SECRET="${{ secrets.AZURE_COST_CLIENT_SECRET }}" \
               SESSION_SECRET="${{ secrets.SESSION_SECRET }}" \
               PORT=8080 \
               POLL_INTERVAL=30
