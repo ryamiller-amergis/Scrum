@@ -10,6 +10,7 @@ dotenv.config();
 
 import apiRoutes from './routes/api';
 import authRoutes from './routes/auth';
+import azureCostRoutes from './routes/azureCost';
 import { ensureAuthenticated } from './middleware/auth';
 import { getFeatureAutoCompleteService } from './services/featureAutoComplete';
 
@@ -55,6 +56,7 @@ app.use('/auth', authRoutes);
 
 // API routes (protected)
 app.use('/api', ensureAuthenticated, apiRoutes);
+app.use('/api/azure', ensureAuthenticated, azureCostRoutes);
 
 // Serve static files in production
 if (process.env.NODE_ENV === 'production') {

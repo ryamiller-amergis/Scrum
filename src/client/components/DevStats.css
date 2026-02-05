@@ -69,20 +69,18 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
+  color: var(--text-secondary);
   cursor: pointer;
   opacity: 0.6;
-  transition: opacity 0.2s, transform 0.2s;
-  user-select: none;
+  transition: opacity 0.2s;
 }
 
 .info-icon:hover {
   opacity: 1;
-  transform: scale(1.1);
 }
 
-.info-icon:active {
-  transform: scale(0.95);
+.info-icon svg {
+  display: block;
 }
 
 .info-tooltip {

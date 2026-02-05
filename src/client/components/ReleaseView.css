@@ -35,22 +35,22 @@
   display: inline-block;
 }
 
-.btn-info-icon {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  font-size: 20px;
+.info-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
-  color: var(--accent-color);
-  padding: 4px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 0.2s;
 }
 
-.btn-info-icon:hover {
-  transform: scale(1.2);
-  opacity: 0.7;
+.info-icon:hover {
+  opacity: 1;
+}
+
+.info-icon svg {
+  display: block;
 }
 
 .progress-info-tooltip {
