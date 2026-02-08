@@ -13,6 +13,7 @@ import authRoutes from './routes/auth';
 import azureCostRoutes from './routes/azureCost';
 import { ensureAuthenticated } from './middleware/auth';
 import { getFeatureAutoCompleteService } from './services/featureAutoComplete';
+import { getUatAutoReleaseService } from './services/uatAutoReleaseService';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -89,4 +90,9 @@ app.listen(PORT, () => {
   const featureAutoComplete = getFeatureAutoCompleteService();
   featureAutoComplete.start();
   console.log('Feature auto-complete service started');
+  
+  // Start the UAT auto-release background service
+  const uatAutoRelease = getUatAutoReleaseService();
+  uatAutoRelease.start();
+  console.log('UAT auto-release service started');
 });
