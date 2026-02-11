@@ -68,6 +68,7 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
   const [isLoadingParentEpic, setIsLoadingParentEpic] = useState(false);
   const [showUnlinkConfirmModal, setShowUnlinkConfirmModal] = useState(false);
   const [isUnlinking, setIsUnlinking] = useState(false);
+  const [newTag, setNewTag] = useState('');
 
   if (!workItem) return null;
 
@@ -75,11 +76,12 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
   const adoProject = import.meta.env.VITE_ADO_PROJECT || 'MaxView';
   const adoUrl = `https://dev.azure.com/${adoOrg}/${adoProject}/_workitems/edit/${workItem.id}`;
 
-  // Fetch related items when workItem changes and is PBI or TBI
+  // Fetch related items when workItem changes and is PBI, TBI, or Feature
   useEffect(() => {
     const shouldFetchRelations = 
       workItem.workItemType === 'Product Backlog Item' || 
-      workItem.workItemType === 'Technical Backlog Item';
+      workItem.workItemType === 'Technical Backlog Item' ||
+      workItem.workItemType === 'Feature';
 
     console.log(`Work item ${workItem.id} type: ${workItem.workItemType}, should fetch relations: ${shouldFetchRelations}`);
 
@@ -223,6 +225,28 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
       await onUpdateField(workItem.id, field, value);
       // Small delay to ensure better flow before UI reflects the change
       await new Promise(resolve => setTimeout(resolve, 500));
+    }
+  };
+
+  const handleAddTag = async () => {
+    if (newTag.trim() && onUpdateField) {
+      const currentTags = workItem.tags ? workItem.tags.split(';').map(t => t.trim()).filter(t => t) : [];
+      const trimmedNewTag = newTag.trim();
+      
+      // Don't add duplicate tags
+      if (!currentTags.includes(trimmedNewTag)) {
+        const updatedTags = [...currentTags, trimmedNewTag].join('; ');
+        await handleFieldChange('tags', updatedTags);
+      }
+      setNewTag('');
+    }
+  };
+
+  const handleRemoveTag = async (tagToRemove: string) => {
+    if (onUpdateField) {
+      const currentTags = workItem.tags ? workItem.tags.split(';').map(t => t.trim()).filter(t => t) : [];
+      const updatedTags = currentTags.filter(tag => tag !== tagToRemove).join('; ');
+      await handleFieldChange('tags', updatedTags);
     }
   };
 
@@ -519,10 +543,42 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
               workItem.tags.split(';').map((tag, index) => (
                 <span key={index} className="tag-badge">
                   {tag.trim()}
+                  {onUpdateField && (
+                    <button 
+                      className="tag-remove-btn"
+                      onClick={() => handleRemoveTag(tag.trim())}
+                      title="Remove tag"
+                    >
+                      ×
+                    </button>
+                  )}
                 </span>
               ))
             ) : (
               <span className="detail-value-empty">No tags</span>
+            )}
+            {onUpdateField && (
+              <div className="tag-input-container">
+                <input
+                  type="text"
+                  className="tag-input"
+                  placeholder="Add tag..."
+                  value={newTag}
+                  onChange={(e) => setNewTag(e.target.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      handleAddTag();
+                    }
+                  }}
+                />
+                <button 
+                  className="tag-add-btn"
+                  onClick={handleAddTag}
+                  disabled={!newTag.trim()}
+                >
+                  Add
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -695,7 +751,7 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
             onSelectChild={handleChildSelect}
           />
         )}
-        {(workItem.workItemType === 'Product Backlog Item' || workItem.workItemType === 'Technical Backlog Item') && (
+        {(workItem.workItemType === 'Product Backlog Item' || workItem.workItemType === 'Technical Backlog Item' || workItem.workItemType === 'Feature') && (
           <div className="related-items-section">
             <div 
               className="related-items-header"

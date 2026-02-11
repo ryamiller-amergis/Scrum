@@ -1,5 +1,28 @@
 [
   {
+    "version": "1.7.0",
+    "date": "2026-02-10",
+    "title": "Work Item Details Enhancements",
+    "changes": [
+      {
+        "type": "feature",
+        "description": "Added tag editing functionality in work item details panel - users can now add and remove tags directly from the details view"
+      },
+      {
+        "type": "feature",
+        "description": "Added related items section for Feature work items, displaying child PBIs, Technical Backlog Items, and bugs with full navigation support"
+      },
+      {
+        "type": "improvement",
+        "description": "Enhanced tag display with remove buttons and inline add input for quick tag management"
+      },
+      {
+        "type": "improvement",
+        "description": "Extended related items functionality to Features, matching the existing capability for PBIs and TBIs"
+      }
+    ]
+  },
+  {
     "version": "1.6.0",
     "date": "2026-02-04",
     "title": "UI Consistency & Release Management Improvements",

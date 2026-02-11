@@ -19,7 +19,7 @@ import { WorkItem } from './types/workitem';
 import './App.css';
 
 // Current version - update this when releasing new versions
-const CURRENT_VERSION = '1.6.0';
+const CURRENT_VERSION = '1.7.0';
 
 interface DueDateChange {
   workItemId: number;
