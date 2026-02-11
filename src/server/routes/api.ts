@@ -1,6 +1,6 @@
 import express, { Request, Response } from 'express';
 import { AzureDevOpsService } from '../services/azureDevOps';
-import { WorkItemsQuery, UpdateDueDateRequest, DeveloperDueDateStats, DueDateHitRateStats, CreateDeploymentRequest } from '../types/workitem';
+import { WorkItemsQuery, UpdateDueDateRequest, DeveloperDueDateStats, DueDateHitRateStats, PullRequestTimeStats, CreateDeploymentRequest } from '../types/workitem';
 import { getFeatureAutoCompleteService } from '../services/featureAutoComplete';
 import { DeploymentTrackingService } from '../services/deploymentTracking';
 
@@ -230,6 +230,141 @@ router.get('/due-date-hit-rate', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error fetching due date hit rate:', error);
     res.status(500).json({ error: 'Failed to fetch due date hit rate statistics' });
+  }
+});
+
+// GET /api/pull-request-time-stats - Get statistics on time spent in "In Pull Request" state
+router.get('/pull-request-time-stats', async (req: Request, res: Response) => {
+  try {
+    console.log('=== API: /pull-request-time-stats called ===');
+    const { from, to, developer } = req.query as WorkItemsQuery & { developer?: string };
+    console.log('Query params:', { from, to, developer });
+    
+    // Define specific teams to query
+    const devStatsTeams = [
+      { project: 'MaxView', areaPath: '' } // Empty to get all from project
+    ];
+    
+    // Fetch pull request time stats from all teams and aggregate
+    const allStats: any[] = [];
+    
+    for (const team of devStatsTeams) {
+      try {
+        console.log(`Fetching PR time stats for ${team.project}/${team.areaPath || '(all)'}`);
+        const adoService = new AzureDevOpsService(team.project, team.areaPath);
+        const teamStats = await adoService.getPullRequestTimeStats(from, to, developer);
+        console.log(`Got ${teamStats.length} developer stats from ${team.project}`);
+        allStats.push(...teamStats);
+      } catch (error) {
+        console.error(`Error fetching PR time stats for ${team.project}/${team.areaPath}:`, error);
+        // Continue with other teams even if one fails
+      }
+    }
+    
+    console.log(`Total stats before aggregation: ${allStats.length}`);
+    
+    // Aggregate stats by developer
+    const aggregatedStats = new Map<string, any>();
+    
+    for (const stat of allStats) {
+      if (aggregatedStats.has(stat.developer)) {
+        const existing = aggregatedStats.get(stat.developer)!;
+        existing.totalItemsInPullRequest += stat.totalItemsInPullRequest;
+        existing.totalTimeInPullRequest += stat.totalTimeInPullRequest;
+        existing.workItemDetails.push(...stat.workItemDetails);
+      } else {
+        aggregatedStats.set(stat.developer, {
+          developer: stat.developer,
+          totalItemsInPullRequest: stat.totalItemsInPullRequest,
+          averageTimeInPullRequest: 0, // Will recalculate
+          totalTimeInPullRequest: stat.totalTimeInPullRequest,
+          workItemDetails: [...stat.workItemDetails]
+        });
+      }
+    }
+    
+    // Recalculate averages
+    const stats = Array.from(aggregatedStats.values()).map(stat => ({
+      ...stat,
+      averageTimeInPullRequest: stat.totalItemsInPullRequest > 0 
+        ? Math.round((stat.totalTimeInPullRequest / stat.totalItemsInPullRequest) * 10) / 10
+        : 0
+    })).sort((a, b) => b.averageTimeInPullRequest - a.averageTimeInPullRequest);
+    
+    console.log(`=== API: Returning ${stats.length} developer PR time stats ===`);
+    console.log('Developers:', stats.map(s => s.developer));
+    console.log('Response data:', JSON.stringify(stats, null, 2));
+    res.json(stats);
+  } catch (error: any) {
+    console.error('Error fetching pull request time stats:', error);
+    res.status(500).json({ error: 'Failed to fetch pull request time statistics' });
+  }
+});
+
+// GET /api/qa-bug-stats - Get QA bug statistics for PBIs created by developers
+router.get('/qa-bug-stats', async (req: Request, res: Response) => {
+  try {
+    console.log('=== API: /qa-bug-stats called ===');
+    const { from, to, developer } = req.query as WorkItemsQuery & { developer?: string };
+    console.log('Query params:', { from, to, developer });
+    
+    // Define specific teams to query
+    const devStatsTeams = [
+      { project: 'MaxView', areaPath: '' } // Empty to get all from project
+    ];
+    
+    // Fetch QA bug stats from all teams and aggregate
+    const allStats: any[] = [];
+    
+    for (const team of devStatsTeams) {
+      try {
+        console.log(`Fetching QA bug stats for ${team.project}/${team.areaPath || '(all)'}`);
+        const adoService = new AzureDevOpsService(team.project, team.areaPath);
+        const teamStats = await adoService.getQABugStats(from, to, developer);
+        console.log(`Got ${teamStats.length} developer QA bug stats from ${team.project}`);
+        allStats.push(...teamStats);
+      } catch (error) {
+        console.error(`Error fetching QA bug stats for ${team.project}/${team.areaPath}:`, error);
+        // Continue with other teams even if one fails
+      }
+    }
+    
+    console.log(`Total QA bug stats before aggregation: ${allStats.length}`);
+    
+    // Aggregate stats by developer
+    const aggregatedStats = new Map<string, any>();
+    
+    for (const stat of allStats) {
+      if (aggregatedStats.has(stat.developer)) {
+        const existing = aggregatedStats.get(stat.developer)!;
+        existing.totalPBIs += stat.totalPBIs;
+        existing.totalBugs += stat.totalBugs;
+        existing.pbiDetails.push(...stat.pbiDetails);
+      } else {
+        aggregatedStats.set(stat.developer, {
+          developer: stat.developer,
+          totalPBIs: stat.totalPBIs,
+          totalBugs: stat.totalBugs,
+          averageBugsPerPBI: 0, // Will recalculate
+          pbiDetails: [...stat.pbiDetails]
+        });
+      }
+    }
+    
+    // Recalculate averages
+    const stats = Array.from(aggregatedStats.values()).map(stat => ({
+      ...stat,
+      averageBugsPerPBI: stat.totalPBIs > 0 
+        ? Math.round((stat.totalBugs / stat.totalPBIs) * 10) / 10
+        : 0
+    })).sort((a, b) => b.averageBugsPerPBI - a.averageBugsPerPBI);
+    
+    console.log(`=== API: Returning ${stats.length} developer QA bug stats ===`);
+    console.log('Developers:', stats.map(s => s.developer));
+    res.json(stats);
+  } catch (error: any) {
+    console.error('Error fetching QA bug stats:', error);
+    res.status(500).json({ error: 'Failed to fetch QA bug statistics' });
   }
 });
 

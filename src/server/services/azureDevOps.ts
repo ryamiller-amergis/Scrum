@@ -2355,4 +2355,373 @@ export class AzureDevOpsService {
       }
     });
   }
+
+  async getPullRequestTimeStats(from?: string, to?: string, developerFilter?: string): Promise<any[]> {
+    try {
+      console.log('=== AzureDevOpsService.getPullRequestTimeStats START ===');
+      console.log('Fetching Git pull requests...', {
+        project: this.project,
+        from,
+        to,
+        developerFilter
+      });
+
+      const gitApi = await this.connection.getGitApi();
+
+      // Get all repositories in the project
+      const repos = await gitApi.getRepositories(this.project);
+      console.log(`Found ${repos.length} repositories in ${this.project}`);
+
+      const developerMap = new Map<string, { items: any[], totalTime: number }>();
+      let totalPRsProcessed = 0;
+
+      for (const repo of repos) {
+        if (!repo.id || !repo.name) continue;
+
+        try {
+          // Get completed pull requests
+          const pullRequests = await gitApi.getPullRequests(
+            repo.id,
+            {
+              status: 'completed' as any,  // Only completed PRs
+            },
+            this.project
+          );
+
+          console.log(`Repository "${repo.name}": ${pullRequests.length} completed PRs`);
+
+          for (const pr of pullRequests) {
+            if (!pr.createdBy?.displayName || !pr.creationDate || !pr.closedDate) continue;
+
+            const creator = pr.createdBy.displayName;
+            
+            // Handle dates - they might be Date objects or ISO strings
+            const createdDateStr = typeof pr.creationDate === 'string' ? pr.creationDate : new Date(pr.creationDate).toISOString();
+            const closedDateStr = typeof pr.closedDate === 'string' ? pr.closedDate : new Date(pr.closedDate).toISOString();
+            
+            const createdDate = new Date(createdDateStr);
+            const completedDate = new Date(closedDateStr);
+            const completedDateOnly = closedDateStr.split('T')[0];
+
+            // Apply date filter on completion date
+            const fromDate = from || '1900-01-01';
+            const toDate = to || '2999-12-31';
+
+            if (completedDateOnly < fromDate || completedDateOnly > toDate) {
+              continue;
+            }
+
+            // Apply developer filter
+            if (developerFilter && creator !== developerFilter) {
+              continue;
+            }
+
+            totalPRsProcessed++;
+
+            // Calculate time in days
+            const timeInDays = (completedDate.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24);
+
+            if (!developerMap.has(creator)) {
+              developerMap.set(creator, { items: [], totalTime: 0 });
+            }
+
+            const devData = developerMap.get(creator)!;
+            devData.items.push({
+              id: pr.pullRequestId,
+              title: pr.title || `PR #${pr.pullRequestId}`,
+              timeInPullRequestDays: Math.round(timeInDays * 10) / 10,
+              enteredPullRequestDate: createdDateStr.split('T')[0],
+              exitedPullRequestDate: completedDateOnly,
+              repositoryName: repo.name,
+              sourceRefName: pr.sourceRefName,
+              targetRefName: pr.targetRefName,
+            });
+            devData.totalTime += timeInDays;
+          }
+        } catch (repoError) {
+          console.error(`Error fetching PRs for repository ${repo.name}:`, repoError);
+        }
+      }
+
+      console.log(`\nProcessed ${totalPRsProcessed} PRs in date range`);
+
+      // Convert to result format
+      const result = Array.from(developerMap.entries()).map(([developer, data]) => ({
+        developer,
+        totalItemsInPullRequest: data.items.length,
+        averageTimeInPullRequest: Math.round((data.totalTime / data.items.length) * 10) / 10,
+        totalTimeInPullRequest: Math.round(data.totalTime * 10) / 10,
+        workItemDetails: data.items.sort((a, b) => b.timeInPullRequestDays - a.timeInPullRequestDays),
+      })).sort((a, b) => b.averageTimeInPullRequest - a.averageTimeInPullRequest);
+
+      console.log('=== AzureDevOpsService.getPullRequestTimeStats RESULT ===');
+      console.log(`Returning PR time stats for ${result.length} developers`);
+      console.log('Developers:', result.map(r => r.developer));
+      console.log('Details:', result.map(r => ({
+        developer: r.developer,
+        items: r.totalItemsInPullRequest,
+        avgTime: r.averageTimeInPullRequest
+      })));
+      return result;
+    } catch (error) {
+      console.error('Error in getPullRequestTimeStats:', error);
+      return [];
+    }
+  }
+
+  async getQABugStats(from?: string, to?: string, developerFilter?: string): Promise<any[]> {
+    try {
+      console.log('=== AzureDevOpsService.getQABugStats START ===');
+      console.log('Fetching PBIs and related bugs...', {
+        project: this.project,
+        areaPath: this.areaPath,
+        from,
+        to,
+        developerFilter
+      });
+
+      const witApi = await this.connection.getWorkItemTrackingApi();
+
+      // Query for PBIs that moved to Done or Ready for Release within the timeframe
+      let wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${this.project}' AND [System.WorkItemType] = 'Product Backlog Item'`;
+
+      if (this.areaPath) {
+        wiql += ` AND [System.AreaPath] UNDER '${this.areaPath}'`;
+      }
+
+      // Filter by state - looking for completed work
+      wiql += ` AND ([System.State] = 'Done' OR [System.State] = 'Ready for Release' OR [System.State] = 'Closed')`;
+
+      // Apply date filter on when it was completed/changed
+      if (from || to) {
+        const fromDate = from || '1900-01-01';
+        const toDate = to || '2999-12-31';
+        wiql += ` AND [System.ChangedDate] >= '${fromDate}' AND [System.ChangedDate] <= '${toDate}'`;
+      }
+
+      wiql += ' ORDER BY [System.ChangedDate] DESC';
+
+      console.log('WIQL Query:', wiql);
+
+      const queryResult = await witApi.queryByWiql(
+        { query: wiql },
+        { project: this.project }
+      );
+
+      if (!queryResult.workItems || queryResult.workItems.length === 0) {
+        console.log('No PBIs found');
+        return [];
+      }
+
+      const ids = queryResult.workItems.map((wi) => wi.id!);
+      const maxItems = 200;
+      const limitedIds = ids.slice(0, maxItems);
+      
+      console.log(`Processing ${limitedIds.length} PBIs for bug analysis (out of ${ids.length} total)`);
+      console.log(`Checking if work items 39752, 40371 are in the query results...`);
+      console.log(`Work item 39752 in results: ${ids.includes(39752)}`);
+      console.log(`Work item 39752 in limited batch: ${limitedIds.includes(39752)}`);
+      console.log(`Work item 40371 in results: ${ids.includes(40371)}`);
+      console.log(`Work item 40371 in limited batch: ${limitedIds.includes(40371)}`);
+      if (ids.includes(39752) && !limitedIds.includes(39752)) {
+        console.log(`WARNING: Work item 39752 found but excluded by maxItems limit (position ${ids.indexOf(39752) + 1} of ${ids.length})`);
+      }
+      if (ids.includes(40371) && !limitedIds.includes(40371)) {
+        console.log(`WARNING: Work item 40371 found but excluded by maxItems limit (position ${ids.indexOf(40371) + 1} of ${ids.length})`);
+      }
+
+      const fields = [
+        'System.Id',
+        'System.Title',
+        'System.CreatedBy',
+        'System.AssignedTo',
+        'System.CreatedDate',
+        'System.State',
+      ];
+
+      const developerMap = new Map<string, { pbiCount: number, totalBugs: number, pbiDetails: any[] }>();
+
+      // Process in batches
+      const batchSize = 200;
+      for (let i = 0; i < limitedIds.length; i += batchSize) {
+        const batch = limitedIds.slice(i, i + batchSize);
+        const workItems = await witApi.getWorkItems(batch, fields, undefined, undefined, undefined);
+
+        for (const wi of workItems) {
+          if (!wi.id || !wi.fields) continue;
+
+          if (wi.id === 40371 || wi.id === 39752) {
+            console.log(`=== Processing work item ${wi.id} ===`);
+            console.log(`Title: ${wi.fields['System.Title']}`);
+            console.log(`State: ${wi.fields['System.State']}`);
+            console.log(`AssignedTo:`, wi.fields['System.AssignedTo']);
+            console.log(`ChangedDate: ${wi.fields['System.ChangedDate']}`);
+          }
+
+          // Get revisions to find who was assigned during "In Progress"
+          const revisions = await witApi.getRevisions(wi.id);
+          
+          let inProgressDeveloper: string | null = null;
+          let inProgressDate: string | null = null;
+          
+          // Look through revisions to find when it was "In Progress" and who was assigned
+          for (const revision of revisions) {
+            const state = revision.fields?.['System.State'];
+            const assignedToField = revision.fields?.['System.AssignedTo'];
+            const assignedTo = assignedToField?.displayName || assignedToField;
+            const changedDate = revision.fields?.['System.ChangedDate'];
+            
+            // Check for common in-progress state names
+            if ((state === 'In Progress' || state === 'Active' || state === 'Committed') && assignedTo) {
+              inProgressDeveloper = typeof assignedTo === 'string' ? assignedTo : assignedTo.displayName || assignedTo.name;
+              inProgressDate = changedDate;
+              
+              if (wi.id === 40371 || wi.id === 39752) {
+                console.log(`Found work item ${wi.id} in state ${state} assigned to ${inProgressDeveloper} on ${inProgressDate}`);
+              }
+              break; // Use the first time it entered an in-progress state
+            }
+          }
+          
+          // If we couldn't find from revisions, fall back to current assignedTo if work item is/was in progress
+          if (!inProgressDeveloper) {
+            const currentState = wi.fields['System.State'];
+            const currentAssignedTo = wi.fields['System.AssignedTo']?.displayName;
+            
+            // Only use current assignedTo if the work item has been in an active state
+            if ((currentState === 'In Progress' || currentState === 'Active' || currentState === 'Committed' || 
+                 currentState === 'Done' || currentState === 'Closed' || currentState === 'Resolved') && currentAssignedTo) {
+              inProgressDeveloper = currentAssignedTo;
+              inProgressDate = wi.fields['System.ChangedDate'];
+              console.log(`Using current assignedTo for work item ${wi.id}: ${currentAssignedTo} (state: ${currentState})`);
+            }
+          }
+          
+          // Skip if we still can't determine who worked on it
+          if (!inProgressDeveloper) {
+            console.log(`Skipping work item ${wi.id} - no developer found in progress state`);
+            continue;
+          }
+          
+          const developer = inProgressDeveloper;
+
+          // Apply developer filter
+          if (developerFilter && developer !== developerFilter) {
+            if (wi.id === 40371 || wi.id === 39752) {
+              console.log(`Work item ${wi.id} FILTERED OUT - developer filter: ${developerFilter}, actual developer: ${developer}`);
+            }
+            continue;
+          }
+
+          if (wi.id === 40371 || wi.id === 39752) {
+            console.log(`Work item ${wi.id} - Developer: ${developer}, Date: ${inProgressDate}`);
+            console.log(`Work item ${wi.id} passed all filters - proceeding to fetch bugs...`);
+          }
+
+          // Get work item relations to find linked bugs
+          try {
+            const fullWorkItem = await witApi.getWorkItem(wi.id, undefined, undefined, 1 /* WorkItemExpand.Relations */);
+            
+            if (wi.id === 40371 || wi.id === 39752) {
+              console.log(`Work item ${wi.id} - fullWorkItem fetched:`, fullWorkItem ? 'SUCCESS' : 'NULL');
+              if (fullWorkItem) {
+                console.log(`Work item ${wi.id} - has relations:`, fullWorkItem.relations ? fullWorkItem.relations.length : 0);
+              }
+            }
+            
+            // Check if work item exists
+            if (!fullWorkItem) {
+              console.log(`Work item ${wi.id} not found or inaccessible`);
+              continue;
+            }
+            
+            const relations = fullWorkItem.relations || [];
+
+            // Find all related/child bugs
+            const bugIds: number[] = [];
+            for (const relation of relations) {
+              // Check for child or related links
+              if (relation.rel === 'System.LinkTypes.Hierarchy-Forward' || 
+                  relation.rel === 'System.LinkTypes.Related') {
+                const url = relation.url;
+                const match = url?.match(/\/workItems\/(\d+)$/);
+                if (match) {
+                  bugIds.push(parseInt(match[1], 10));
+                }
+              }
+            }
+
+            if (wi.id === 40371 || wi.id === 39752) {
+              console.log(`Work item ${wi.id} - Found ${relations.length} relations`);
+              console.log(`Work item ${wi.id} - Bug IDs found: ${bugIds.join(', ')}`);
+            }
+
+            if (bugIds.length > 0) {
+              // Fetch linked work items to filter for bugs
+              const linkedItems = await witApi.getWorkItems(bugIds, ['System.WorkItemType', 'System.Title', 'System.State', 'System.Tags']);
+              const bugs = linkedItems.filter(item => item.fields?.['System.WorkItemType'] === 'Bug');
+
+              if (wi.id === 40371 || wi.id === 39752) {
+                console.log(`Work item ${wi.id} - Fetched ${linkedItems.length} linked items, ${bugs.length} are bugs`);
+                console.log(`Work item ${wi.id} - Bug details:`, bugs.map(b => ({ id: b.id, title: b.fields?.['System.Title'] })));
+              }
+
+              if (!developerMap.has(developer)) {
+                developerMap.set(developer, { pbiCount: 0, totalBugs: 0, pbiDetails: [] });
+              }
+
+              const devData = developerMap.get(developer)!;
+              devData.pbiCount++;
+              devData.totalBugs += bugs.length;
+              
+              if (bugs.length > 0) {
+                devData.pbiDetails.push({
+                  id: wi.id,
+                  title: wi.fields['System.Title'],
+                  bugCount: bugs.length,
+                  bugs: bugs.map(bug => ({
+                    id: bug.id,
+                    title: bug.fields?.['System.Title'],
+                    state: bug.fields?.['System.State'],
+                  })),
+                });
+              }
+            } else {
+              // PBI with no bugs
+              if (!developerMap.has(developer)) {
+                developerMap.set(developer, { pbiCount: 0, totalBugs: 0, pbiDetails: [] });
+              }
+              developerMap.get(developer)!.pbiCount++;
+            }
+          } catch (error) {
+            console.error(`Error fetching relations for PBI ${wi.id}:`, error);
+          }
+        }
+      }
+
+      // Convert to result format
+      const result = Array.from(developerMap.entries()).map(([developer, data]) => ({
+        developer,
+        totalPBIs: data.pbiCount,
+        totalBugs: data.totalBugs,
+        averageBugsPerPBI: data.pbiCount > 0 ? Math.round((data.totalBugs / data.pbiCount) * 10) / 10 : 0,
+        pbiDetails: data.pbiDetails.sort((a, b) => b.bugCount - a.bugCount),
+      })).sort((a, b) => b.averageBugsPerPBI - a.averageBugsPerPBI);
+
+      console.log('=== AzureDevOpsService.getQABugStats RESULT ===');
+      console.log(`Returning QA bug stats for ${result.length} developers`);
+      console.log('Developers:', result.map(r => r.developer));
+      console.log('Details:', result.map(r => ({
+        developer: r.developer,
+        pbis: r.totalPBIs,
+        bugs: r.totalBugs,
+        avgBugs: r.averageBugsPerPBI
+      })));
+      
+      return result;
+    } catch (error) {
+      console.error('Error in getQABugStats:', error);
+      return [];
+    }
+  }
 }

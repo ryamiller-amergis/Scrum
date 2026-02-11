@@ -1,4 +1,4 @@
-import { WorkItem, DeveloperDueDateStats, DueDateHitRateStats } from '../types/workitem';
+import { WorkItem, DeveloperDueDateStats, DueDateHitRateStats, PullRequestTimeStats, QABugStats } from '../types/workitem';
 import './DevStats.css';
 import { useState, useMemo, useEffect, useRef } from 'react';
 
@@ -14,6 +14,10 @@ const DATA_STATE_KEY = 'devStatsData';
 const FILTER_STATE_KEY = 'devStatsFilters';
 const HIT_RATE_DATA_KEY = 'devStatsHitRateData';
 const HIT_RATE_LOADING_STATE_KEY = 'devStatsHitRateLoadingState';
+const PR_TIME_DATA_KEY = 'devStatsPRTimeData';
+const PR_TIME_LOADING_STATE_KEY = 'devStatsPRTimeLoadingState';
+const QA_BUG_DATA_KEY = 'devStatsQABugData';
+const QA_BUG_LOADING_STATE_KEY = 'devStatsQABugLoadingState';
 const SESSION_INITIALIZED_KEY = 'devStatsSessionInitialized';
 
 // Check for page refresh once - this runs before component render
@@ -29,6 +33,8 @@ const checkAndClearOnRefresh = () => {
     sessionStorage.removeItem(FILTER_STATE_KEY);
     sessionStorage.removeItem(HIT_RATE_DATA_KEY);
     sessionStorage.removeItem(HIT_RATE_LOADING_STATE_KEY);
+    sessionStorage.removeItem(PR_TIME_DATA_KEY);
+    sessionStorage.removeItem(PR_TIME_LOADING_STATE_KEY);
     sessionStorage.setItem(SESSION_INITIALIZED_KEY, 'true');
     return true;
   }
@@ -96,15 +102,77 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, project, areaPath
     return savedLoading ? 'Loading hit rate data in background...' : '';
   });
   
+  // Pull Request time stats state
+  const [prTimeStats, setPrTimeStats] = useState<PullRequestTimeStats[]>(() => {
+    if (isPageRefresh) return [];
+    const savedData = sessionStorage.getItem(PR_TIME_DATA_KEY);
+    return savedData ? JSON.parse(savedData).stats : [];
+  });
+  const [prTimeLoading, setPrTimeLoading] = useState(() => {
+    if (isPageRefresh) return false;
+    const savedLoading = sessionStorage.getItem(PR_TIME_LOADING_STATE_KEY);
+    return savedLoading ? JSON.parse(savedLoading).loading : false;
+  });
+  const [prTimeHasLoaded, setPrTimeHasLoaded] = useState(() => {
+    if (isPageRefresh) return false;
+    const savedData = sessionStorage.getItem(PR_TIME_DATA_KEY);
+    return savedData ? JSON.parse(savedData).hasLoaded : false;
+  });
+  const [prTimeError, setPrTimeError] = useState<string | null>(null);
+  const [showPrTimeNotification, setShowPrTimeNotification] = useState(() => {
+    if (isPageRefresh) return false;
+    const savedLoading = sessionStorage.getItem(PR_TIME_LOADING_STATE_KEY);
+    return savedLoading ? JSON.parse(savedLoading).loading : false;
+  });
+  const [prTimeNotificationMessage, setPrTimeNotificationMessage] = useState(() => {
+    if (isPageRefresh) return '';
+    const savedLoading = sessionStorage.getItem(PR_TIME_LOADING_STATE_KEY);
+    return savedLoading ? 'Loading pull request time stats in background...' : '';
+  });
+  
+  // QA Bug stats state
+  const [qaBugStats, setQaBugStats] = useState<QABugStats[]>(() => {
+    if (isPageRefresh) return [];
+    const savedData = sessionStorage.getItem(QA_BUG_DATA_KEY);
+    return savedData ? JSON.parse(savedData).stats : [];
+  });
+  const [qaBugLoading, setQaBugLoading] = useState(() => {
+    if (isPageRefresh) return false;
+    const savedLoading = sessionStorage.getItem(QA_BUG_LOADING_STATE_KEY);
+    return savedLoading ? JSON.parse(savedLoading).loading : false;
+  });
+  const [qaBugHasLoaded, setQaBugHasLoaded] = useState(() => {
+    if (isPageRefresh) return false;
+    const savedData = sessionStorage.getItem(QA_BUG_DATA_KEY);
+    return savedData ? JSON.parse(savedData).hasLoaded : false;
+  });
+  const [qaBugError, setQaBugError] = useState<string | null>(null);
+  const [showQaBugNotification, setShowQaBugNotification] = useState(() => {
+    if (isPageRefresh) return false;
+    const savedLoading = sessionStorage.getItem(QA_BUG_LOADING_STATE_KEY);
+    return savedLoading ? JSON.parse(savedLoading).loading : false;
+  });
+  const [qaBugNotificationMessage, setQaBugNotificationMessage] = useState(() => {
+    if (isPageRefresh) return '';
+    const savedLoading = sessionStorage.getItem(QA_BUG_LOADING_STATE_KEY);
+    return savedLoading ? 'Loading QA bug stats in background...' : '';
+  });
+  
   // Info tooltip state
   const [showChangesInfo, setShowChangesInfo] = useState(false);
   const [showHitRateInfo, setShowHitRateInfo] = useState(false);
+  const [showPrTimeInfo, setShowPrTimeInfo] = useState(false);
+  const [showQaBugInfo, setShowQaBugInfo] = useState(false);
   
   // Collapse state for sections
   const [isChangesCollapsed, setIsChangesCollapsed] = useState(false);
   const [isHitRateCollapsed, setIsHitRateCollapsed] = useState(false);
+  const [isPrTimeCollapsed, setIsPrTimeCollapsed] = useState(false);
+  const [isQaBugCollapsed, setIsQaBugCollapsed] = useState(false);
   const [collapsedReasons, setCollapsedReasons] = useState<Set<string>>(new Set());
   const [collapsedHitRate, setCollapsedHitRate] = useState<Set<string>>(new Set());
+  const [collapsedPrTime, setCollapsedPrTime] = useState<Set<string>>(new Set());
+  const [collapsedQaBug, setCollapsedQaBug] = useState<Set<string>>(new Set());
   
   // Filter states - restore from sessionStorage
   const [selectedDeveloper, setSelectedDeveloper] = useState<string>(() => {
@@ -129,23 +197,61 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, project, areaPath
   });
 
   // Get unique developers from stats data (not local workItems)
+  // Include developers from all stat types
   const developers = useMemo(() => {
-    if (dueDateStats.length === 0) return [];
     const devSet = new Set<string>();
+    
+    // Add from due date stats
     dueDateStats.forEach(stat => {
       devSet.add(stat.developer);
     });
+    
+    // Add from hit rate stats
+    hitRateStats.forEach(stat => {
+      devSet.add(stat.developer);
+    });
+    
+    // Add from PR time stats
+    prTimeStats.forEach(stat => {
+      devSet.add(stat.developer);
+    });
+    
     const devList = Array.from(devSet).sort();
-    console.log('DevStats - Developers from stats:', devList);
-    console.log('DevStats - Stats data:', dueDateStats);
+    console.log('DevStats - Developers from all stats:', devList);
     return devList;
-  }, [dueDateStats]);
+  }, [dueDateStats, hitRateStats, prTimeStats]);
 
   // Team selection state
   const [selectedTeam, setSelectedTeam] = useState<string>('all');
   const [teamMembers, setTeamMembers] = useState<string[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [allTeamMembers, setAllTeamMembers] = useState<string[]>([]);
+
+  // Combined list for dropdown: team members + developers from stats
+  const dropdownDevelopers = useMemo(() => {
+    const combinedSet = new Set<string>();
+    
+    // Add team members based on selection
+    if (selectedTeam === 'all') {
+      allTeamMembers.forEach(dev => combinedSet.add(dev));
+    } else {
+      teamMembers.forEach(dev => combinedSet.add(dev));
+    }
+    
+    // Always add developers from loaded stats
+    developers.forEach(dev => combinedSet.add(dev));
+    
+    const result = Array.from(combinedSet).sort();
+    console.log('DevStats - Dropdown developers:', {
+      count: result.length,
+      developers: result,
+      selectedTeam,
+      teamMembersCount: teamMembers.length,
+      allTeamMembersCount: allTeamMembers.length,
+      statsDevsCount: developers.length
+    });
+    return result;
+  }, [selectedTeam, allTeamMembers, teamMembers, developers]);
 
   // Available teams
   const teams = [
@@ -271,6 +377,34 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, project, areaPath
           setHitRateHasLoaded(dataHasLoaded);
         }
       }
+
+      // Check loading state for PR time
+      const savedPRTimeLoadingState = sessionStorage.getItem(PR_TIME_LOADING_STATE_KEY);
+      if (savedPRTimeLoadingState) {
+        const { loading: isLoading } = JSON.parse(savedPRTimeLoadingState);
+        if (isLoading && !prTimeLoading) {
+          setPrTimeLoading(true);
+          setShowPrTimeNotification(true);
+          setPrTimeNotificationMessage('Loading pull request time stats in background...');
+        } else if (!isLoading && prTimeLoading) {
+          setPrTimeLoading(false);
+        }
+      } else if (prTimeLoading) {
+        setPrTimeLoading(false);
+        setShowPrTimeNotification(false);
+      }
+
+      // Check for PR time data updates
+      const savedPRTimeData = sessionStorage.getItem(PR_TIME_DATA_KEY);
+      if (savedPRTimeData) {
+        const { stats, hasLoaded: dataHasLoaded } = JSON.parse(savedPRTimeData);
+        if (JSON.stringify(stats) !== JSON.stringify(prTimeStats)) {
+          setPrTimeStats(stats);
+        }
+        if (dataHasLoaded !== prTimeHasLoaded) {
+          setPrTimeHasLoaded(dataHasLoaded);
+        }
+      }
     };
 
     // Check immediately on mount
@@ -280,7 +414,7 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, project, areaPath
     const interval = setInterval(checkState, 500);
 
     return () => clearInterval(interval);
-  }, [loading, dueDateStats, hasLoaded, hitRateLoading, hitRateStats, hitRateHasLoaded]);
+  }, [loading, dueDateStats, hasLoaded, hitRateLoading, hitRateStats, hitRateHasLoaded, prTimeLoading, prTimeStats, prTimeHasLoaded]);
 
   // Persist filter selections to sessionStorage whenever they change
   useEffect(() => {
@@ -310,6 +444,20 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, project, areaPath
     };
     sessionStorage.setItem(HIT_RATE_DATA_KEY, JSON.stringify(data));
   }, [hitRateStats, hitRateHasLoaded]);
+
+  // Persist PR time data to sessionStorage
+  useEffect(() => {
+    const data = {
+      stats: prTimeStats,
+      hasLoaded: prTimeHasLoaded
+    };
+    console.log('DevStats - PR Time state changed:', {
+      statsCount: prTimeStats.length,
+      hasLoaded: prTimeHasLoaded,
+      developers: prTimeStats.map(s => s.developer)
+    });
+    sessionStorage.setItem(PR_TIME_DATA_KEY, JSON.stringify(data));
+  }, [prTimeStats, prTimeHasLoaded]);
 
   const fetchDueDateStats = async () => {
     setLoading(true);
@@ -451,6 +599,198 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, project, areaPath
     }
   };
 
+  const fetchPullRequestTimeStats = async () => {
+    console.log('=== FETCH PR TIME STATS STARTED ===');
+    console.log('Current state:', {
+      selectedTeam,
+      selectedDeveloper,
+      timeFrame,
+      customFromDate,
+      customToDate,
+      teamMembers: teamMembers.length,
+      allTeamMembers: allTeamMembers.length
+    });
+    
+    setPrTimeLoading(true);
+    setPrTimeError(null);
+    setShowPrTimeNotification(true);
+    setPrTimeNotificationMessage('Loading pull request time statistics in background...');
+    
+    // Store loading state in sessionStorage
+    sessionStorage.setItem(PR_TIME_LOADING_STATE_KEY, JSON.stringify({ loading: true, timestamp: Date.now() }));
+    
+    try {
+      // Calculate date range based on time frame
+      let fromDate = '';
+      let toDate = new Date().toISOString().split('T')[0];
+      
+      if (timeFrame === 'custom') {
+        fromDate = customFromDate;
+        toDate = customToDate;
+      } else {
+        const daysBack = parseInt(timeFrame);
+        const from = new Date();
+        from.setDate(from.getDate() - daysBack);
+        fromDate = from.toISOString().split('T')[0];
+      }
+      
+      console.log('Date range calculated:', { fromDate, toDate });
+      
+      // Build query params
+      const params = new URLSearchParams();
+      if (fromDate) params.append('from', fromDate);
+      if (toDate) params.append('to', toDate);
+      if (selectedDeveloper !== 'all') params.append('developer', selectedDeveloper);
+      
+      const url = `/api/pull-request-time-stats?${params.toString()}`;
+      console.log('Fetching PR time stats from:', url);
+      
+      const response = await fetch(url, {
+        credentials: 'include'
+      });
+      
+      console.log('Response status:', response.status);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch pull request time statistics');
+      }
+      const data = await response.json();
+      
+      console.log('=== PR TIME API RESPONSE ===');
+      console.log('Total developers returned:', data.length);
+      console.log('Data:', JSON.stringify(data, null, 2));
+      console.log('Developers:', data.map((d: any) => d.developer));
+      
+      // Save to sessionStorage immediately (works even if component unmounts)
+      sessionStorage.setItem(PR_TIME_DATA_KEY, JSON.stringify({ 
+        stats: data, 
+        hasLoaded: true 
+      }));
+      
+      console.log('Saved to sessionStorage:', PR_TIME_DATA_KEY);
+      
+      // Update component state (only works if still mounted)
+      console.log('Setting prTimeStats state with', data.length, 'items');
+      setPrTimeStats(data);
+      setPrTimeHasLoaded(true);
+      setPrTimeNotificationMessage('Pull request time statistics loaded successfully!');
+      
+      console.log('=== FETCH PR TIME STATS COMPLETED SUCCESSFULLY ===');
+      
+      // Auto-hide success notification after 3 seconds
+      setTimeout(() => {
+        setShowPrTimeNotification(false);
+      }, 3000);
+    } catch (err) {
+      console.error('=== ERROR FETCHING PR TIME STATS ===');
+      console.error('Error details:', err);
+      const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+      setPrTimeError(errorMsg);
+      setPrTimeNotificationMessage(`Error: ${errorMsg}`);
+    } finally {
+      setPrTimeLoading(false);
+      // Update loading state to false instead of removing
+      sessionStorage.setItem(PR_TIME_LOADING_STATE_KEY, JSON.stringify({ loading: false, timestamp: Date.now() }));
+      console.log('=== FETCH PR TIME STATS ENDED ===');
+    }
+  };
+
+  const fetchQABugStats = async () => {
+    console.log('=== FETCH QA BUG STATS CALLED ===');
+    console.log('Current state:', {
+      selectedTeam,
+      selectedDeveloper,
+      timeFrame,
+      customFromDate,
+      customToDate,
+      teamMembers: teamMembers.length,
+      allTeamMembers: allTeamMembers.length
+    });
+    
+    setQaBugLoading(true);
+    setQaBugError(null);
+    setShowQaBugNotification(true);
+    setQaBugNotificationMessage('Loading QA bug statistics in background...');
+    
+    // Store loading state in sessionStorage
+    sessionStorage.setItem(QA_BUG_LOADING_STATE_KEY, JSON.stringify({ loading: true, timestamp: Date.now() }));
+    
+    try {
+      // Calculate date range based on time frame
+      let fromDate = '';
+      let toDate = new Date().toISOString().split('T')[0];
+      
+      if (timeFrame === 'custom') {
+        fromDate = customFromDate;
+        toDate = customToDate;
+      } else {
+        const daysBack = parseInt(timeFrame);
+        const from = new Date();
+        from.setDate(from.getDate() - daysBack);
+        fromDate = from.toISOString().split('T')[0];
+      }
+      
+      console.log('Date range calculated:', { fromDate, toDate });
+      
+      // Build query params
+      const params = new URLSearchParams();
+      if (fromDate) params.append('from', fromDate);
+      if (toDate) params.append('to', toDate);
+      if (selectedDeveloper !== 'all') params.append('developer', selectedDeveloper);
+      
+      const url = `/api/qa-bug-stats?${params.toString()}`;
+      console.log('Fetching QA bug stats from:', url);
+      
+      const response = await fetch(url, {
+        credentials: 'include'
+      });
+      
+      console.log('Response status:', response.status);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch QA bug statistics');
+      }
+      const data = await response.json();
+      
+      console.log('=== QA BUG API RESPONSE ===');
+      console.log('Total developers returned:', data.length);
+      console.log('Data:', JSON.stringify(data, null, 2));
+      console.log('Developers:', data.map((d: any) => d.developer));
+      
+      // Save to sessionStorage immediately (works even if component unmounts)
+      sessionStorage.setItem(QA_BUG_DATA_KEY, JSON.stringify({ 
+        stats: data, 
+        hasLoaded: true 
+      }));
+      
+      console.log('Saved to sessionStorage:', QA_BUG_DATA_KEY);
+      
+      // Update component state (only works if still mounted)
+      console.log('Setting qaBugStats state with', data.length, 'items');
+      setQaBugStats(data);
+      setQaBugHasLoaded(true);
+      setQaBugNotificationMessage('QA bug statistics loaded successfully!');
+      
+      console.log('=== FETCH QA BUG STATS COMPLETED SUCCESSFULLY ===');
+      
+      // Auto-hide success notification after 3 seconds
+      setTimeout(() => {
+        setShowQaBugNotification(false);
+      }, 3000);
+    } catch (err) {
+      console.error('=== ERROR FETCHING QA BUG STATS ===');
+      console.error('Error details:', err);
+      const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+      setQaBugError(errorMsg);
+      setQaBugNotificationMessage(`Error: ${errorMsg}`);
+    } finally {
+      setQaBugLoading(false);
+      // Update loading state to false instead of removing
+      sessionStorage.setItem(QA_BUG_LOADING_STATE_KEY, JSON.stringify({ loading: false, timestamp: Date.now() }));
+      console.log('=== FETCH QA BUG STATS ENDED ===');
+    }
+  };
+
   // Filter the results by developer if needed, and by team if selected
   const filteredStats = useMemo(() => {
     let stats = dueDateStats;
@@ -463,12 +803,13 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, project, areaPath
       selectedDeveloper
     });
     
-    // Filter by team members if a specific team is selected
+    // Only apply team filtering if we actually have team members loaded
+    // This prevents filtering out all results when team members list is loading
     if (selectedTeam !== 'all' && teamMembers.length > 0) {
       stats = stats.filter(stat => teamMembers.includes(stat.developer));
       console.log('DevStats - After team filter:', stats.length);
     } else if (selectedTeam === 'all' && allTeamMembers.length > 0) {
-      // Filter by all team members when "All Teams" is selected
+      // Filter by all team members when "All Teams" is selected (only if loaded)
       stats = stats.filter(stat => allTeamMembers.includes(stat.developer));
       console.log('DevStats - After all teams filter:', stats.length);
     }
@@ -487,21 +828,91 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, project, areaPath
   const filteredHitRateStats = useMemo(() => {
     let stats = hitRateStats;
     
-    // Filter by team members if a specific team is selected
+    console.log('DevStats - Filtering Hit Rate:', {
+      totalHitRateStats: hitRateStats.length,
+      selectedTeam,
+      teamMembersCount: teamMembers.length,
+      selectedDeveloper
+    });
+    
+    // Only filter by team if a specific team is selected (not "all")
     if (selectedTeam !== 'all' && teamMembers.length > 0) {
-      stats = stats.filter(stat => teamMembers.includes(stat.developer));
-    } else if (selectedTeam === 'all' && allTeamMembers.length > 0) {
-      // Filter by all team members when "All Teams" is selected
-      stats = stats.filter(stat => allTeamMembers.includes(stat.developer));
+      const teamMemberNames = new Set(teamMembers);
+      stats = stats.filter(stat => teamMemberNames.has(stat.developer));
+      console.log('DevStats - After team filter for hit rate:', stats.length);
     }
+    // When selectedTeam === 'all', show all hit rate stats without filtering
     
     // Further filter by specific developer if selected
     if (selectedDeveloper !== 'all') {
       stats = stats.filter(stat => stat.developer === selectedDeveloper);
+      console.log('DevStats - After developer filter for hit rate:', stats.length);
     }
     
+    console.log('DevStats - Final filtered hit rate stats:', stats.length);
     return stats;
   }, [hitRateStats, selectedDeveloper, selectedTeam, teamMembers, allTeamMembers]);
+
+  // Filter PR time stats similarly
+  const filteredPrTimeStats = useMemo(() => {
+    let stats = prTimeStats;
+    
+    console.log('DevStats - Filtering PR Time:', {
+      totalPrTimeStats: prTimeStats.length,
+      selectedTeam,
+      teamMembersCount: teamMembers.length,
+      allTeamMembersCount: allTeamMembers.length,
+      selectedDeveloper,
+      developers: prTimeStats.map(s => s.developer)
+    });
+    
+    // Only filter by team if a specific team is selected (not "all")
+    if (selectedTeam !== 'all' && teamMembers.length > 0) {
+      const teamMemberNames = new Set(teamMembers);
+      stats = stats.filter(stat => teamMemberNames.has(stat.developer));
+      console.log('DevStats - After team filter for PR time:', stats.length);
+    }
+    // When selectedTeam === 'all', show all PR time stats without filtering
+    
+    // Further filter by specific developer if selected
+    if (selectedDeveloper !== 'all') {
+      stats = stats.filter(stat => stat.developer === selectedDeveloper);
+      console.log('DevStats - After developer filter for PR time:', stats.length);
+    }
+    
+    console.log('DevStats - Final filtered PR time stats:', stats.length);
+    return stats;
+  }, [prTimeStats, selectedDeveloper, selectedTeam, teamMembers, allTeamMembers]);
+
+  const filteredQaBugStats = useMemo(() => {
+    let stats = qaBugStats;
+    
+    console.log('DevStats - Filtering QA Bug Stats:', {
+      totalQaBugStats: qaBugStats.length,
+      selectedTeam,
+      teamMembersCount: teamMembers.length,
+      allTeamMembersCount: allTeamMembers.length,
+      selectedDeveloper,
+      developers: qaBugStats.map(s => s.developer)
+    });
+    
+    // Only filter by team if a specific team is selected (not "all")
+    if (selectedTeam !== 'all' && teamMembers.length > 0) {
+      const teamMemberNames = new Set(teamMembers);
+      stats = stats.filter(stat => teamMemberNames.has(stat.developer));
+      console.log('DevStats - After team filter for QA bugs:', stats.length);
+    }
+    // When selectedTeam === 'all', show all QA bug stats without filtering
+    
+    // Further filter by specific developer if selected
+    if (selectedDeveloper !== 'all') {
+      stats = stats.filter(stat => stat.developer === selectedDeveloper);
+      console.log('DevStats - After developer filter for QA bugs:', stats.length);
+    }
+    
+    console.log('DevStats - Final filtered QA bug stats:', stats.length);
+    return stats;
+  }, [qaBugStats, selectedDeveloper, selectedTeam, teamMembers, allTeamMembers]);
 
   return (
     <div className="dev-stats-container">
@@ -538,7 +949,7 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, project, areaPath
               <option value="all">
                 {selectedTeam === 'all' ? 'All Developers' : 'All Team Members'}
               </option>
-              {(selectedTeam === 'all' ? allTeamMembers : teamMembers).map(dev => (
+              {dropdownDevelopers.map(dev => (
                 <option key={dev} value={dev}>{dev}</option>
               ))}
             </select>
@@ -884,6 +1295,364 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, project, areaPath
                           );
                         })}
                       </ul>
+                    </details>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="stats-section">
+        <h3>
+          <button 
+            className="collapse-button"
+            onClick={() => setIsPrTimeCollapsed(!isPrTimeCollapsed)}
+            aria-label={isPrTimeCollapsed ? 'Expand section' : 'Collapse section'}
+          >
+            {isPrTimeCollapsed ? '▶' : '▼'}
+          </button>
+          Pull Request Time
+          <div 
+            className="info-icon" 
+            onClick={() => setShowPrTimeInfo(!showPrTimeInfo)}
+            role="button"
+            aria-label="Show information about this section"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+              <path d="m8.93 6.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.194.897.105 1.319.808 1.319.545 0 1.178-.252 1.465-.598l.088-.416c-.2.176-.492.246-.686.246-.275 0-.375-.193-.304-.533L8.93 6.588zM9 4.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/>
+            </svg>
+          </div>
+        </h3>
+        
+        {showPrTimeInfo && (
+          <div className="info-tooltip">
+            <button 
+              className="info-close" 
+              onClick={() => setShowPrTimeInfo(false)}
+              aria-label="Close information"
+            >
+              ×
+            </button>
+            <p>
+              <strong>What this section shows:</strong><br />
+              Time spent by developers in the "In Pull Request" state for their work items.
+            </p>
+            <p>
+              <strong>How to interpret:</strong><br />
+              • <strong>Total Items in PR:</strong> Number of work items that went through the "In Pull Request" state<br />
+              • <strong>Average Time in PR:</strong> Average days spent in pull request state<br />
+              • <strong>Total Time in PR:</strong> Sum of all days spent across all items
+            </p>
+          </div>
+        )}
+        
+        {!isPrTimeCollapsed && (
+          <div className="filter-actions">
+            <button 
+              onClick={fetchPullRequestTimeStats} 
+              disabled={prTimeLoading || (timeFrame === 'custom' && (!customFromDate || !customToDate))}
+              className="load-stats-button"
+            >
+              {prTimeLoading ? 'Loading...' : prTimeHasLoaded ? 'Refresh PR Time' : 'Load PR Time'}
+            </button>
+          </div>
+        )}
+        
+        {!isPrTimeCollapsed && (showPrTimeNotification || prTimeLoading) && (
+          <div className={`background-notification ${prTimeLoading ? 'loading' : prTimeError ? 'error' : 'success'}`}>
+            {prTimeLoading && <div className="notification-spinner"></div>}
+            <span className="notification-text">{prTimeLoading ? 'Loading pull request time statistics in background...' : prTimeNotificationMessage}</span>
+            {!prTimeLoading && (
+              <button 
+                className="notification-close" 
+                onClick={() => setShowPrTimeNotification(false)}
+                aria-label="Close notification"
+              >
+                ×
+              </button>
+            )}
+          </div>
+        )}
+        
+        {(() => {
+          console.log('PR Time Render Conditions:', {
+            isPrTimeCollapsed,
+            prTimeHasLoaded,
+            prTimeLoading,
+            filteredPrTimeStatsLength: filteredPrTimeStats.length,
+            prTimeStatsLength: prTimeStats.length
+          });
+          return null;
+        })()}
+        
+        {!isPrTimeCollapsed && !prTimeHasLoaded && !prTimeLoading && (
+          <p className="placeholder-text">Click "Load PR Time" to view pull request state time statistics.</p>
+        )}
+        
+        {!isPrTimeCollapsed && prTimeHasLoaded && !prTimeLoading && filteredPrTimeStats.length === 0 && (
+          <p className="placeholder-text">
+            No work items in pull request state found for the selected filters.
+            <br />
+            <small style={{color: 'var(--text-secondary)'}}>
+              Total loaded: {prTimeStats.length}, After filtering: {filteredPrTimeStats.length}
+            </small>
+          </p>
+        )}
+        
+        {!isPrTimeCollapsed && prTimeHasLoaded && !prTimeLoading && filteredPrTimeStats.length > 0 && (
+          <div className="developer-stats-list">
+            {filteredPrTimeStats.map((stats, index) => {
+              const devKey = `prtime-${stats.developer}`;
+              const isCollapsed = collapsedPrTime.has(devKey);
+              
+              return (
+                <div key={index} className="developer-stat-card">
+                  <div className="developer-header">
+                    <span className="developer-name">{stats.developer}</span>
+                    <span className="total-changes">{stats.totalItemsInPullRequest} items</span>
+                  </div>
+                  
+                  <div className="pr-time-summary">
+                    <div className="pr-time-details">
+                      <div className="pr-time-stat">
+                        <span className="stat-label">Avg Time in PR:</span>
+                        <span className="stat-value">{stats.averageTimeInPullRequest.toFixed(1)} days</span>
+                      </div>
+                      <div className="pr-time-stat">
+                        <span className="stat-label">Total Time:</span>
+                        <span className="stat-value">{stats.totalTimeInPullRequest.toFixed(1)} days</span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {stats.workItemDetails.length > 0 && (
+                    <details className="work-item-details">
+                      <summary>View Work Items ({stats.workItemDetails.length})</summary>
+                      <ul className="work-item-list">
+                        {stats.workItemDetails.map((item, idx) => {
+                          const fullWorkItem = workItems.find(wi => wi.id === item.id);
+                          return (
+                            <li 
+                              key={idx} 
+                              className={`work-item${onSelectItem && fullWorkItem ? ' clickable' : ''}`}
+                              onClick={() => {
+                                if (onSelectItem && fullWorkItem) {
+                                  onSelectItem(fullWorkItem);
+                                }
+                              }}
+                              role={onSelectItem && fullWorkItem ? 'button' : undefined}
+                              tabIndex={onSelectItem && fullWorkItem ? 0 : undefined}
+                            >
+                              <span className="work-item-id">#{item.id}</span>
+                              <span className="work-item-title">{item.title}</span>
+                              <span className="work-item-dates">
+                                PR: {item.enteredPullRequestDate} → {item.exitedPullRequestDate}
+                              </span>
+                              <span className="work-item-pr-time">
+                                {item.timeInPullRequestDays.toFixed(1)} days
+                              </span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </details>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="stats-section">
+        <h3>
+          <button 
+            className="collapse-button"
+            onClick={() => setIsQaBugCollapsed(!isQaBugCollapsed)}
+            aria-label={isQaBugCollapsed ? 'Expand section' : 'Collapse section'}
+          >
+            {isQaBugCollapsed ? '▶' : '▼'}
+          </button>
+          QA Bug Statistics
+          <div 
+            className="info-icon" 
+            onClick={() => setShowQaBugInfo(!showQaBugInfo)}
+            role="button"
+            aria-label="Show information about this section"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+              <path d="m8.93 6.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.194.897.105 1.319.808 1.319.545 0 1.178-.252 1.465-.598l.088-.416c-.2.176-.492.246-.686.246-.275 0-.375-.193-.304-.533L8.93 6.588zM9 4.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/>
+            </svg>
+          </div>
+        </h3>
+        
+        {showQaBugInfo && (
+          <div className="info-tooltip">
+            <button 
+              className="info-close" 
+              onClick={() => setShowQaBugInfo(false)}
+              aria-label="Close information"
+            >
+              ×
+            </button>
+            <p>
+              <strong>What this section shows:</strong><br />
+              Bugs found in QA testing for PBIs created by developers.
+            </p>
+            <p>
+              <strong>How to interpret:</strong><br />
+              • <strong>Total PBIs:</strong> Number of Product Backlog Items created by the developer<br />
+              • <strong>Total Bugs:</strong> Number of bugs linked to those PBIs<br />
+              • <strong>Avg Bugs/PBI:</strong> Average number of bugs per PBI (lower is better)
+            </p>
+          </div>
+        )}
+        
+        {!isQaBugCollapsed && (
+          <div className="filter-actions">
+            <button 
+              onClick={fetchQABugStats} 
+              disabled={qaBugLoading || (timeFrame === 'custom' && (!customFromDate || !customToDate))}
+              className="load-stats-button"
+            >
+              {qaBugLoading ? 'Loading...' : qaBugHasLoaded ? 'Refresh QA Bugs' : 'Load QA Bugs'}
+            </button>
+          </div>
+        )}
+        
+        {!isQaBugCollapsed && (showQaBugNotification || qaBugLoading) && (
+          <div className={`background-notification ${qaBugLoading ? 'loading' : qaBugError ? 'error' : 'success'}`}>
+            {qaBugLoading && <div className="notification-spinner"></div>}
+            <span className="notification-text">{qaBugLoading ? 'Loading QA bug statistics in background...' : qaBugNotificationMessage}</span>
+            {!qaBugLoading && (
+              <button 
+                className="notification-close" 
+                onClick={() => setShowQaBugNotification(false)}
+                aria-label="Close notification"
+              >
+                ×
+              </button>
+            )}
+          </div>
+        )}
+        
+        {!isQaBugCollapsed && !qaBugHasLoaded && !qaBugLoading && (
+          <p className="placeholder-text">Click "Load QA Bugs" to view QA bug statistics.</p>
+        )}
+        
+        {!isQaBugCollapsed && qaBugHasLoaded && !qaBugLoading && filteredQaBugStats.length === 0 && (
+          <p className="placeholder-text">
+            No QA bug data found for the selected filters.
+            <br />
+            <small style={{color: 'var(--text-secondary)'}}>
+              Total loaded: {qaBugStats.length}, After filtering: {filteredQaBugStats.length}
+            </small>
+          </p>
+        )}
+        
+        {!isQaBugCollapsed && qaBugHasLoaded && !qaBugLoading && filteredQaBugStats.length > 0 && (
+          <div className="developer-stats-list">
+            {filteredQaBugStats.map((stats, index) => {
+              const devKey = `qabug-${stats.developer}`;
+              const isCollapsed = collapsedQaBug.has(devKey);
+              
+              return (
+                <div key={index} className="developer-stat-card">
+                  <div className="developer-header">
+                    <span className="developer-name">{stats.developer}</span>
+                    <span className="total-changes">{stats.totalPBIs} PBIs</span>
+                  </div>
+                  
+                  <div className="pr-time-summary">
+                    <div className="pr-time-details">
+                      <div className="pr-time-stat">
+                        <span className="stat-label">Total Bugs:</span>
+                        <span className="stat-value">{stats.totalBugs}</span>
+                      </div>
+                      <div className="pr-time-stat">
+                        <span className="stat-label">Avg Bugs/PBI:</span>
+                        <span className="stat-value">{stats.averageBugsPerPBI.toFixed(1)}</span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {stats.pbiDetails.length > 0 && (
+                    <details className="work-item-details">
+                      <summary>View PBIs with Bugs ({stats.pbiDetails.length})</summary>
+                      <div className="qa-bug-pbi-list">
+                        {stats.pbiDetails.map((pbi, idx) => {
+                          const fullWorkItem = workItems.find(wi => wi.id === pbi.id);
+                          const pbiKey = `qabug-pbi-${stats.developer}-${pbi.id}`;
+                          const isPbiExpanded = !collapsedQaBug.has(pbiKey);
+                          
+                          return (
+                            <div key={idx} className="qa-bug-pbi-card">
+                              <div className="qa-bug-pbi-header">
+                                <div className="qa-bug-pbi-info">
+                                  <span 
+                                    className={`work-item-id${onSelectItem && fullWorkItem ? ' clickable' : ''}`}
+                                    onClick={() => {
+                                      if (onSelectItem && fullWorkItem) {
+                                        onSelectItem(fullWorkItem);
+                                      }
+                                    }}
+                                    role={onSelectItem && fullWorkItem ? 'button' : undefined}
+                                    tabIndex={onSelectItem && fullWorkItem ? 0 : undefined}
+                                  >
+                                    #{pbi.id}
+                                  </span>
+                                  <span className="qa-bug-pbi-title">{pbi.title}</span>
+                                </div>
+                                <div className="qa-bug-pbi-actions">
+                                  <span className={`bug-count-badge ${pbi.bugCount > 3 ? 'high' : pbi.bugCount > 1 ? 'medium' : 'low'}`}>
+                                    {pbi.bugCount} {pbi.bugCount === 1 ? 'Bug' : 'Bugs'}
+                                  </span>
+                                  {pbi.bugs.length > 0 && (
+                                    <button 
+                                      className="expand-bugs-btn"
+                                      onClick={() => {
+                                        const newCollapsed = new Set(collapsedQaBug);
+                                        if (isPbiExpanded) {
+                                          newCollapsed.add(pbiKey);
+                                        } else {
+                                          newCollapsed.delete(pbiKey);
+                                        }
+                                        setCollapsedQaBug(newCollapsed);
+                                      }}
+                                      aria-label={isPbiExpanded ? 'Hide bugs' : 'Show bugs'}
+                                    >
+                                      {isPbiExpanded ? '▼' : '▶'}
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                              
+                              {pbi.bugs.length > 0 && isPbiExpanded && (
+                                <div className="qa-bug-details-list">
+                                  {pbi.bugs.map((bug, bugIdx) => (
+                                    <div key={bugIdx} className={`qa-bug-item state-${bug.state.toLowerCase().replace(/\s+/g, '-')}`}>
+                                      <div className="qa-bug-icon">🐛</div>
+                                      <div className="qa-bug-content">
+                                        <div className="qa-bug-id-title">
+                                          <span className="qa-bug-id">#{bug.id}</span>
+                                          <span className="qa-bug-title">{bug.title}</span>
+                                        </div>
+                                        <span className={`qa-bug-state state-${bug.state.toLowerCase().replace(/\s+/g, '-')}`}>
+                                          {bug.state}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
                     </details>
                   )}
                 </div>

@@ -64,6 +64,37 @@ export interface DueDateHitRateStats {
   }>;
 }
 
+export interface PullRequestTimeStats {
+  developer: string;
+  totalItemsInPullRequest: number;
+  averageTimeInPullRequest: number;
+  totalTimeInPullRequest: number;
+  workItemDetails: Array<{
+    id: number;
+    title: string;
+    timeInPullRequestDays: number;
+    enteredPullRequestDate: string;
+    exitedPullRequestDate: string;
+  }>;
+}
+
+export interface QABugStats {
+  developer: string;
+  totalPBIs: number;
+  totalBugs: number;
+  averageBugsPerPBI: number;
+  pbiDetails: Array<{
+    id: number;
+    title: string;
+    bugCount: number;
+    bugs: Array<{
+      id: number;
+      title: string;
+      state: string;
+    }>;
+  }>;
+}
+
 export type DeploymentEnvironment = 'dev' | 'staging' | 'production';
 
 export interface Deployment {
