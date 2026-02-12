@@ -1,5 +1,40 @@
 [
   {
+    "version": "1.8.0",
+    "date": "2026-02-12",
+    "title": "Hierarchical Backlog View & UX Improvements",
+    "changes": [
+      {
+        "type": "feature",
+        "description": "Added hierarchical backlog view for unscheduled items, similar to Azure DevOps - work items now display in parent-child relationships with expand/collapse controls"
+      },
+      {
+        "type": "feature",
+        "description": "Epic-focused navigation - when 'All Types' is selected, only Epics are shown at root level, allowing users to drill down into Features, PBIs, and Bugs"
+      },
+      {
+        "type": "feature",
+        "description": "Multiple state selection - users can now select multiple states simultaneously using checkboxes instead of a single dropdown"
+      },
+      {
+        "type": "improvement",
+        "description": "Redesigned work item cards with cleaner, more professional appearance - neutral backgrounds with subtle colored left borders based on work item type"
+      },
+      {
+        "type": "improvement",
+        "description": "Unscheduled sidebar now collapses by default to provide more space for the calendar view, and can be expanded up to 1000px wide (increased from 600px)"
+      },
+      {
+        "type": "improvement",
+        "description": "Enhanced visual hierarchy with proper indentation (20px per level) for child work items"
+      },
+      {
+        "type": "improvement",
+        "description": "Work item type color coding: Epic (Purple), Feature (Blue), Bug (Red), PBI (Green), TBI (Amber)"
+      }
+    ]
+  },
+  {
     "version": "1.7.0",
     "date": "2026-02-10",
     "title": "Work Item Details Enhancements",

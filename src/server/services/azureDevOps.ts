@@ -152,6 +152,54 @@ export class AzureDevOpsService {
         }
       }
 
+      // Now fetch parent relationships in a separate call
+      // Batch the IDs again for relations
+      const relationBatches: number[][] = [];
+      for (let i = 0; i < ids.length; i += batchSize) {
+        relationBatches.push(ids.slice(i, i + batchSize));
+      }
+
+      const parentMap = new Map<number, number>();
+      
+      for (const batch of relationBatches) {
+        try {
+          // Fetch with Relations expand but no fields to avoid the conflict
+          const workItemsWithRelations = await witApi.getWorkItems(
+            batch,
+            undefined,
+            undefined,
+            WorkItemExpand.Relations
+          );
+
+          for (const wi of workItemsWithRelations) {
+            if (!wi.id || !wi.relations) continue;
+
+            // Find parent relation
+            const parentRelation = wi.relations.find(
+              (rel) => rel.rel === 'System.LinkTypes.Hierarchy-Reverse'
+            );
+            
+            if (parentRelation && parentRelation.url) {
+              const match = parentRelation.url.match(/\/(\d+)$/);
+              if (match) {
+                parentMap.set(wi.id, parseInt(match[1], 10));
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Error fetching relations for batch:', error);
+          // Continue even if relations fetch fails
+        }
+      }
+
+      // Apply parent IDs to work items
+      allWorkItems.forEach(item => {
+        const parentId = parentMap.get(item.id);
+        if (parentId) {
+          item.parentId = parentId;
+        }
+      });
+
       // Skip cycle time calculation for now to improve load performance
       // Cycle time queries are timing out due to large revision history
       // TODO: Implement background job or on-demand cycle time calculation

@@ -209,3 +209,105 @@
   transition: all 0.2s ease;
   pointer-events: none;
 }
+/* Hierarchical item styles */
+.hierarchical-item-container {
+  display: flex;
+  flex-direction: column;
+}
+
+.hierarchical-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  position: relative;
+}
+
+.expand-toggle {
+  min-width: 20px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  margin-top: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  border-radius: 2px;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.expand-toggle:hover {
+  background: var(--accent-color);
+  color: white;
+}
+
+.item-wrapper {
+  flex: 1;
+  min-width: 0;
+}
+
+.item-wrapper.no-children {
+  margin-left: 24px;
+}
+
+.children-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* State filter checkboxes */
+.state-filter-container {
+  margin-bottom: 12px;
+  padding: 8px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color-light);
+  border-radius: 4px;
+}
+
+.state-filter-header {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.state-checkboxes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.state-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-primary);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 3px;
+  transition: background 0.2s;
+}
+
+.state-checkbox-label:hover {
+  background: var(--bg-secondary);
+}
+
+.state-checkbox {
+  cursor: pointer;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.state-checkbox-label span {
+  flex: 1;
+}

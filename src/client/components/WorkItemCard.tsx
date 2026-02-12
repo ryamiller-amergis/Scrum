@@ -19,50 +19,50 @@ export const WorkItemCard: React.FC<WorkItemCardProps> = ({
   const isBug = workItem.workItemType === 'Bug';
   const isPBI = workItem.workItemType === 'Product Backlog Item';
   const isTBI = workItem.workItemType === 'Technical Backlog Item';
-  const isSpecialType = isEpic || isFeature;
-  const colors = isEpic ? getEpicColor(workItem.id) : getAssigneeColor(workItem.assignedTo);
+  
+  // Get subtle accent colors for different work item types
+  const getTypeColor = () => {
+    if (isEpic) return '#8b5cf6'; // Purple
+    if (isFeature) return '#3b82f6'; // Blue
+    if (isBug) return '#ef4444'; // Red
+    if (isPBI) return '#10b981'; // Green
+    if (isTBI) return '#f59e0b'; // Amber
+    return '#6b7280'; // Gray
+  };
   
   return (
     <div
-      className={`work-item-card ${isDragging ? 'dragging' : ''} ${isEpic ? 'epic-card' : ''}`}
+      className={`work-item-card ${isDragging ? 'dragging' : ''} ${isEpic ? 'epic-card' : ''} ${isFeature ? 'feature-card' : ''}`}
       onClick={onClick}
       style={{
         opacity: isDragging ? 0.5 : 1,
         cursor: 'pointer',
-        backgroundColor: colors.bg,
-        borderLeft: `${isSpecialType ? '5px' : '4px'} solid ${colors.border}`,
-        boxShadow: isSpecialType ? `0 2px 6px ${colors.border}40` : 'none',
+        borderLeftColor: getTypeColor(),
       }}
     >
-      <div className="work-item-id" style={{ color: colors.text }}>
-        {isEpic && <span style={{ marginRight: '4px' }}>👑</span>}
-        {isFeature && <span style={{ marginRight: '4px' }}>⭐</span>}
-        {isBug && <span style={{ marginRight: '4px' }}>🐛</span>}
-        {isPBI && <span style={{ marginRight: '4px' }}>📋</span>}
-        {isTBI && <span style={{ marginRight: '4px' }}>🔧</span>}
-        #{workItem.id}
+      <div className="work-item-header">
+        <div className="work-item-id">
+          {isEpic && <span className="type-icon">👑</span>}
+          {isFeature && <span className="type-icon">⭐</span>}
+          {isBug && <span className="type-icon">🐛</span>}
+          {isPBI && <span className="type-icon">📋</span>}
+          {isTBI && <span className="type-icon">🔧</span>}
+          <span className="id-number">#{workItem.id}</span>
+        </div>
+        <div className="work-item-state">
+          {workItem.state}
+        </div>
       </div>
-      <div className="work-item-title" style={{ color: colors.text }}>
+      <div className="work-item-title">
         {workItem.title}
       </div>
-      <div className="work-item-state" style={{ 
-        backgroundColor: isSpecialType ? 'rgba(255, 255, 255, 0.2)' : undefined,
-        color: colors.text
-      }}>
-        {workItem.state}
-      </div>
       {workItem.assignedTo && (
-        <div className="work-item-assigned" style={{ color: colors.text }}>
+        <div className="work-item-assigned">
           {workItem.assignedTo}
         </div>
       )}
       {(isEpic || isFeature || isBug) && workItem.targetDate && (
-        <div className="work-item-target-date" style={{ 
-          fontSize: '10px', 
-          color: colors.text, 
-          marginTop: '4px',
-          fontWeight: 600
-        }}>
+        <div className="work-item-target-date">
           Target: {workItem.targetDate}
         </div>
       )}

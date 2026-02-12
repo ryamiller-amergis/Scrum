@@ -9,6 +9,12 @@ interface UnscheduledListProps {
   onUpdateDueDate: (id: number, dueDate: string | null) => void;
 }
 
+interface HierarchicalItem {
+  item: WorkItem;
+  children: HierarchicalItem[];
+  level: number;
+}
+
 export const UnscheduledList: React.FC<UnscheduledListProps> = ({
   workItems,
   onSelectItem,
@@ -18,12 +24,17 @@ export const UnscheduledList: React.FC<UnscheduledListProps> = ({
   const [selectedIteration, setSelectedIteration] = useState<string>('');
   const [selectedWorkItemType, setSelectedWorkItemType] = useState<string>('');
   const [selectedAssignedTo, setSelectedAssignedTo] = useState<string>('');
-  const [selectedState, setSelectedState] = useState<string>('');
+  const [selectedStates, setSelectedStates] = useState<string[]>([]);
   const [isDropZone, setIsDropZone] = useState(false);
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(true);
   const [showFilters, setShowFilters] = useState(false);
-  const [width, setWidth] = useState<number>(250);
+  const [width, setWidth] = useState<number>(() => {
+    // Default to 40% of viewport width, clamped between 250px and 1000px
+    const defaultWidth = window.innerWidth * 0.4;
+    return Math.min(Math.max(defaultWidth, 250), 1000);
+  });
   const [isResizing, setIsResizing] = useState(false);
+  const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set());
 
   // Get unique iteration values
   const iterationOptions = useMemo(() => {
@@ -90,8 +101,8 @@ export const UnscheduledList: React.FC<UnscheduledListProps> = ({
     }
 
     // Filter by state
-    if (selectedState) {
-      items = items.filter(item => item.state === selectedState);
+    if (selectedStates.length > 0) {
+      items = items.filter(item => selectedStates.includes(item.state));
     }
     
     // Filter by search term
@@ -105,7 +116,83 @@ export const UnscheduledList: React.FC<UnscheduledListProps> = ({
     }
     
     return items;
-  }, [workItems, searchTerm, selectedIteration, selectedWorkItemType, selectedAssignedTo, selectedState]);
+  }, [workItems, searchTerm, selectedIteration, selectedWorkItemType, selectedAssignedTo, selectedStates]);
+
+  // Build hierarchical structure
+  const hierarchicalItems = useMemo(() => {
+    const itemMap = new Map<number, HierarchicalItem>();
+    const rootItems: HierarchicalItem[] = [];
+
+    // First pass: create hierarchical item objects
+    filteredItems.forEach(item => {
+      itemMap.set(item.id, {
+        item,
+        children: [],
+        level: 0,
+      });
+    });
+
+    // Second pass: build parent-child relationships
+    filteredItems.forEach(item => {
+      const hierarchicalItem = itemMap.get(item.id)!;
+      
+      if (item.parentId && itemMap.has(item.parentId)) {
+        // This item has a parent in the filtered list
+        const parent = itemMap.get(item.parentId)!;
+        parent.children.push(hierarchicalItem);
+        hierarchicalItem.level = parent.level + 1;
+      } else {
+        // This is a root item (no parent or parent not in filtered list)
+        // If "All Types" is selected, only show Epics at root
+        if (!selectedWorkItemType) {
+          // All Types mode - only show Epics at the root
+          if (item.workItemType === 'Epic') {
+            rootItems.push(hierarchicalItem);
+          }
+        } else {
+          // Specific type selected - show all items of that type at root if parent not in filtered list
+          rootItems.push(hierarchicalItem);
+        }
+      }
+    });
+
+    // Sort root items and children by work item type priority then by ID
+    const typePriority: { [key: string]: number } = {
+      'Epic': 1,
+      'Feature': 2,
+      'Product Backlog Item': 3,
+      'Technical Backlog Item': 4,
+      'Bug': 5,
+    };
+
+    const sortItems = (items: HierarchicalItem[]) => {
+      items.sort((a, b) => {
+        const aPriority = typePriority[a.item.workItemType] || 99;
+        const bPriority = typePriority[b.item.workItemType] || 99;
+        if (aPriority !== bPriority) {
+          return aPriority - bPriority;
+        }
+        return a.item.id - b.item.id;
+      });
+      items.forEach(item => sortItems(item.children));
+    };
+
+    sortItems(rootItems);
+
+    return rootItems;
+  }, [filteredItems, selectedWorkItemType]);
+
+  const toggleExpanded = (itemId: number) => {
+    setExpandedItems(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(itemId)) {
+        newSet.delete(itemId);
+      } else {
+        newSet.add(itemId);
+      }
+      return newSet;
+    });
+  };
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -139,8 +226,8 @@ export const UnscheduledList: React.FC<UnscheduledListProps> = ({
 
     const handleMouseMove = (e: MouseEvent) => {
       const newWidth = e.clientX;
-      // Constrain width between 200px and 600px
-      if (newWidth >= 200 && newWidth <= 600) {
+      // Constrain width between 200px and 1000px
+      if (newWidth >= 200 && newWidth <= 1000) {
         setWidth(newWidth);
       }
     };
@@ -232,16 +319,28 @@ export const UnscheduledList: React.FC<UnscheduledListProps> = ({
                 <option key={person} value={person}>{person}</option>
               ))}
             </select>
-            <select
-              value={selectedState}
-              onChange={(e) => setSelectedState(e.target.value)}
-              className="filter-select"
-            >
-              <option value="">All States</option>
+          </div>
+          <div className="state-filter-container">
+            <div className="state-filter-header">States:</div>
+            <div className="state-checkboxes">
               {stateOptions.map(state => (
-                <option key={state} value={state}>{state}</option>
+                <label key={state} className="state-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={selectedStates.includes(state)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedStates([...selectedStates, state]);
+                      } else {
+                        setSelectedStates(selectedStates.filter(s => s !== state));
+                      }
+                    }}
+                    className="state-checkbox"
+                  />
+                  <span>{state}</span>
+                </label>
               ))}
-            </select>
+            </div>
           </div>
           <select
             value={selectedIteration}
@@ -253,13 +352,13 @@ export const UnscheduledList: React.FC<UnscheduledListProps> = ({
               <option key={iteration} value={iteration}>{iteration}</option>
             ))}
           </select>
-          {(selectedWorkItemType || selectedAssignedTo || selectedState || selectedIteration) && (
+          {(selectedWorkItemType || selectedAssignedTo || selectedStates.length > 0 || selectedIteration) && (
             <button 
               className="clear-filters-btn"
               onClick={() => {
                 setSelectedWorkItemType('');
                 setSelectedAssignedTo('');
-                setSelectedState('');
+                setSelectedStates([]);
                 setSelectedIteration('');
               }}
             >
@@ -269,24 +368,77 @@ export const UnscheduledList: React.FC<UnscheduledListProps> = ({
             </>
           )}
           <div className="unscheduled-items">
-            {filteredItems.length === 0 ? (
+            {hierarchicalItems.length === 0 ? (
               <div className="empty-state">
                 {searchTerm ? 'No items match your search' : 'No unscheduled items'}
               </div>
             ) : (
-              filteredItems.map((item) => (
-                <DraggableWorkItem
-                  key={item.id}
-                  workItem={item}
-                  onClick={() => onSelectItem(item)}
-                />
-              ))
+              <HierarchicalItemList
+                items={hierarchicalItems}
+                expandedItems={expandedItems}
+                onToggleExpanded={toggleExpanded}
+                onSelectItem={onSelectItem}
+              />
             )}
           </div>
         </>
       )}
     </div>
   );
+};
+
+interface HierarchicalItemListProps {
+  items: HierarchicalItem[];
+  expandedItems: Set<number>;
+  onToggleExpanded: (itemId: number) => void;
+  onSelectItem: (item: WorkItem) => void;
+}
+
+const HierarchicalItemList: React.FC<HierarchicalItemListProps> = ({
+  items,
+  expandedItems,
+  onToggleExpanded,
+  onSelectItem,
+}) => {
+  const renderItem = (hierarchicalItem: HierarchicalItem): React.ReactNode => {
+    const { item, children, level } = hierarchicalItem;
+    const hasChildren = children.length > 0;
+    const isExpanded = expandedItems.has(item.id);
+
+    return (
+      <div key={item.id} className="hierarchical-item-container">
+        <div 
+          className="hierarchical-item" 
+          style={{ paddingLeft: `${level * 20}px` }}
+        >
+          {hasChildren && (
+            <button
+              className="expand-toggle"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleExpanded(item.id);
+              }}
+            >
+              {isExpanded ? '▼' : '▶'}
+            </button>
+          )}
+          <div className={`item-wrapper ${!hasChildren ? 'no-children' : ''}`}>
+            <DraggableWorkItem
+              workItem={item}
+              onClick={() => onSelectItem(item)}
+            />
+          </div>
+        </div>
+        {hasChildren && isExpanded && (
+          <div className="children-container">
+            {children.map(renderItem)}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return <>{items.map(renderItem)}</>;
 };
 
 interface DraggableWorkItemProps {

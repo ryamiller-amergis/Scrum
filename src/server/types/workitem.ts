@@ -19,6 +19,7 @@ export interface WorkItem {
   reproSteps?: string;
   design?: string;
   discussions?: string;
+  parentId?: number;
 }
 
 export interface StateTransition {
