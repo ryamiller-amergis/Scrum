@@ -124,13 +124,21 @@ export class FeatureAutoCompleteService {
             continue;
           }
 
-          // Check if all children are in completed states
-          const allChildrenComplete = children.every(child => 
+          // Filter out "Removed" items - they don't count toward completion
+          const activeChildren = children.filter(child => child.state !== 'Removed');
+          
+          if (activeChildren.length === 0) {
+            // No active children (all removed), skip this feature
+            continue;
+          }
+
+          // Check if all active children are in completed states
+          const allChildrenComplete = activeChildren.every(child => 
             this.COMPLETED_STATES.includes(child.state)
           );
 
           if (allChildrenComplete) {
-            console.log(`[FeatureAutoComplete] Feature ${feature.id} - All ${children.length} children are complete. Updating to Done.`);
+            console.log(`[FeatureAutoComplete] Feature ${feature.id} - All ${activeChildren.length} active children are complete (${children.length - activeChildren.length} removed). Updating to Done.`);
             
             // Update the feature state to Done
             await azureDevOps.updateWorkItemField(feature.id, 'System.State', 'Done');

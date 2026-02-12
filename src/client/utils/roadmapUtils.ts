@@ -42,7 +42,7 @@ export function calculateHealthStatus(
   const PLANNING_HORIZON_DAYS = 60; // Don't flag items as in-progress if deadline is beyond this
   const REASONABLE_ITEMS_PER_DAY = 1; // Expected velocity: items we can complete per day
   
-  // If past target date
+  // If past target date (overdue)
   if (daysRemaining < 0) {
     return completionPercentage >= 100 ? 'on-track' : 'behind';
   }
@@ -50,13 +50,6 @@ export function calculateHealthStatus(
   // If completed, always on track
   if (completionPercentage >= 100) {
     return 'on-track';
-  }
-
-  // Within warning threshold of deadline - must be complete
-  if (daysRemaining <= DEADLINE_WARNING_THRESHOLD) {
-    if (completionPercentage < 100) {
-      return 'behind';
-    }
   }
 
   // If deadline is far in the future and work hasn't started, don't flag as at-risk
@@ -102,8 +95,14 @@ export function calculateHealthStatus(
  * @returns Percentage of time elapsed (0-100)
  */
 export function calculateTimeElapsed(createdDate: string, targetDate: string): number {
-  const created = new Date(createdDate);
-  const target = new Date(targetDate);
+  // Parse dates as local dates, not UTC, to avoid timezone issues
+  const parseLocalDate = (dateStr: string) => {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    return new Date(year, month - 1, day);
+  };
+  
+  const created = parseLocalDate(createdDate);
+  const target = parseLocalDate(targetDate);
   const now = new Date();
 
   const totalDuration = target.getTime() - created.getTime();
@@ -121,7 +120,9 @@ export function calculateTimeElapsed(createdDate: string, targetDate: string): n
  * @returns Number of days remaining (negative if past due)
  */
 export function calculateDaysRemaining(targetDate: string): number {
-  const target = new Date(targetDate);
+  // Parse date as local date, not UTC, to avoid timezone issues
+  const [year, month, day] = targetDate.split('-').map(Number);
+  const target = new Date(year, month - 1, day); // month is 0-indexed
   const now = new Date();
   
   // Reset time to midnight for accurate day calculation
@@ -142,9 +143,14 @@ export function calculateDaysRemaining(targetDate: string): number {
 export function calculateCompletionPercentage(children: WorkItem[]): number {
   if (!children || children.length === 0) return 0;
 
+  // Filter out "Removed" items from the calculation
+  const activeChildren = children.filter(child => child.state !== 'Removed');
+  
+  if (activeChildren.length === 0) return 0;
+
   // For Features (children of Epics), only Done/Closed count as complete
   // For PBIs/TBIs/Bugs (children of Features), use the full completed states including Ready For Release
-  const isFeatureLevel = children.some(child => child.workItemType === 'Feature');
+  const isFeatureLevel = activeChildren.some(child => child.workItemType === 'Feature');
   
   const completedStates = isFeatureLevel 
     ? ['Done', 'Closed']  // Features: only Done/Closed
@@ -155,7 +161,7 @@ export function calculateCompletionPercentage(children: WorkItem[]): number {
   
   let totalProgress = 0;
   
-  children.forEach(child => {
+  activeChildren.forEach(child => {
     if (completedStates.includes(child.state)) {
       // Completed items count as 100%
       totalProgress += 100;
@@ -166,7 +172,7 @@ export function calculateCompletionPercentage(children: WorkItem[]): number {
     // New, Committed, and other states count as 0%
   });
 
-  return Math.round(totalProgress / children.length);
+  return Math.round(totalProgress / activeChildren.length);
 }
 
 /**

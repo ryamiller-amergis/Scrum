@@ -33,7 +33,7 @@ const RoadmapView: React.FC<RoadmapViewProps> = ({ workItems, project, areaPath,
   const [childrenCache, setChildrenCache] = useState<Map<number, WorkItem[]>>(new Map());
   const [loadingChildren, setLoadingChildren] = useState<Set<number>>(new Set());
   const [showInfoPanel, setShowInfoPanel] = useState<boolean>(false);
-  const [selectedStatus, setSelectedStatus] = useState<string>('');
+  const [selectedStatuses, setSelectedStatuses] = useState<string[]>(['In Progress']);
 
   // Generate timeline columns based on granularity and time range
   const timelineColumns: TimelineColumn[] = React.useMemo(() => {
@@ -120,11 +120,26 @@ const RoadmapView: React.FC<RoadmapViewProps> = ({ workItems, project, areaPath,
 
   // Prepare roadmap items when work items change
   useEffect(() => {
-    // Only show Epics with target dates in the main view
-    const epicsWithTargetDates = workItems.filter(item => 
-      item.targetDate && item.workItemType === 'Epic' &&
-      (selectedStatus === '' || item.state === selectedStatus)
-    );
+    // Only show Epics with target dates in the main view (exclude ReleaseVersion epics)
+    const epicsWithTargetDates = workItems.filter(item => {
+      const hasTargetDate = !!item.targetDate;
+      const isEpic = item.workItemType === 'Epic';
+      const matchesStatus = selectedStatuses.length === 0 || selectedStatuses.includes(item.state);
+      const notReleaseVersion = !item.tags?.includes('ReleaseVersion');
+      
+      // Debug logging for "New" items
+      if (item.state === 'New' && isEpic) {
+        console.log(`Epic "${item.title}":`, {
+          hasTargetDate,
+          matchesStatus,
+          notReleaseVersion,
+          tags: item.tags,
+          willShow: hasTargetDate && matchesStatus && notReleaseVersion
+        });
+      }
+      
+      return hasTargetDate && isEpic && matchesStatus && notReleaseVersion;
+    });
 
     const items = epicsWithTargetDates.map(item => {
       const completionPercentage = 0;
@@ -190,7 +205,7 @@ const RoadmapView: React.FC<RoadmapViewProps> = ({ workItems, project, areaPath,
         fetchChildren(item);
       }
     });
-  }, [workItems, selectedStatus]);
+  }, [workItems, selectedStatuses]);
 
   // Update roadmap items with completion data from children
   useEffect(() => {
@@ -218,25 +233,28 @@ const RoadmapView: React.FC<RoadmapViewProps> = ({ workItems, project, areaPath,
   const updateItemWithChildren = (item: RoadmapItem, children: WorkItem[]): RoadmapItem => {
     const completionPercentage = calculateCompletionPercentage(children);
     
+    // Filter out "Removed" items from calculations
+    const activeChildren = children.filter(child => child.state !== 'Removed');
+    
     // Determine completed states based on child type
-    const isFeatureLevel = children.some(child => child.workItemType === 'Feature');
+    const isFeatureLevel = activeChildren.some(child => child.workItemType === 'Feature');
     const completedStates = isFeatureLevel 
       ? ['Done', 'Closed']
       : ['Ready For Release', 'UAT - Test Done', 'Done', 'Closed'];
     
-    const completedCount = children.filter(child => completedStates.includes(child.state)).length;
+    const completedCount = activeChildren.filter(child => completedStates.includes(child.state)).length;
     const daysRemaining = calculateDaysRemaining(item.targetDate);
     
     // Calculate remaining work - count in-progress items as 0.5 remaining since they're already half done
     const inProgressStates = ['In Progress', 'In Pull Request', 'Ready For Test', 'In Test'];
-    const inProgressCount = children.filter(child => inProgressStates.includes(child.state)).length;
-    const notStartedCount = children.filter(child => 
+    const inProgressCount = activeChildren.filter(child => inProgressStates.includes(child.state)).length;
+    const notStartedCount = activeChildren.filter(child => 
       !completedStates.includes(child.state) && !inProgressStates.includes(child.state)
     ).length;
     const remainingItems = (inProgressCount * 0.5) + notStartedCount;
     
     // Find earliest created date from children or use item's date
-    const createdDates = children.map(c => new Date(c.createdDate).getTime()).filter(d => !isNaN(d));
+    const createdDates = activeChildren.map(c => new Date(c.createdDate).getTime()).filter(d => !isNaN(d));
     const earliestCreated = createdDates.length > 0 ? new Date(Math.min(...createdDates)) : new Date(item.targetDate);
     
     const actualTimeElapsed = calculateTimeElapsed(earliestCreated.toISOString(), item.targetDate);
@@ -245,7 +263,7 @@ const RoadmapView: React.FC<RoadmapViewProps> = ({ workItems, project, areaPath,
     return {
       ...item,
       completionPercentage,
-      childCount: children.length,
+      childCount: activeChildren.length,
       completedCount,
       healthStatus,
       daysRemaining,
@@ -354,18 +372,25 @@ const RoadmapView: React.FC<RoadmapViewProps> = ({ workItems, project, areaPath,
           </div>
 
           <div className="control-group">
-            <label>Status:</label>
-            <select 
-              value={selectedStatus} 
-              onChange={(e) => setSelectedStatus(e.target.value)}
-            >
-              <option value="">All Statuses</option>
-              <option value="New">New</option>
-              <option value="In Progress">In Progress</option>
-              <option value="In Design">In Design</option>
-              <option value="Done">Done</option>
-              <option value="Removed">Removed</option>
-            </select>
+            <label>Status Filter:</label>
+            <div className="status-checkboxes">
+              {['New', 'In Progress', 'In Design', 'Done', 'Removed'].map(status => (
+                <label key={status} className="status-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={selectedStatuses.includes(status)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedStatuses([...selectedStatuses, status]);
+                      } else {
+                        setSelectedStatuses(selectedStatuses.filter(s => s !== status));
+                      }
+                    }}
+                  />
+                  <span>{status}</span>
+                </label>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -585,10 +610,12 @@ const RoadmapView: React.FC<RoadmapViewProps> = ({ workItems, project, areaPath,
                                   <div className="feature-progress-inline">
                                     <span className="feature-completion-text">
                                       {(() => {
+                                        // Filter out "Removed" items from percentage calculation
+                                        const activeGrandChildren = grandChildren.filter(gc => gc.state !== 'Removed');
                                         const completedStates = ['Ready For Release', 'UAT - Test Done', 'Done', 'Closed'];
-                                        const completedCount = grandChildren.filter(gc => completedStates.includes(gc.state)).length;
-                                        const percentage = grandChildren.length > 0 ? Math.round((completedCount / grandChildren.length) * 100) : 0;
-                                        return `${percentage}% (${completedCount}/${grandChildren.length})`;
+                                        const completedCount = activeGrandChildren.filter(gc => completedStates.includes(gc.state)).length;
+                                        const percentage = activeGrandChildren.length > 0 ? Math.round((completedCount / activeGrandChildren.length) * 100) : 0;
+                                        return `${percentage}% (${completedCount}/${activeGrandChildren.length})`;
                                       })()}
                                     </span>
                                   </div>

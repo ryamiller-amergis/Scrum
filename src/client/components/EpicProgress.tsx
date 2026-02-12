@@ -48,6 +48,9 @@ export const EpicProgress: React.FC<EpicProgressProps> = ({ epicId, project, are
   };
 
   const stats = useMemo(() => {
+    // Filter out "Removed" items from all calculations
+    const activeChildren = children.filter(item => item.state !== 'Removed');
+    
     const notStartedStates = ['New', 'Approved', 'Grooming', 'Grooming Complete', 'Requirement Gathering', 'Requirements Gathering'];
     const developmentStates = ['Committed', 'In Progress', 'In Pull Request'];
     const qaStates = ['Ready For Test', 'In Test', 'Blocked'];
@@ -55,15 +58,15 @@ export const EpicProgress: React.FC<EpicProgressProps> = ({ epicId, project, are
     const doneStates = ['UAT - Test Done', 'Done', 'Closed'];
     const completedStates = ['UAT - Test Done', 'Done', 'Closed'];
 
-    const notStarted = children.filter(item => notStartedStates.includes(item.state));
-    const inDevelopment = children.filter(item => developmentStates.includes(item.state));
-    const inQA = children.filter(item => qaStates.includes(item.state));
-    const inUAT = children.filter(item => uatStates.includes(item.state));
-    const done = children.filter(item => doneStates.includes(item.state));
-    const completed = children.filter(item => completedStates.includes(item.state));
-    const remaining = children.filter(item => !completedStates.includes(item.state));
+    const notStarted = activeChildren.filter(item => notStartedStates.includes(item.state));
+    const inDevelopment = activeChildren.filter(item => developmentStates.includes(item.state));
+    const inQA = activeChildren.filter(item => qaStates.includes(item.state));
+    const inUAT = activeChildren.filter(item => uatStates.includes(item.state));
+    const done = activeChildren.filter(item => doneStates.includes(item.state));
+    const completed = activeChildren.filter(item => completedStates.includes(item.state));
+    const remaining = activeChildren.filter(item => !completedStates.includes(item.state));
 
-    const total = children.length;
+    const total = activeChildren.length;
 
     return {
       total,

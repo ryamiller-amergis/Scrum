@@ -1382,9 +1382,23 @@ export class AzureDevOpsService {
         console.log(`[getReleaseVersions] Found ${queryResult.workItems.length} Features/Epics`);
 
         const ids = queryResult.workItems.map((wi) => wi.id!);
+        console.log(`[getReleaseVersions] Work item IDs to fetch:`, ids);
+        
+        if (ids.length === 0) {
+          console.log('[getReleaseVersions] No work item IDs, returning empty array');
+          return [];
+        }
+
         const workItems = await witApi.getWorkItems(ids, ['System.Tags']);
 
+        console.log(`[getReleaseVersions] getWorkItems returned:`, workItems ? `${workItems.length} items` : 'null');
+
         const releaseVersions = new Set<string>();
+
+        if (!workItems || workItems.length === 0) {
+          console.log('[getReleaseVersions] No work items returned, returning empty array');
+          return [];
+        }
 
         workItems.forEach((wi) => {
           const tags = wi.fields?.['System.Tags'] as string;
@@ -2245,46 +2259,79 @@ export class AzureDevOpsService {
    * Unlink work items from a release (remove related link)
    */
   async unlinkWorkItemsFromRelease(epicId: number, workItemIds: number[]): Promise<void> {
+    console.log(`[unlinkWorkItemsFromRelease] STARTING - Epic: ${epicId}, Work Items: ${workItemIds}`);
     return retryWithBackoff(async () => {
+      console.log(`[unlinkWorkItemsFromRelease] Inside retryWithBackoff`);
       const witApi = await this.connection.getWorkItemTrackingApi();
-
-      // First, get the epic to find the relation indices
-      const epicWorkItem = await witApi.getWorkItem(epicId, undefined, undefined, undefined, this.project);
-
-      if (!epicWorkItem || !epicWorkItem.relations) {
-        console.log(`[unlinkWorkItemsFromRelease] Epic ${epicId} has no relations`);
-        return;
-      }
+      console.log(`[unlinkWorkItemsFromRelease] Got work item tracking API`);
 
       for (const workItemId of workItemIds) {
-        // Find the relation index for this work item (filter by "Related" link type)
-        const relationIndex = epicWorkItem.relations.findIndex(
-          (rel: any) => 
-            rel.rel === 'System.LinkTypes.Related' &&
-            rel.url?.includes(`/${workItemId}`)
-        );
+        try {
+          console.log(`[unlinkWorkItemsFromRelease] Processing work item ${workItemId}...`);
+          
+          // Fetch the work item with EXPAND to get all relations
+          const workItem = await witApi.getWorkItem(workItemId, undefined, undefined, WorkItemExpand.Relations, this.project);
+          console.log(`[unlinkWorkItemsFromRelease] Fetched work item ${workItemId}`);
+          console.log(`[unlinkWorkItemsFromRelease] Work item fields:`, Object.keys(workItem.fields || {}));
+          console.log(`[unlinkWorkItemsFromRelease] Work item _links:`, workItem._links);
 
-        if (relationIndex === -1) {
-          console.log(`[unlinkWorkItemsFromRelease] No related link found between epic ${epicId} and work item ${workItemId}`);
-          continue;
+          if (!workItem.relations || workItem.relations.length === 0) {
+            console.log(`[unlinkWorkItemsFromRelease] Work item ${workItemId} has no relations`);
+            console.log(`[unlinkWorkItemsFromRelease] Full work item object:`, JSON.stringify(workItem, null, 2));
+            continue;
+          }
+
+          console.log(`[unlinkWorkItemsFromRelease] Work item ${workItemId} has ${workItem.relations.length} relations`);
+          console.log(`[unlinkWorkItemsFromRelease] All relations with full details:`);
+          workItem.relations.forEach((rel: any, idx: number) => {
+            console.log(`  [${idx}] Type: ${rel.rel}, URL: ${rel.url}, Attributes:`, rel.attributes);
+          });
+
+          // Find the relation index for the epic (filter by "Related" link type)
+          const relationIndex = workItem.relations.findIndex(
+            (rel: any) => 
+              rel.rel === 'System.LinkTypes.Related' &&
+              rel.url?.includes(`/${epicId}`)
+          );
+
+          if (relationIndex === -1) {
+            console.log(`[unlinkWorkItemsFromRelease] No 'System.LinkTypes.Related' link found between work item ${workItemId} and epic ${epicId}`);
+            console.log(`[unlinkWorkItemsFromRelease] Looking for epic ${epicId} in any relation type...`);
+            const anyRelationIndex = workItem.relations.findIndex(
+              (rel: any) => rel.url?.includes(`/${epicId}`)
+            );
+            if (anyRelationIndex !== -1) {
+              console.log(`[unlinkWorkItemsFromRelease] Found epic ${epicId} in relation type: ${workItem.relations[anyRelationIndex].rel}`);
+            }
+            continue;
+          }
+
+          console.log(`[unlinkWorkItemsFromRelease] Found related link at index ${relationIndex} from work item ${workItemId} to epic ${epicId}`);
+          console.log(`[unlinkWorkItemsFromRelease] Relation to remove:`, JSON.stringify(workItem.relations[relationIndex], null, 2));
+
+          const patchDocument = [
+            {
+              op: 'remove',
+              path: `/relations/${relationIndex}`,
+            },
+          ];
+
+          console.log(`[unlinkWorkItemsFromRelease] Sending patch to work item ${workItemId}:`, JSON.stringify(patchDocument, null, 2));
+
+          await witApi.updateWorkItem(
+            {},
+            patchDocument,
+            workItemId,
+            this.project
+          );
+
+          console.log(`[unlinkWorkItemsFromRelease] Successfully removed related link from work item ${workItemId} to epic ${epicId}`);
+        } catch (error) {
+          console.error(`[unlinkWorkItemsFromRelease] Error unlinking work item ${workItemId} from epic ${epicId}:`, error);
+          throw error; // Re-throw to fail the whole operation
         }
-
-        const patchDocument = [
-          {
-            op: 'remove',
-            path: `/relations/${relationIndex}`,
-          },
-        ];
-
-        await witApi.updateWorkItem(
-          {},
-          patchDocument,
-          epicId,
-          this.project
-        );
-
-        console.log(`[unlinkWorkItemsFromRelease] Removed related link between epic ${epicId} and work item ${workItemId}`);
       }
+      console.log(`[unlinkWorkItemsFromRelease] COMPLETED - All work items processed`);
     });
   }
 

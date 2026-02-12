@@ -682,24 +682,35 @@ router.post('/releases/:epicId/link-related', async (req: Request, res: Response
 
 // POST /api/releases/:epicId/unlink-related - Unlink related items from release
 router.post('/releases/:epicId/unlink-related', async (req: Request, res: Response) => {
+  console.log(`[unlink-related] ====== ROUTE HIT ====== Epic: ${req.params.epicId}, Body:`, req.body);
   try {
     const epicId = parseInt(req.params.epicId, 10);
     const { workItemIds, project, areaPath } = req.body as { workItemIds: number[]; project?: string; areaPath?: string };
 
+    console.log(`[unlink-related] Request to unlink items ${workItemIds} from epic ${epicId}`);
+
     if (isNaN(epicId)) {
+      console.log(`[unlink-related] Invalid epic ID: ${req.params.epicId}`);
       return res.status(400).json({ error: 'Invalid epic ID' });
     }
 
     if (!workItemIds || !Array.isArray(workItemIds) || workItemIds.length === 0) {
+      console.log(`[unlink-related] Invalid workItemIds:`, workItemIds);
       return res.status(400).json({ error: 'workItemIds array is required' });
     }
 
+    console.log(`[unlink-related] Creating AzureDevOpsService with project: ${project}, areaPath: ${areaPath}`);
     const adoService = new AzureDevOpsService(project, areaPath);
+    
+    console.log(`[unlink-related] Calling unlinkWorkItemsFromRelease...`);
     await adoService.unlinkWorkItemsFromRelease(epicId, workItemIds);
+    
+    console.log(`[unlink-related] Successfully unlinked ${workItemIds.length} items from epic ${epicId}`);
     res.json({ success: true, unlinkedCount: workItemIds.length });
   } catch (error: any) {
-    console.error('Error unlinking related items:', error);
-    res.status(500).json({ error: 'Failed to unlink related items' });
+    console.error('[unlink-related] Error unlinking related items:', error);
+    console.error('[unlink-related] Error stack:', error.stack);
+    res.status(500).json({ error: 'Failed to unlink related items', details: error.message });
   }
 });
 
@@ -745,12 +756,15 @@ router.delete('/releases/:epicId', async (req: Request, res: Response) => {
 router.get('/releases', async (req: Request, res: Response) => {
   try {
     const { project, areaPath } = req.query as { project?: string; areaPath?: string };
+    console.log(`[GET /releases] Fetching releases for project: ${project}, areaPath: ${areaPath}`);
     const adoService = new AzureDevOpsService(project, areaPath);
     const versions = await adoService.getReleaseVersions();
+    console.log(`[GET /releases] Found ${versions.length} release versions`);
     res.json(versions);
   } catch (error: any) {
-    console.error('Error fetching release versions:', error);
-    res.status(500).json({ error: 'Failed to fetch release versions' });
+    console.error('[GET /releases] Error fetching release versions:', error);
+    console.error('[GET /releases] Error stack:', error.stack);
+    res.status(500).json({ error: 'Failed to fetch release versions', details: error.message });
   }
 });
 
