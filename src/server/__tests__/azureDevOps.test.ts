@@ -192,8 +192,8 @@ describe('AzureDevOpsService', () => {
 
       await service.getWorkItems();
 
-      // Should be called twice (200 + 50)
-      expect(mockWitApi.getWorkItems).toHaveBeenCalledTimes(2);
+      // Should be called 4 times (2 for fields: 200 + 50, and 2 for relations: 200 + 50)
+      expect(mockWitApi.getWorkItems).toHaveBeenCalledTimes(4);
     });
   });
 

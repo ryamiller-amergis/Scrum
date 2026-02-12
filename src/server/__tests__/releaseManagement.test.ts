@@ -120,7 +120,10 @@ describe('Release Management API Routes', () => {
         .get('/api/releases')
         .expect(500);
 
-      expect(response.body).toEqual({ error: 'Failed to fetch release versions' });
+      expect(response.body).toEqual({ 
+        error: 'Failed to fetch release versions',
+        details: 'Query failed'
+      });
     });
   });
 
