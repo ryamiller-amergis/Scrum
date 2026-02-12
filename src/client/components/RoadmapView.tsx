@@ -33,7 +33,7 @@ const RoadmapView: React.FC<RoadmapViewProps> = ({ workItems, project, areaPath,
   const [childrenCache, setChildrenCache] = useState<Map<number, WorkItem[]>>(new Map());
   const [loadingChildren, setLoadingChildren] = useState<Set<number>>(new Set());
   const [showInfoPanel, setShowInfoPanel] = useState<boolean>(false);
-  const [selectedStatuses, setSelectedStatuses] = useState<string[]>(['In Progress']);
+  const [selectedStatuses, setSelectedStatuses] = useState<Set<string>>(new Set(['In Progress']));
 
   // Generate timeline columns based on granularity and time range
   const timelineColumns: TimelineColumn[] = React.useMemo(() => {
@@ -124,7 +124,7 @@ const RoadmapView: React.FC<RoadmapViewProps> = ({ workItems, project, areaPath,
     const epicsWithTargetDates = workItems.filter(item => {
       const hasTargetDate = !!item.targetDate;
       const isEpic = item.workItemType === 'Epic';
-      const matchesStatus = selectedStatuses.length === 0 || selectedStatuses.includes(item.state);
+      const matchesStatus = selectedStatuses.size === 0 || selectedStatuses.has(item.state);
       const notReleaseVersion = !item.tags?.includes('ReleaseVersion');
       
       // Debug logging for "New" items
@@ -378,13 +378,15 @@ const RoadmapView: React.FC<RoadmapViewProps> = ({ workItems, project, areaPath,
                 <label key={status} className="status-checkbox-label">
                   <input
                     type="checkbox"
-                    checked={selectedStatuses.includes(status)}
+                    checked={selectedStatuses.has(status)}
                     onChange={(e) => {
+                      const newStatuses = new Set(selectedStatuses);
                       if (e.target.checked) {
-                        setSelectedStatuses([...selectedStatuses, status]);
+                        newStatuses.add(status);
                       } else {
-                        setSelectedStatuses(selectedStatuses.filter(s => s !== status));
+                        newStatuses.delete(status);
                       }
+                      setSelectedStatuses(newStatuses);
                     }}
                   />
                   <span>{status}</span>
@@ -565,7 +567,7 @@ const RoadmapView: React.FC<RoadmapViewProps> = ({ workItems, project, areaPath,
 
                 {isExpanded && children && (
                   <div className="timeline-children">
-                    {children.map(child => {
+                    {children.filter(child => selectedStatuses.size === 0 || selectedStatuses.has(child.state)).map(child => {
                       const isChildExpanded = expandedItems.has(child.id);
                       const isChildLoading = loadingChildren.has(child.id);
                       const grandChildren = childrenCache.get(child.id);
