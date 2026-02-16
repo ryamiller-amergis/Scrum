@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { azureCostService, AzureSubscription, CostData } from '../services/azureCostService';
+import { azureCostService, AzureSubscription, CostData, DashboardData } from '../services/azureCostService';
 import './CloudCost.css';
 
 interface CloudCostProps {
@@ -7,21 +7,152 @@ interface CloudCostProps {
   areaPath: string;
 }
 
+// SessionStorage keys
+const STORAGE_KEYS = {
+  SUBSCRIPTIONS: 'cloudCost_subscriptions',
+  DASHBOARD_DATA: 'cloudCost_dashboardData',
+  SELECTED_SUBSCRIPTION: 'cloudCost_selectedSubscription',
+  SELECTED_RESOURCE_GROUPS: 'cloudCost_selectedResourceGroups',
+  TIME_PERIOD: 'cloudCost_timePeriod',
+  CUSTOM_START_DATE: 'cloudCost_customStartDate',
+  CUSTOM_END_DATE: 'cloudCost_customEndDate',
+  SHOW_DASHBOARD: 'cloudCost_showDashboard',
+  COST_DATA: 'cloudCost_costData',
+};
+
+// Helper functions for sessionStorage
+const saveToStorage = (key: string, value: any) => {
+  try {
+    sessionStorage.setItem(key, JSON.stringify(value));
+  } catch (error) {
+    console.error(`Failed to save ${key} to sessionStorage:`, error);
+  }
+};
+
+const loadFromStorage = <T,>(key: string, defaultValue: T): T => {
+  try {
+    const item = sessionStorage.getItem(key);
+    return item ? JSON.parse(item) : defaultValue;
+  } catch (error) {
+    console.error(`Failed to load ${key} from sessionStorage:`, error);
+    return defaultValue;
+  }
+};
+
 export const CloudCost: React.FC<CloudCostProps> = ({ project, areaPath }) => {
-  const [subscriptions, setSubscriptions] = useState<AzureSubscription[]>([]);
-  const [selectedSubscription, setSelectedSubscription] = useState<string>('');
-  const [selectedResourceGroups, setSelectedResourceGroups] = useState<string[]>([]);
-  const [timePeriod, setTimePeriod] = useState<string>('30d');
+  // Initialize state from sessionStorage
+  const [subscriptions, setSubscriptions] = useState<AzureSubscription[]>(() => 
+    loadFromStorage(STORAGE_KEYS.SUBSCRIPTIONS, [])
+  );
+  const [selectedSubscription, setSelectedSubscription] = useState<string>(() => 
+    loadFromStorage(STORAGE_KEYS.SELECTED_SUBSCRIPTION, '')
+  );
+  const [selectedResourceGroups, setSelectedResourceGroups] = useState<string[]>(() => 
+    loadFromStorage(STORAGE_KEYS.SELECTED_RESOURCE_GROUPS, [])
+  );
+  const [timePeriod, setTimePeriod] = useState<string>(() => 
+    loadFromStorage(STORAGE_KEYS.TIME_PERIOD, '30d')
+  );
+  const [customStartDate, setCustomStartDate] = useState<string>(() => 
+    loadFromStorage(STORAGE_KEYS.CUSTOM_START_DATE, '')
+  );
+  const [customEndDate, setCustomEndDate] = useState<string>(() => 
+    loadFromStorage(STORAGE_KEYS.CUSTOM_END_DATE, '')
+  );
   const [isResourceGroupDropdownOpen, setIsResourceGroupDropdownOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => {
+    // If we have subscriptions in storage, we're not loading
+    const cachedSubscriptions = loadFromStorage<AzureSubscription[]>(STORAGE_KEYS.SUBSCRIPTIONS, []);
+    return cachedSubscriptions.length === 0;
+  });
   const [error, setError] = useState<string | null>(null);
-  const [costData, setCostData] = useState<CostData | null>(null);
+  const [costData, setCostData] = useState<CostData | null>(() => 
+    loadFromStorage(STORAGE_KEYS.COST_DATA, null)
+  );
   const [isFetchingCostData, setIsFetchingCostData] = useState(false);
   const [openInfoModal, setOpenInfoModal] = useState<string | null>(null);
+  const [resourceGroupSearch, setResourceGroupSearch] = useState<string>('');
+  const [showDashboard, setShowDashboard] = useState(() => 
+    loadFromStorage(STORAGE_KEYS.SHOW_DASHBOARD, true)
+  );
+  const [dashboardData, setDashboardData] = useState<DashboardData[]>(() => 
+    loadFromStorage(STORAGE_KEYS.DASHBOARD_DATA, [])
+  );
+  const [isLoadingDashboard, setIsLoadingDashboard] = useState(() => {
+    // If we have dashboard data in storage, we're not loading
+    const cachedDashboard = loadFromStorage<DashboardData[]>(STORAGE_KEYS.DASHBOARD_DATA, []);
+    return cachedDashboard.length === 0;
+  });
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Save state to sessionStorage when it changes
+  useEffect(() => {
+    saveToStorage(STORAGE_KEYS.SUBSCRIPTIONS, subscriptions);
+  }, [subscriptions]);
+
+  useEffect(() => {
+    saveToStorage(STORAGE_KEYS.DASHBOARD_DATA, dashboardData);
+  }, [dashboardData]);
+
+  useEffect(() => {
+    saveToStorage(STORAGE_KEYS.SELECTED_SUBSCRIPTION, selectedSubscription);
+  }, [selectedSubscription]);
+
+  useEffect(() => {
+    saveToStorage(STORAGE_KEYS.SELECTED_RESOURCE_GROUPS, selectedResourceGroups);
+  }, [selectedResourceGroups]);
+
+  useEffect(() => {
+    saveToStorage(STORAGE_KEYS.TIME_PERIOD, timePeriod);
+  }, [timePeriod]);
+
+  useEffect(() => {
+    saveToStorage(STORAGE_KEYS.CUSTOM_START_DATE, customStartDate);
+  }, [customStartDate]);
+
+  useEffect(() => {
+    saveToStorage(STORAGE_KEYS.CUSTOM_END_DATE, customEndDate);
+  }, [customEndDate]);
+
+  useEffect(() => {
+    saveToStorage(STORAGE_KEYS.SHOW_DASHBOARD, showDashboard);
+  }, [showDashboard]);
+
+  useEffect(() => {
+    saveToStorage(STORAGE_KEYS.COST_DATA, costData);
+  }, [costData]);
+
+  // Fetch dashboard data on mount
+  useEffect(() => {
+    // Only fetch if we don't already have dashboard data
+    if (dashboardData.length > 0) {
+      return;
+    }
+
+    const fetchDashboardData = async () => {
+      try {
+        setIsLoadingDashboard(true);
+        setError(null);
+        const data = await azureCostService.getDashboardData(5);
+        setDashboardData(data);
+      } catch (err) {
+        console.error('Failed to fetch dashboard data:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
+      } finally {
+        setIsLoadingDashboard(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, [dashboardData.length]);
 
   // Fetch subscriptions on mount
   useEffect(() => {
+    // Only fetch if we don't already have subscriptions
+    if (subscriptions.length > 0) {
+      return;
+    }
+
     const fetchSubscriptions = async () => {
       try {
         setIsLoading(true);
@@ -29,8 +160,8 @@ export const CloudCost: React.FC<CloudCostProps> = ({ project, areaPath }) => {
         const data = await azureCostService.getSubscriptionsWithResourceGroups();
         setSubscriptions(data);
         
-        // Auto-select first subscription if available
-        if (data.length > 0) {
+        // Auto-select first subscription only if none is selected
+        if (data.length > 0 && !selectedSubscription) {
           setSelectedSubscription(data[0].subscriptionId);
         }
       } catch (err) {
@@ -42,7 +173,7 @@ export const CloudCost: React.FC<CloudCostProps> = ({ project, areaPath }) => {
     };
 
     fetchSubscriptions();
-  }, []);
+  }, [subscriptions.length, selectedSubscription]);
 
   const currentSubscription = useMemo(() => 
     subscriptions.find(sub => sub.subscriptionId === selectedSubscription),
@@ -50,6 +181,14 @@ export const CloudCost: React.FC<CloudCostProps> = ({ project, areaPath }) => {
   );
 
   const availableResourceGroups = currentSubscription?.resourceGroups || [];
+
+  // Filter resource groups based on search
+  const filteredResourceGroups = useMemo(() => {
+    if (!resourceGroupSearch) return availableResourceGroups;
+    return availableResourceGroups.filter(rg => 
+      rg.toLowerCase().includes(resourceGroupSearch.toLowerCase())
+    );
+  }, [availableResourceGroups, resourceGroupSearch]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -68,6 +207,7 @@ export const CloudCost: React.FC<CloudCostProps> = ({ project, areaPath }) => {
   const handleSubscriptionChange = (subscriptionId: string) => {
     setSelectedSubscription(subscriptionId);
     setSelectedResourceGroups([]); // Reset resource groups when subscription changes
+    setResourceGroupSearch(''); // Reset search when subscription changes
   };
 
   const toggleResourceGroup = (rg: string) => {
@@ -86,50 +226,97 @@ export const CloudCost: React.FC<CloudCostProps> = ({ project, areaPath }) => {
     setSelectedResourceGroups([]);
   };
 
-  // Fetch cost data when selection changes
-  useEffect(() => {
-    const fetchCostData = async () => {
-      if (!selectedSubscription || selectedResourceGroups.length === 0) {
-        setCostData(null);
-        return;
-      }
+  // Manual refresh dashboard data
+  const refreshDashboardData = async () => {
+    try {
+      setIsLoadingDashboard(true);
+      setError(null);
+      const data = await azureCostService.getDashboardData(5);
+      setDashboardData(data);
+    } catch (err) {
+      console.error('Failed to fetch dashboard data:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
+    } finally {
+      setIsLoadingDashboard(false);
+    }
+  };
 
-      try {
-        setIsFetchingCostData(true);
-        console.log('Fetching cost data for:', {
-          subscription: selectedSubscription,
-          resourceGroups: selectedResourceGroups,
-          timePeriod
-        });
-        const data = await azureCostService.getCostData(
-          selectedSubscription,
-          selectedResourceGroups,
-          timePeriod
-        );
-        console.log('Received cost data:', {
-          totalCost: data.totalCost,
-          resourceGroups: data.costByResourceGroup,
-          detailsCount: data.costDetails.length,
-          uniqueRGs: [...new Set(data.costDetails.map(d => d.resourceGroup))],
-          costByDay: data.costByDay,
-          sampleDates: data.costByDay.slice(0, 3).map(d => ({ date: d.date, type: typeof d.date })),
-          allServices: [...new Set(data.costDetails.map(d => d.service))],
-          appInsightsResources: data.costDetails.filter(d => 
-            d.service.toLowerCase().includes('insight') || 
-            d.service.toLowerCase().includes('application')
-          )
-        });
-        setCostData(data);
-      } catch (err) {
-        console.error('Failed to fetch cost data:', err);
-        // Don't set error state, just log it
-      } finally {
-        setIsFetchingCostData(false);
-      }
-    };
+  // Navigate to detailed analysis from dashboard
+  const navigateToDetailedAnalysis = async (subscriptionId: string, resourceGroupName: string) => {
+    // Set the subscription and resource group
+    setSelectedSubscription(subscriptionId);
+    setSelectedResourceGroups([resourceGroupName]);
+    
+    // Switch to detailed analysis view
+    setShowDashboard(false);
+    
+    // Auto-fetch cost data for this selection
+    try {
+      setIsFetchingCostData(true);
+      const data = await azureCostService.getCostData(
+        subscriptionId,
+        [resourceGroupName],
+        timePeriod,
+        customStartDate,
+        customEndDate
+      );
+      setCostData(data);
+    } catch (err) {
+      console.error('Failed to fetch cost data:', err);
+    } finally {
+      setIsFetchingCostData(false);
+    }
+  };
 
-    fetchCostData();
-  }, [selectedSubscription, selectedResourceGroups, timePeriod]);
+  // Manual fetch cost data triggered by submit button
+  const fetchCostData = async () => {
+    if (!selectedSubscription || selectedResourceGroups.length === 0) {
+      return;
+    }
+
+    // Validate custom dates if custom period is selected
+    if (timePeriod === 'custom' && (!customStartDate || !customEndDate)) {
+      alert('Please select both start and end dates for custom range');
+      return;
+    }
+
+    try {
+      setIsFetchingCostData(true);
+      console.log('Fetching cost data for:', {
+        subscription: selectedSubscription,
+        resourceGroups: selectedResourceGroups,
+        timePeriod,
+        customStartDate,
+        customEndDate
+      });
+      const data = await azureCostService.getCostData(
+        selectedSubscription,
+        selectedResourceGroups,
+        timePeriod,
+        customStartDate,
+        customEndDate
+      );
+      console.log('Received cost data:', {
+        totalCost: data.totalCost,
+        resourceGroups: data.costByResourceGroup,
+        detailsCount: data.costDetails.length,
+        uniqueRGs: [...new Set(data.costDetails.map(d => d.resourceGroup))],
+        costByDay: data.costByDay,
+        sampleDates: data.costByDay.slice(0, 3).map(d => ({ date: d.date, type: typeof d.date })),
+        allServices: [...new Set(data.costDetails.map(d => d.service))],
+        appInsightsResources: data.costDetails.filter(d => 
+          d.service.toLowerCase().includes('insight') || 
+          d.service.toLowerCase().includes('application')
+        )
+      });
+      setCostData(data);
+    } catch (err) {
+      console.error('Failed to fetch cost data:', err);
+      // Don't set error state, just log it
+    } finally {
+      setIsFetchingCostData(false);
+    }
+  };
 
   const formatCurrency = (amount: number): string => {
     return new Intl.NumberFormat('en-US', {
@@ -282,12 +469,44 @@ export const CloudCost: React.FC<CloudCostProps> = ({ project, areaPath }) => {
       )}
       
       <div className="cloud-cost-header">
-        <h2>Cloud Cost Analytics</h2>
+        <div className="header-title-row">
+          <h2>Cloud Cost Analytics</h2>
+          <div className="header-actions">
+            <div className="view-toggle">
+              <button 
+                className={`toggle-btn ${showDashboard ? 'active' : ''}`}
+                onClick={() => setShowDashboard(true)}
+              >
+                Dashboard
+              </button>
+              <button 
+                className={`toggle-btn ${!showDashboard ? 'active' : ''}`}
+                onClick={() => setShowDashboard(false)}
+              >
+                Detailed Analysis
+              </button>
+            </div>
+            {showDashboard && (
+              <button 
+                className="refresh-btn"
+                onClick={refreshDashboardData}
+                disabled={isLoadingDashboard}
+                title="Refresh dashboard data"
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" className={isLoadingDashboard ? 'spinning' : ''}>
+                  <path d="M11.534 7h3.932a.25.25 0 0 1 .192.41l-1.966 2.36a.25.25 0 0 1-.384 0l-1.966-2.36a.25.25 0 0 1 .192-.41zm-11 2h3.932a.25.25 0 0 0 .192-.41L2.692 6.23a.25.25 0 0 0-.384 0L.342 8.59A.25.25 0 0 0 .534 9z"/>
+                  <path fillRule="evenodd" d="M8 3c-1.552 0-2.94.707-3.857 1.818a.5.5 0 1 1-.771-.636A6.002 6.002 0 0 1 13.917 7H12.9A5.002 5.002 0 0 0 8 3zM3.1 9a5.002 5.002 0 0 0 8.757 2.182.5.5 0 1 1 .771.636A6.002 6.002 0 0 1 2.083 9H3.1z"/>
+                </svg>
+                Refresh
+              </button>
+            )}
+          </div>
+        </div>
         {isLoading ? (
           <div className="loading-message">Loading Azure subscriptions...</div>
         ) : error ? (
           <div className="error-message">{error}</div>
-        ) : (
+        ) : !showDashboard ? (
           <div className="cloud-cost-filters">
             <div className="filter-group">
               <label>Subscription:</label>
@@ -330,6 +549,16 @@ export const CloudCost: React.FC<CloudCostProps> = ({ project, areaPath }) => {
               
               {isResourceGroupDropdownOpen && (
                 <div className="multi-select-dropdown">
+                  <div className="multi-select-search">
+                    <input
+                      type="text"
+                      placeholder="Search resource groups..."
+                      value={resourceGroupSearch}
+                      onChange={(e) => setResourceGroupSearch(e.target.value)}
+                      className="resource-group-search-input"
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  </div>
                   <div className="multi-select-actions">
                     <button 
                       className="select-action-btn"
@@ -345,16 +574,20 @@ export const CloudCost: React.FC<CloudCostProps> = ({ project, areaPath }) => {
                     </button>
                   </div>
                   <div className="multi-select-options">
-                    {availableResourceGroups.map(rg => (
-                      <label key={rg} className="multi-select-option">
-                        <input
-                          type="checkbox"
-                          checked={selectedResourceGroups.includes(rg)}
-                          onChange={() => toggleResourceGroup(rg)}
-                        />
-                        <span>{rg}</span>
-                      </label>
-                    ))}
+                    {filteredResourceGroups.length > 0 ? (
+                      filteredResourceGroups.map(rg => (
+                        <label key={rg} className="multi-select-option">
+                          <input
+                            type="checkbox"
+                            checked={selectedResourceGroups.includes(rg)}
+                            onChange={() => toggleResourceGroup(rg)}
+                          />
+                          <span>{rg}</span>
+                        </label>
+                      ))
+                    ) : (
+                      <div className="no-results">No resource groups found</div>
+                    )}
                   </div>
                 </div>
               )}
@@ -375,21 +608,122 @@ export const CloudCost: React.FC<CloudCostProps> = ({ project, areaPath }) => {
               <option value="custom">Custom Range</option>
             </select>
           </div>
+
+          {timePeriod === 'custom' && (
+            <>
+              <div className="filter-group">
+                <label>Start Date:</label>
+                <input
+                  type="date"
+                  className="filter-select date-input"
+                  value={customStartDate}
+                  onChange={(e) => setCustomStartDate(e.target.value)}
+                  max={customEndDate || new Date().toISOString().split('T')[0]}
+                />
+              </div>
+              <div className="filter-group">
+                <label>End Date:</label>
+                <input
+                  type="date"
+                  className="filter-select date-input"
+                  value={customEndDate}
+                  onChange={(e) => setCustomEndDate(e.target.value)}
+                  min={customStartDate}
+                  max={new Date().toISOString().split('T')[0]}
+                />
+              </div>
+            </>
+          )}
+
+          <div className="filter-group">
+            <button 
+              className="fetch-cost-btn"
+              onClick={fetchCostData}
+              disabled={!selectedSubscription || selectedResourceGroups.length === 0 || isFetchingCostData}
+            >
+              {isFetchingCostData ? 'Loading...' : 'Get Cost Data'}
+            </button>
+          </div>
         </div>
-        )}
+        ) : null}
       </div>
 
       <div className="cloud-cost-content">
-        {selectedResourceGroups.length === 0 ? (
-          <div className="no-selection-message">
-            <p>Please select at least one resource group to view cost data.</p>
-          </div>
-        ) : isFetchingCostData ? (
-          <div className="loading-cost-data">
-            <div className="spinner"></div>
-            <p>Loading cost data...</p>
-          </div>
+        {showDashboard ? (
+          // Dashboard View
+          isLoadingDashboard ? (
+            <div className="loading-cost-data">
+              <div className="spinner"></div>
+              <p>Loading dashboard data...</p>
+            </div>
+          ) : dashboardData.length === 0 ? (
+            <div className="no-selection-message">
+              <p>No cost data available across subscriptions.</p>
+            </div>
+          ) : (
+            <div className="dashboard-view">
+              <div className="dashboard-header">
+                <h3>Top Resource Groups by Cost (Last 30 Days)</h3>
+                <p className="dashboard-subtitle">Quick overview of cost drivers across all subscriptions</p>
+              </div>
+              
+              <div className="dashboard-grid">
+                {dashboardData.map((subscription) => (
+                  <div key={subscription.subscriptionId} className="dashboard-subscription-card">
+                    <div className="subscription-header">
+                      <h4>{subscription.subscriptionName}</h4>
+                      <span className="subscription-id">{subscription.subscriptionId}</span>
+                    </div>
+                    
+                    {subscription.topResourceGroups.length === 0 ? (
+                      <div className="no-costs">
+                        <p>No billable resources in this subscription</p>
+                      </div>
+                    ) : (
+                      <div className="resource-group-list">
+                        {subscription.topResourceGroups.map((rg, index) => (
+                          <div 
+                            key={rg.name} 
+                            className="rg-item clickable"
+                            onClick={() => navigateToDetailedAnalysis(subscription.subscriptionId, rg.name)}
+                            title="Click to view detailed analysis"
+                          >
+                            <div className="rg-rank">{index + 1}</div>
+                            <div className="rg-details">
+                              <div className="rg-name">{rg.name}</div>
+                              <div className="rg-cost-row">
+                                <span className="rg-cost">{formatCurrency(rg.cost)}</span>
+                                <span className={`rg-trend ${rg.trend >= 0 ? 'trend-up' : 'trend-down'}`}>
+                                  {rg.trend >= 0 ? '↗' : '↘'} {formatPercentChange(rg.trend)}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              
+              <div className="dashboard-footer">
+                <p>Click any resource group to view detailed analysis, or use "Detailed Analysis" above to create custom filters</p>
+              </div>
+            </div>
+          )
         ) : (
+          // Detailed Analysis View (existing functionality)
+          <>
+            {!costData && !isFetchingCostData ? (
+              <div className="no-selection-message">
+                <p>Please select a subscription, resource group(s), and click "Get Cost Data" to view analytics.</p>
+              </div>
+            ) : isFetchingCostData ? (
+              <div className="loading-cost-data">
+                <div className="spinner"></div>
+                <p>Loading cost data...</p>
+              </div>
+            ) : (
           <>
             <div className="cost-overview">
               <div className="cost-card">
@@ -644,6 +978,8 @@ export const CloudCost: React.FC<CloudCostProps> = ({ project, areaPath }) => {
                 </table>
               </div>
             </div>
+            </>
+            )}
           </>
         )}
       </div>

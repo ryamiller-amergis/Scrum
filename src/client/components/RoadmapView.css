@@ -126,7 +126,8 @@
 
 .roadmap-timeline {
   flex: 1;
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: auto;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--background);
@@ -134,12 +135,13 @@
 
 .timeline-header {
   display: grid;
-  grid-template-columns: 400px repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: 450px repeat(var(--timeline-columns, 6), 200px);
   position: sticky;
   top: 0;
   background: var(--card-background);
   border-bottom: 2px solid rgba(123, 104, 238, 0.3);
   z-index: 10;
+  min-width: min-content;
 }
 
 .timeline-label-column {
@@ -151,8 +153,8 @@
   position: sticky;
   left: 0;
   z-index: 5;
-  max-width: 400px;
-  overflow: hidden;
+  width: 450px;
+  overflow: visible;
 }
 
 .timeline-column-header {
@@ -162,6 +164,8 @@
   color: var(--text-secondary);
   border-right: 1px solid rgba(123, 104, 238, 0.15);
   font-size: 13px;
+  white-space: nowrap;
+  min-width: fit-content;
 }
 
 .timeline-column-header.current-period {
@@ -180,9 +184,10 @@
 
 .timeline-row {
   display: grid;
-  grid-template-columns: 400px repeat(var(--timeline-columns, 6), minmax(150px, 1fr));
+  grid-template-columns: 450px repeat(var(--timeline-columns, 6), 200px);
   min-height: 60px;
   transition: background-color 0.2s;
+  min-width: min-content;
 }
 
 .timeline-row:hover {
@@ -194,6 +199,7 @@
   display: flex;
   align-items: center;
   border-bottom: none;
+  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
 }
 
 .roadmap-item-label {
@@ -203,7 +209,7 @@
   font-size: 14px;
   width: 100%;
   min-width: 0;
-  overflow: hidden;
+  flex-wrap: wrap;
 }
 
 .expand-button {
@@ -266,10 +272,10 @@
 
 .work-item-title {
   flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   color: var(--text-primary);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  min-width: 150px;
 }
 
 .work-item-title.clickable {
@@ -385,19 +391,17 @@
 .roadmap-card-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   margin-bottom: 8px;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .target-date {
   font-size: 12px;
   font-weight: 600;
   color: var(--text-secondary);
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: fit-content;
 }
 
 .health-badge {
@@ -434,6 +438,8 @@
   justify-content: space-between;
   align-items: center;
   font-size: 12px;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
 .completion-percentage {
@@ -451,6 +457,7 @@
   text-align: center;
   margin-top: 4px;
   font-style: italic;
+  word-wrap: break-word;
 }
 
 .timeline-children {
@@ -483,7 +490,7 @@
 .child-label {
   padding-left: 20px;
   font-size: 13px;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   min-width: 0;
 }
 
@@ -532,31 +539,37 @@
 }
 
 /* Scrollbar styling */
+.roadmap-timeline {
+  scrollbar-width: thin;
+  scrollbar-color: #7B68EE var(--card-background);
+}
+
 .roadmap-timeline::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 12px;
+  height: 12px;
 }
 
 .roadmap-timeline::-webkit-scrollbar-track {
   background: var(--card-background);
+  border-radius: 6px;
 }
 
 .roadmap-timeline::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 4px;
+  background: #7B68EE;
+  border-radius: 6px;
+  border: 2px solid var(--card-background);
 }
 
 .roadmap-timeline::-webkit-scrollbar-thumb:hover {
-  background: var(--text-secondary);
+  background: #6A58DE;
+}
+
+.roadmap-timeline::-webkit-scrollbar-corner {
+  background: var(--card-background);
 }
 
 /* Responsive adjustments */
 @media (max-width: 1200px) {
-  .timeline-header,
-  .timeline-row {
-    grid-template-columns: 300px repeat(auto-fit, minmax(120px, 1fr));
-  }
-  
   .roadmap-controls {
     flex-wrap: wrap;
   }
@@ -574,9 +587,25 @@
     justify-content: space-between;
   }
   
-  .timeline-header,
+  .timeline-header {
+    grid-template-columns: 320px repeat(var(--timeline-columns, 6), 200px);
+  }
+  
   .timeline-row {
-    grid-template-columns: 250px repeat(auto-fit, minmax(100px, 1fr));
+    grid-template-columns: 320px repeat(var(--timeline-columns, 6), 200px);
+  }
+  
+  .timeline-label-column {
+    width: 320px;
+  }
+  
+  .roadmap-card {
+    padding: 8px;
+  }
+  
+  .roadmap-card-header {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
 
