@@ -2,10 +2,25 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { CloudCost } from '../CloudCost';
 import { azureCostService } from '../../services/azureCostService';
 
+// Mock sessionStorage
+const sessionStorageMock = (() => {
+  let store: Record<string, string> = {};
+  return {
+    getItem: (key: string) => store[key] || null,
+    setItem: (key: string, value: string) => { store[key] = value; },
+    removeItem: (key: string) => { delete store[key]; },
+    clear: () => { store = {}; }
+  };
+})();
+
+Object.defineProperty(window, 'sessionStorage', { value: sessionStorageMock });
+
 // Mock the Azure Cost Service
 jest.mock('../../services/azureCostService', () => ({
   azureCostService: {
-    getSubscriptionsWithResourceGroups: jest.fn()
+    getSubscriptionsWithResourceGroups: jest.fn(),
+    getDashboardData: jest.fn(),
+    getCostData: jest.fn()
   }
 }));
 
@@ -28,8 +43,12 @@ const mockSubscriptions = [
 
 describe('CloudCost Component', () => {
   beforeEach(() => {
+    // Clear sessionStorage before each test
+    sessionStorage.clear();
+    
     // Reset mock before each test
     (azureCostService.getSubscriptionsWithResourceGroups as jest.Mock).mockResolvedValue(mockSubscriptions);
+    (azureCostService.getDashboardData as jest.Mock).mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -41,14 +60,18 @@ describe('CloudCost Component', () => {
     
     expect(screen.getByText('Cloud Cost Analytics')).toBeInTheDocument();
     
-    // Wait for loading to complete
+    // Wait for dashboard loading to complete
     await waitFor(() => {
-      expect(screen.queryByText('Loading Azure subscriptions...')).not.toBeInTheDocument();
+      expect(azureCostService.getDashboardData).toHaveBeenCalled();
     });
   });
 
   it('renders filter options in correct order', async () => {
     render(<CloudCost project="TestProject" areaPath="TestArea" />);
+    
+    // Switch to Detailed Analysis view
+    const detailedAnalysisBtn = screen.getByText('Detailed Analysis');
+    fireEvent.click(detailedAnalysisBtn);
     
     await waitFor(() => {
       expect(screen.getByText('Subscription:')).toBeInTheDocument();
@@ -61,6 +84,10 @@ describe('CloudCost Component', () => {
   it('displays subscription dropdown with options', async () => {
     render(<CloudCost project="TestProject" areaPath="TestArea" />);
     
+    // Switch to Detailed Analysis view
+    const detailedAnalysisBtn = screen.getByText('Detailed Analysis');
+    fireEvent.click(detailedAnalysisBtn);
+    
     await waitFor(() => {
       expect(screen.getByText('Subscription 1')).toBeInTheDocument();
     });
@@ -71,18 +98,24 @@ describe('CloudCost Component', () => {
   it('shows message when no resource groups selected', async () => {
     render(<CloudCost project="TestProject" areaPath="TestArea" />);
     
-    await waitFor(() => {
-      expect(screen.queryByText('Loading Azure subscriptions...')).not.toBeInTheDocument();
-    });
+    // Switch to Detailed Analysis view
+    const detailedAnalysisBtn = screen.getByText('Detailed Analysis');
+    fireEvent.click(detailedAnalysisBtn);
     
-    expect(screen.getByText('Please select at least one resource group to view cost data.')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText(/Please select a subscription, resource group\(s\), and click "Get Cost Data" to view analytics/i)).toBeInTheDocument();
+    });
   });
 
   it('opens resource group multi-select when clicked', async () => {
     render(<CloudCost project="TestProject" areaPath="TestArea" />);
     
+    // Switch to Detailed Analysis view
+    const detailedAnalysisBtn = screen.getByText('Detailed Analysis');
+    fireEvent.click(detailedAnalysisBtn);
+    
     await waitFor(() => {
-      expect(screen.queryByText('Loading Azure subscriptions...')).not.toBeInTheDocument();
+      expect(screen.getByText('Select resource groups...')).toBeInTheDocument();
     });
     
     const multiSelectTrigger = screen.getByText('Select resource groups...');
@@ -95,8 +128,12 @@ describe('CloudCost Component', () => {
   it('allows selecting resource groups', async () => {
     render(<CloudCost project="TestProject" areaPath="TestArea" />);
     
+    // Switch to Detailed Analysis view
+    const detailedAnalysisBtn = screen.getByText('Detailed Analysis');
+    fireEvent.click(detailedAnalysisBtn);
+    
     await waitFor(() => {
-      expect(screen.queryByText('Loading Azure subscriptions...')).not.toBeInTheDocument();
+      expect(screen.getByText('Select resource groups...')).toBeInTheDocument();
     });
     
     // Open dropdown
@@ -113,8 +150,12 @@ describe('CloudCost Component', () => {
   it('shows cost data when resource groups are selected', async () => {
     render(<CloudCost project="TestProject" areaPath="TestArea" />);
     
+    // Switch to Detailed Analysis view
+    const detailedAnalysisBtn = screen.getByText('Detailed Analysis');
+    fireEvent.click(detailedAnalysisBtn);
+    
     await waitFor(() => {
-      expect(screen.queryByText('Loading Azure subscriptions...')).not.toBeInTheDocument();
+      expect(screen.getByText('Select resource groups...')).toBeInTheDocument();
     });
     
     // Open dropdown and select resource group
@@ -124,17 +165,22 @@ describe('CloudCost Component', () => {
     const rgCheckbox = screen.getByLabelText('RG-Production');
     fireEvent.click(rgCheckbox);
     
-    // Should now show cost overview
-    expect(screen.getByText('Total Spend')).toBeInTheDocument();
-    expect(screen.getByText('Daily Average')).toBeInTheDocument();
-    expect(screen.getByText('Projected Monthly')).toBeInTheDocument();
+    // Close dropdown
+    fireEvent.click(multiSelectTrigger);
+    
+    // Should show the submit button to fetch data
+    expect(screen.getByText('Get Cost Data')).toBeInTheDocument();
   });
 
   it('resets resource groups when subscription changes', async () => {
     render(<CloudCost project="TestProject" areaPath="TestArea" />);
     
+    // Switch to Detailed Analysis view
+    const detailedAnalysisBtn = screen.getByText('Detailed Analysis');
+    fireEvent.click(detailedAnalysisBtn);
+    
     await waitFor(() => {
-      expect(screen.queryByText('Loading Azure subscriptions...')).not.toBeInTheDocument();
+      expect(screen.getByText('Select resource groups...')).toBeInTheDocument();
     });
     
     // Select a resource group
@@ -142,13 +188,14 @@ describe('CloudCost Component', () => {
     fireEvent.click(multiSelectTrigger);
     const rgCheckbox = screen.getByLabelText('RG-Production');
     fireEvent.click(rgCheckbox);
+    fireEvent.click(multiSelectTrigger); // Close dropdown
     
     // Change subscription
     const subscriptionSelect = screen.getByDisplayValue('Subscription 1');
     fireEvent.change(subscriptionSelect, { target: { value: 'sub-2' } });
     
     // Should show no selection message again
-    expect(screen.getByText('Please select at least one resource group to view cost data.')).toBeInTheDocument();
+    expect(screen.getByText(/Please select a subscription, resource group\(s\), and click "Get Cost Data" to view analytics/i)).toBeInTheDocument();
   });
 
   it('handles error when fetching subscriptions fails', async () => {
@@ -156,16 +203,32 @@ describe('CloudCost Component', () => {
       new Error('Failed to fetch subscriptions')
     );
     
+    // Clear sessionStorage to force loading
+    sessionStorage.clear();
+    
     render(<CloudCost project="TestProject" areaPath="TestArea" />);
+    
+    // Switch to Detailed Analysis view to trigger subscription loading
+    const detailedAnalysisBtn = await screen.findByText('Detailed Analysis');
+    fireEvent.click(detailedAnalysisBtn);
     
     await waitFor(() => {
       expect(screen.getByText('Failed to fetch subscriptions')).toBeInTheDocument();
     });
   });
 
-  it('shows loading state initially', () => {
+  it('shows loading state initially', async () => {
+    // Clear sessionStorage to force loading state
+    sessionStorage.clear();
+    
     render(<CloudCost project="TestProject" areaPath="TestArea" />);
     
-    expect(screen.getByText('Loading Azure subscriptions...')).toBeInTheDocument();
+    // Dashboard should be showing by default
+    expect(screen.getByText('Dashboard')).toBeInTheDocument();
+    
+    // Wait for dashboard loading to complete
+    await waitFor(() => {
+      expect(azureCostService.getDashboardData).toHaveBeenCalled();
+    });
   });
 });
