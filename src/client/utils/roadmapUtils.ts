@@ -193,7 +193,7 @@ export function generateMonthlyTimeline(startDate: Date, endDate: Date): Timelin
     const month = current.getMonth();
     
     const monthStart = new Date(year, month, 1);
-    const monthEnd = new Date(year, month + 1, 0); // Last day of month
+    const monthEnd = new Date(year, month + 1, 0, 23, 59, 59, 999); // Last day of month at end of day
 
     const isCurrentPeriod = year === currentYear && month === currentMonth;
 
@@ -234,7 +234,7 @@ export function generateQuarterlyTimeline(startDate: Date, endDate: Date): Timel
     const quarter = Math.floor(current.getMonth() / 3);
     
     const quarterStart = new Date(year, quarter * 3, 1);
-    const quarterEnd = new Date(year, quarter * 3 + 3, 0); // Last day of quarter
+    const quarterEnd = new Date(year, quarter * 3 + 3, 0, 23, 59, 59, 999); // Last day of quarter at end of day
 
     const isCurrentPeriod = year === currentYear && quarter === currentQuarter;
 
