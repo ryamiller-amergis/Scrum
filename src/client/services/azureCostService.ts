@@ -30,6 +30,16 @@ export interface CostData {
   }>;
 }
 
+export interface DashboardData {
+  subscriptionId: string;
+  subscriptionName: string;
+  topResourceGroups: Array<{
+    name: string;
+    cost: number;
+    trend: number;
+  }>;
+}
+
 class AzureCostService {
   private baseUrl = '/api/azure';
 
@@ -85,7 +95,9 @@ class AzureCostService {
   async getCostData(
     subscriptionId: string,
     resourceGroups: string[],
-    timePeriod: string
+    timePeriod: string,
+    customStartDate?: string,
+    customEndDate?: string
   ): Promise<CostData> {
     const params = new URLSearchParams({
       subscriptionId,
@@ -93,12 +105,35 @@ class AzureCostService {
       timePeriod
     });
 
+    // Add custom dates if provided
+    if (timePeriod === 'custom' && customStartDate && customEndDate) {
+      params.append('startDate', customStartDate);
+      params.append('endDate', customEndDate);
+    }
+
     const response = await fetch(`${this.baseUrl}/cost-data?${params}`, {
       credentials: 'include'
     });
 
     if (!response.ok) {
       throw new Error(`Failed to fetch cost data: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Fetch dashboard data showing top resource groups from each subscription
+   */
+  async getDashboardData(topN: number = 5): Promise<DashboardData[]> {
+    const params = new URLSearchParams({ topN: topN.toString() });
+    
+    const response = await fetch(`${this.baseUrl}/dashboard?${params}`, {
+      credentials: 'include'
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch dashboard data: ${response.statusText}`);
     }
 
     return response.json();

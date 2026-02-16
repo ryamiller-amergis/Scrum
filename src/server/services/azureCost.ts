@@ -137,13 +137,28 @@ export class AzureCostService {
   async getCostData(
     subscriptionId: string,
     resourceGroups: string[],
-    timePeriod: '7d' | '30d' | '90d' = '30d'
+    timePeriod: '7d' | '30d' | '90d' | 'custom' = '30d',
+    customStartDate?: string,
+    customEndDate?: string
   ): Promise<CostData> {
     try {
-      const days = this.getDaysFromPeriod(timePeriod);
-      const endDate = new Date();
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - days);
+      let startDate: Date;
+      let endDate: Date;
+
+      if (timePeriod === 'custom' && customStartDate && customEndDate) {
+        // Use custom dates
+        startDate = new Date(customStartDate);
+        endDate = new Date(customEndDate);
+      } else {
+        // Calculate dates based on predefined period
+        const days = this.getDaysFromPeriod(timePeriod as '7d' | '30d' | '90d');
+        endDate = new Date();
+        startDate = new Date();
+        startDate.setDate(startDate.getDate() - days);
+      }
+
+      // Calculate the number of days in the range
+      const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
 
       // Format dates for Azure API (YYYY-MM-DD)
       const from = startDate.toISOString().split('T')[0];
@@ -369,6 +384,78 @@ export class AzureCostService {
       case '30d': return 30;
       case '90d': return 90;
       default: return 30;
+    }
+  }
+
+  /**
+   * Get dashboard data showing top resource groups from each subscription
+   * This provides a quick overview of cost drivers across all subscriptions
+   */
+  async getDashboardData(topN: number = 5): Promise<Array<{
+    subscriptionId: string;
+    subscriptionName: string;
+    topResourceGroups: Array<{
+      name: string;
+      cost: number;
+      trend: number;
+    }>;
+  }>> {
+    try {
+      const subscriptions = await this.getSubscriptions();
+      const dashboardData = [];
+
+      // Get cost data for each subscription
+      for (const subscription of subscriptions) {
+        try {
+          // Get all resource groups for this subscription
+          const resourceGroups = await this.getResourceGroups(subscription.subscriptionId);
+          
+          if (resourceGroups.length === 0) {
+            // No resource groups, skip this subscription
+            continue;
+          }
+
+          // Get cost data for last 30 days
+          const costData = await this.getCostData(
+            subscription.subscriptionId,
+            resourceGroups.map(rg => rg.name),
+            '30d'
+          );
+
+          // Sort resource groups by cost and take top N
+          const topResourceGroups = costData.costByResourceGroup
+            .filter(rg => rg.cost > 0) // Only include resource groups with actual costs
+            .sort((a, b) => b.cost - a.cost)
+            .slice(0, topN)
+            .map(rg => {
+              // Find detailed cost data for this resource group to get trend
+              const details = costData.costDetails.filter(d => d.resourceGroup === rg.name);
+              const avgTrend = details.length > 0
+                ? details.reduce((sum, d) => sum + d.trend, 0) / details.length
+                : 0;
+
+              return {
+                name: rg.name,
+                cost: rg.cost,
+                trend: parseFloat(avgTrend.toFixed(1))
+              };
+            });
+
+          dashboardData.push({
+            subscriptionId: subscription.subscriptionId,
+            subscriptionName: subscription.name,
+            topResourceGroups
+          });
+        } catch (error) {
+          console.error(`Error fetching cost data for subscription ${subscription.subscriptionId}:`, error);
+          // Continue with other subscriptions
+        }
+      }
+
+      return dashboardData;
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+      throw new Error(`Failed to fetch dashboard data: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 }

@@ -91,7 +91,7 @@ router.get('/cost-data', async (req, res) => {
       });
     }
 
-    const { subscriptionId, resourceGroups, timePeriod } = req.query;
+    const { subscriptionId, resourceGroups, timePeriod, startDate, endDate } = req.query;
 
     if (!subscriptionId || !resourceGroups || !timePeriod) {
       return res.status(400).json({ 
@@ -99,11 +99,20 @@ router.get('/cost-data', async (req, res) => {
       });
     }
 
+    // Validate custom dates if timePeriod is custom
+    if (timePeriod === 'custom' && (!startDate || !endDate)) {
+      return res.status(400).json({
+        error: 'Custom time period requires startDate and endDate parameters'
+      });
+    }
+
     const rgArray = (resourceGroups as string).split(',').filter(rg => rg.trim());
     const costData = await azureCostService.getCostData(
       subscriptionId as string,
       rgArray,
-      timePeriod as '7d' | '30d' | '90d'
+      timePeriod as '7d' | '30d' | '90d' | 'custom',
+      startDate as string | undefined,
+      endDate as string | undefined
     );
     
     res.json(costData);
@@ -111,6 +120,30 @@ router.get('/cost-data', async (req, res) => {
     console.error('Error in /api/azure/cost-data:', error);
     res.status(500).json({ 
       error: error instanceof Error ? error.message : 'Failed to fetch cost data' 
+    });
+  }
+});
+
+/**
+ * GET /api/azure/dashboard
+ * Get dashboard overview with top resource groups from each subscription
+ */
+router.get('/dashboard', async (req, res) => {
+  try {
+    if (!azureCostService) {
+      return res.status(500).json({ 
+        error: 'Azure Cost Service not initialized. Check your Azure credentials.' 
+      });
+    }
+
+    const topN = req.query.topN ? parseInt(req.query.topN as string) : 5;
+    const dashboardData = await azureCostService.getDashboardData(topN);
+    
+    res.json(dashboardData);
+  } catch (error) {
+    console.error('Error in /api/azure/dashboard:', error);
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : 'Failed to fetch dashboard data' 
     });
   }
 });
