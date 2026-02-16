@@ -1,5 +1,40 @@
 [
   {
+    "version": "1.9.0",
+    "date": "2026-02-16",
+    "title": "Planning Roadmap Dynamic Layout & Scrolling",
+    "changes": [
+      {
+        "type": "improvement",
+        "description": "Enhanced roadmap grid view with dynamic column sizing - work items column now expands from 450px to accommodate longer titles without truncation"
+      },
+      {
+        "type": "improvement",
+        "description": "Enabled horizontal scrolling for month/quarter columns - allows viewing 12+ months while maintaining readability with consistent 200px column widths"
+      },
+      {
+        "type": "improvement",
+        "description": "Work item titles now wrap intelligently within cards and labels instead of being truncated with ellipsis"
+      },
+      {
+        "type": "improvement",
+        "description": "Month/quarter date headers now display on a single line without wrapping (e.g., 'Jan 2026', 'Feb 2027') to eliminate confusion when spanning multiple years"
+      },
+      {
+        "type": "improvement",
+        "description": "Added sticky work items column that remains visible while scrolling horizontally through timeline"
+      },
+      {
+        "type": "improvement",
+        "description": "Enhanced scrollbar visibility with purple theme color and larger 12px size for easier navigation"
+      },
+      {
+        "type": "improvement",
+        "description": "Improved responsive behavior across all screen sizes while maintaining consistent month column widths"
+      }
+    ]
+  },
+  {
     "version": "1.8.0",
     "date": "2026-02-12",
     "title": "Hierarchical Backlog View & UX Improvements",
