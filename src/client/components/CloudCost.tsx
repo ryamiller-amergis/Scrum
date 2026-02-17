@@ -182,12 +182,15 @@ export const CloudCost: React.FC<CloudCostProps> = ({ project, areaPath }) => {
 
   const availableResourceGroups = currentSubscription?.resourceGroups || [];
 
-  // Filter resource groups based on search
+  // Filter resource groups based on search and sort alphabetically
   const filteredResourceGroups = useMemo(() => {
-    if (!resourceGroupSearch) return availableResourceGroups;
-    return availableResourceGroups.filter(rg => 
-      rg.toLowerCase().includes(resourceGroupSearch.toLowerCase())
-    );
+    const groups = resourceGroupSearch 
+      ? availableResourceGroups.filter(rg => 
+          rg.toLowerCase().includes(resourceGroupSearch.toLowerCase())
+        )
+      : availableResourceGroups;
+    
+    return groups.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
   }, [availableResourceGroups, resourceGroupSearch]);
 
   // Close dropdown when clicking outside
@@ -243,9 +246,43 @@ export const CloudCost: React.FC<CloudCostProps> = ({ project, areaPath }) => {
 
   // Navigate to detailed analysis from dashboard
   const navigateToDetailedAnalysis = async (subscriptionId: string, resourceGroupName: string) => {
+    console.log('[Navigate] Navigating to detailed analysis:', { subscriptionId, resourceGroupName });
+    console.log('[Navigate] Resource group name length:', resourceGroupName.length);
+    console.log('[Navigate] Resource group name charCodes:', Array.from(resourceGroupName).map(c => c.charCodeAt(0)));
+    
+    // Find the subscription to verify it exists and has the resource group
+    const subscription = subscriptions.find(sub => sub.subscriptionId === subscriptionId);
+    console.log('[Navigate] Found subscription:', subscription);
+    console.log('[Navigate] Available resource groups:', subscription?.resourceGroups);
+    
+    // Find the exact matching resource group name (case-insensitive match)
+    // This handles cases where the dashboard data and subscription data have different casing
+    let matchingResourceGroupName = resourceGroupName;
+    if (subscription?.resourceGroups) {
+      const exactMatch = subscription.resourceGroups.find(rg => rg === resourceGroupName);
+      if (exactMatch) {
+        matchingResourceGroupName = exactMatch;
+        console.log('[Navigate] Found exact match:', matchingResourceGroupName);
+      } else {
+        // Try case-insensitive match
+        const caseInsensitiveMatch = subscription.resourceGroups.find(
+          rg => rg.toLowerCase() === resourceGroupName.toLowerCase()
+        );
+        if (caseInsensitiveMatch) {
+          matchingResourceGroupName = caseInsensitiveMatch;
+          console.log('[Navigate] Found case-insensitive match:', matchingResourceGroupName, '(original:', resourceGroupName, ')');
+        } else {
+          console.warn('[Navigate] No matching resource group found in subscription!');
+        }
+      }
+    }
+    
     // Set the subscription and resource group
     setSelectedSubscription(subscriptionId);
-    setSelectedResourceGroups([resourceGroupName]);
+    setSelectedResourceGroups([matchingResourceGroupName]);
+    setResourceGroupSearch(''); // Clear search to ensure selected resource group is visible
+    
+    console.log('[Navigate] State updated - subscription:', subscriptionId, 'resourceGroups:', [matchingResourceGroupName]);
     
     // Switch to detailed analysis view
     setShowDashboard(false);
@@ -255,7 +292,7 @@ export const CloudCost: React.FC<CloudCostProps> = ({ project, areaPath }) => {
       setIsFetchingCostData(true);
       const data = await azureCostService.getCostData(
         subscriptionId,
-        [resourceGroupName],
+        [matchingResourceGroupName],
         timePeriod,
         customStartDate,
         customEndDate
@@ -519,11 +556,14 @@ export const CloudCost: React.FC<CloudCostProps> = ({ project, areaPath }) => {
                 {subscriptions.length === 0 ? (
                   <option value="">No subscriptions available</option>
                 ) : (
-                  subscriptions.map(sub => (
-                    <option key={sub.subscriptionId} value={sub.subscriptionId}>
-                      {sub.name}
-                    </option>
-                  ))
+                  <>
+                    <option value="">Select a subscription...</option>
+                    {subscriptions.map(sub => (
+                      <option key={sub.subscriptionId} value={sub.subscriptionId}>
+                        {sub.name}
+                      </option>
+                    ))}
+                  </>
                 )}
               </select>
             </div>
@@ -533,7 +573,20 @@ export const CloudCost: React.FC<CloudCostProps> = ({ project, areaPath }) => {
             <div className="multi-select-container">
               <button 
                 className="multi-select-trigger"
-                onClick={() => setIsResourceGroupDropdownOpen(!isResourceGroupDropdownOpen)}
+                onClick={() => {
+                  const newState = !isResourceGroupDropdownOpen;
+                  console.log('[Dropdown] Toggling dropdown to:', newState);
+                  if (newState) {
+                    console.log('[Dropdown] Current state:', {
+                      selectedSubscription,
+                      selectedResourceGroups,
+                      availableResourceGroups,
+                      filteredResourceGroups,
+                      resourceGroupSearch
+                    });
+                  }
+                  setIsResourceGroupDropdownOpen(newState);
+                }}
                 disabled={subscriptions.length === 0 || availableResourceGroups.length === 0}
               >
                 <span className="multi-select-value">
@@ -575,16 +628,32 @@ export const CloudCost: React.FC<CloudCostProps> = ({ project, areaPath }) => {
                   </div>
                   <div className="multi-select-options">
                     {filteredResourceGroups.length > 0 ? (
-                      filteredResourceGroups.map(rg => (
-                        <label key={rg} className="multi-select-option">
-                          <input
-                            type="checkbox"
-                            checked={selectedResourceGroups.includes(rg)}
-                            onChange={() => toggleResourceGroup(rg)}
-                          />
-                          <span>{rg}</span>
-                        </label>
-                      ))
+                      filteredResourceGroups.map(rg => {
+                        const isChecked = selectedResourceGroups.includes(rg);
+                        if (isChecked) {
+                          console.log('[Checkbox] Resource group IS CHECKED:', rg);
+                        }
+                        // Log comparison details for debugging
+                        selectedResourceGroups.forEach(selectedRg => {
+                          if (selectedRg.toLowerCase() === rg.toLowerCase() && selectedRg !== rg) {
+                            console.log('[Checkbox] CASE MISMATCH:', {
+                              selected: selectedRg,
+                              available: rg,
+                              match: selectedRg === rg
+                            });
+                          }
+                        });
+                        return (
+                          <label key={rg} className="multi-select-option">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => toggleResourceGroup(rg)}
+                            />
+                            <span>{rg}</span>
+                          </label>
+                        );
+                      })
                     ) : (
                       <div className="no-results">No resource groups found</div>
                     )}
