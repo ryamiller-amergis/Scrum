@@ -185,7 +185,8 @@ describe('Release Management API Routes', () => {
         undefined, // title
         undefined, // startDate
         '2026-03-01', // targetDate
-        'Updated description' // description
+        'Updated description', // description
+        undefined // status
       );
     });
 

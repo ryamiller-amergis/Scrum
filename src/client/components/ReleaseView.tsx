@@ -37,6 +37,7 @@ const ReleaseView: React.FC<ReleaseViewProps> = ({
   const [newReleaseStartDate, setNewReleaseStartDate] = useState('');
   const [newReleaseTargetDate, setNewReleaseTargetDate] = useState('');
   const [newReleaseDescription, setNewReleaseDescription] = useState('');
+  const [newReleaseStatus, setNewReleaseStatus] = useState<string>('New');
   const [selectedWorkItemsForRelease, setSelectedWorkItemsForRelease] = useState<number[]>([]);
   const [releaseEpics, setReleaseEpics] = useState<any[]>([]);
   const [loadingEpics, setLoadingEpics] = useState(false);
@@ -319,6 +320,7 @@ const ReleaseView: React.FC<ReleaseViewProps> = ({
           startDate: newReleaseStartDate || undefined,
           targetDate: newReleaseTargetDate || undefined,
           description: newReleaseDescription || undefined,
+          status: newReleaseStatus,
           project,
           areaPath,
         }),
@@ -341,6 +343,7 @@ const ReleaseView: React.FC<ReleaseViewProps> = ({
     setNewReleaseStartDate(epic.startDate || '');
     setNewReleaseTargetDate(epic.targetDate || '');
     setNewReleaseDescription(epic.description || '');
+    setNewReleaseStatus(epic.status || 'New');
     setShowNewReleaseModal(true);
   };
 
@@ -352,6 +355,7 @@ const ReleaseView: React.FC<ReleaseViewProps> = ({
     setNewReleaseStartDate('');
     setNewReleaseTargetDate('');
     setNewReleaseDescription('');
+    setNewReleaseStatus('New');
     setSelectedWorkItemsForRelease([]);
   };
 
@@ -1232,6 +1236,22 @@ const ReleaseView: React.FC<ReleaseViewProps> = ({
         <div className="modal-overlay" onClick={handleCloseModal}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <h3>{isEditMode ? 'Edit Release' : 'Create New Release'}</h3>
+            {isEditMode && (
+              <div className="form-group">
+                <label>Status:</label>
+                <select
+                  value={newReleaseStatus}
+                  onChange={(e) => setNewReleaseStatus(e.target.value)}
+                  className="status-select"
+                >
+                  <option value="New">New</option>
+                  <option value="In Progress">In Progress</option>
+                  <option value="In Design">In Design</option>
+                  <option value="Done">Done</option>
+                  <option value="Removed">Removed</option>
+                </select>
+              </div>
+            )}
             <div className="form-group">
               <label>Release Name: <span style={{color: 'red'}}>*</span></label>
               <input

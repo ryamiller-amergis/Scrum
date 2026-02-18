@@ -1860,7 +1860,7 @@ export class AzureDevOpsService {
   /**
    * Update a release Epic in Azure DevOps
    */
-  async updateReleaseEpic(epicId: number, title?: string, startDate?: string, targetDate?: string, description?: string): Promise<void> {
+  async updateReleaseEpic(epicId: number, title?: string, startDate?: string, targetDate?: string, description?: string, status?: string): Promise<void> {
     return retryWithBackoff(async () => {
       const witApi = await this.connection.getWorkItemTrackingApi();
 
@@ -1905,6 +1905,15 @@ export class AzureDevOpsService {
           op: 'add',
           path: '/fields/System.Description',
           value: description,
+        });
+      }
+
+      // Update status if provided
+      if (status) {
+        patchDocument.push({
+          op: 'add',
+          path: '/fields/System.State',
+          value: status,
         });
       }
 

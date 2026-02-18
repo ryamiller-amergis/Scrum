@@ -589,11 +589,12 @@ router.get('/releases/epics', async (req: Request, res: Response) => {
 router.patch('/releases/:epicId', async (req: Request, res: Response) => {
   try {
     const epicId = parseInt(req.params.epicId, 10);
-    const { title, startDate, targetDate, description, project, areaPath } = req.body as {
+    const { title, startDate, targetDate, description, status, project, areaPath } = req.body as {
       title?: string;
       startDate?: string;
       targetDate?: string;
       description?: string;
+      status?: string;
       project?: string;
       areaPath?: string;
     };
@@ -603,7 +604,7 @@ router.patch('/releases/:epicId', async (req: Request, res: Response) => {
     }
 
     const adoService = new AzureDevOpsService(project, areaPath);
-    await adoService.updateReleaseEpic(epicId, title, startDate, targetDate, description);
+    await adoService.updateReleaseEpic(epicId, title, startDate, targetDate, description, status);
     res.json({ success: true });
   } catch (error: any) {
     console.error('Error updating release epic:', error);
