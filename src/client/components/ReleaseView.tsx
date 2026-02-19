@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { WorkItem, Release, ReleaseMetrics, Deployment, DeploymentEnvironment } from '../types/workitem';
+import { usePrefetch } from '../contexts/PrefetchContext';
 import './ReleaseView.css';
 
 interface ReleaseViewProps {
@@ -64,7 +65,28 @@ const ReleaseView: React.FC<ReleaseViewProps> = ({
   const [nestedChildren, setNestedChildren] = useState<Map<number, WorkItem[]>>(new Map());
   const [loadingNestedChildren, setLoadingNestedChildren] = useState<Set<number>>(new Set());
 
-  // Fetch all release versions on mount
+  const {
+    prefetchedReleases,
+    prefetchedReleaseEpics,
+    prefetchProject,
+    prefetchAreaPath,
+  } = usePrefetch();
+
+  const prefetchCacheMatches =
+    prefetchedReleases &&
+    prefetchProject === project &&
+    prefetchAreaPath === areaPath;
+
+  // Apply prefetched data when available so Release tab shows data immediately
+  useEffect(() => {
+    if (!prefetchCacheMatches || !prefetchedReleases) return;
+    setReleases(prefetchedReleases);
+    setReleaseEpics(Array.isArray(prefetchedReleaseEpics) ? prefetchedReleaseEpics : []);
+    setSelectedRelease((prev) => (prev ? prev : prefetchedReleases.length > 0 ? prefetchedReleases[0] : null));
+    setLoadingEpics(false);
+  }, [prefetchCacheMatches, prefetchedReleases, prefetchedReleaseEpics]);
+
+  // Fetch all release versions on mount (refreshes prefetched data or loads if no prefetch)
   useEffect(() => {
     fetchReleases();
     fetchReleaseEpics();

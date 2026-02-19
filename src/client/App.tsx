@@ -16,6 +16,7 @@ import { UserMenu } from './components/UserMenu';
 import { Login } from './components/Login';
 import { useWorkItems } from './hooks/useWorkItems';
 import { WorkItem } from './types/workitem';
+import { PrefetchProvider } from './contexts/PrefetchContext';
 import './App.css';
 
 // Current version - update this when releasing new versions
@@ -307,8 +308,14 @@ function App() {
   };
 
   return (
-    <DndProvider backend={HTML5Backend}>
-      <div className="app">
+    <PrefetchProvider
+      project={selectedProject}
+      areaPath={selectedAreaPath}
+      isAuthenticated={isAuthenticated === true}
+      mainViewReady={!loading}
+    >
+      <DndProvider backend={HTML5Backend}>
+        <div className="app">
         {isLoading && (
           <div className="loading-overlay">
             <div className="loading-spinner-container">
@@ -546,6 +553,7 @@ function App() {
         onMarkAsRead={handleMarkChangelogAsRead}
       />
     </DndProvider>
+    </PrefetchProvider>
   );
 }
 
