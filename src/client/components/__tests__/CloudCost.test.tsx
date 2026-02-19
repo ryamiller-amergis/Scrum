@@ -1,6 +1,15 @@
+import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CloudCost } from '../CloudCost';
 import { azureCostService } from '../../services/azureCostService';
+
+const createWrapper = () => {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return ({ children }: { children: React.ReactNode }) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+};
 
 // Mock sessionStorage
 const sessionStorageMock = (() => {
@@ -56,7 +65,7 @@ describe('CloudCost Component', () => {
   });
 
   it('renders the cloud cost header', async () => {
-    render(<CloudCost project="TestProject" areaPath="TestArea" />);
+    render(<CloudCost project="TestProject" areaPath="TestArea" />, { wrapper: createWrapper() });
     
     expect(screen.getByText('Cloud Cost Analytics')).toBeInTheDocument();
     
@@ -67,7 +76,7 @@ describe('CloudCost Component', () => {
   });
 
   it('renders filter options in correct order', async () => {
-    render(<CloudCost project="TestProject" areaPath="TestArea" />);
+    render(<CloudCost project="TestProject" areaPath="TestArea" />, { wrapper: createWrapper() });
     
     // Switch to Detailed Analysis view
     const detailedAnalysisBtn = screen.getByText('Detailed Analysis');
@@ -82,7 +91,7 @@ describe('CloudCost Component', () => {
   });
 
   it('displays subscription dropdown with options', async () => {
-    render(<CloudCost project="TestProject" areaPath="TestArea" />);
+    render(<CloudCost project="TestProject" areaPath="TestArea" />, { wrapper: createWrapper() });
     
     // Switch to Detailed Analysis view
     const detailedAnalysisBtn = screen.getByText('Detailed Analysis');
@@ -96,7 +105,7 @@ describe('CloudCost Component', () => {
   });
 
   it('shows message when no resource groups selected', async () => {
-    render(<CloudCost project="TestProject" areaPath="TestArea" />);
+    render(<CloudCost project="TestProject" areaPath="TestArea" />, { wrapper: createWrapper() });
     
     // Switch to Detailed Analysis view
     const detailedAnalysisBtn = screen.getByText('Detailed Analysis');
@@ -108,7 +117,7 @@ describe('CloudCost Component', () => {
   });
 
   it('opens resource group multi-select when clicked', async () => {
-    render(<CloudCost project="TestProject" areaPath="TestArea" />);
+    render(<CloudCost project="TestProject" areaPath="TestArea" />, { wrapper: createWrapper() });
     
     // Switch to Detailed Analysis view
     const detailedAnalysisBtn = screen.getByText('Detailed Analysis');
@@ -126,7 +135,7 @@ describe('CloudCost Component', () => {
   });
 
   it('allows selecting resource groups', async () => {
-    render(<CloudCost project="TestProject" areaPath="TestArea" />);
+    render(<CloudCost project="TestProject" areaPath="TestArea" />, { wrapper: createWrapper() });
     
     // Switch to Detailed Analysis view
     const detailedAnalysisBtn = screen.getByText('Detailed Analysis');
@@ -148,7 +157,7 @@ describe('CloudCost Component', () => {
   });
 
   it('shows cost data when resource groups are selected', async () => {
-    render(<CloudCost project="TestProject" areaPath="TestArea" />);
+    render(<CloudCost project="TestProject" areaPath="TestArea" />, { wrapper: createWrapper() });
     
     // Switch to Detailed Analysis view
     const detailedAnalysisBtn = screen.getByText('Detailed Analysis');
@@ -173,7 +182,7 @@ describe('CloudCost Component', () => {
   });
 
   it('resets resource groups when subscription changes', async () => {
-    render(<CloudCost project="TestProject" areaPath="TestArea" />);
+    render(<CloudCost project="TestProject" areaPath="TestArea" />, { wrapper: createWrapper() });
     
     // Switch to Detailed Analysis view
     const detailedAnalysisBtn = screen.getByText('Detailed Analysis');
@@ -206,7 +215,7 @@ describe('CloudCost Component', () => {
     // Clear sessionStorage to force loading
     sessionStorage.clear();
     
-    render(<CloudCost project="TestProject" areaPath="TestArea" />);
+    render(<CloudCost project="TestProject" areaPath="TestArea" />, { wrapper: createWrapper() });
     
     // Switch to Detailed Analysis view to trigger subscription loading
     const detailedAnalysisBtn = await screen.findByText('Detailed Analysis');
@@ -221,7 +230,7 @@ describe('CloudCost Component', () => {
     // Clear sessionStorage to force loading state
     sessionStorage.clear();
     
-    render(<CloudCost project="TestProject" areaPath="TestArea" />);
+    render(<CloudCost project="TestProject" areaPath="TestArea" />, { wrapper: createWrapper() });
     
     // Dashboard should be showing by default
     expect(screen.getByText('Dashboard')).toBeInTheDocument();

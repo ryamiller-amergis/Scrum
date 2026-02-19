@@ -96,7 +96,7 @@ export const CloudCost: React.FC<CloudCostProps> = () => {
   const [openInfoModal, setOpenInfoModal] = useState<string | null>(null);
 
   const {
-    subscriptions, isLoadingSubscriptions,
+    subscriptions, isLoadingSubscriptions, subscriptionError,
     dashboardData, isLoadingDashboard, refreshDashboard,
     selectedSubscription, handleSubscriptionChange,
     selectedResourceGroups, toggleResourceGroup, selectAllResourceGroups, clearAllResourceGroups,
@@ -156,7 +156,9 @@ export const CloudCost: React.FC<CloudCostProps> = () => {
           </div>
         </div>
 
-        {isLoadingSubscriptions ? (
+        {subscriptionError ? (
+          <div className="error-message">{subscriptionError.message}</div>
+        ) : isLoadingSubscriptions ? (
           <div className="loading-message">Loading Azure subscriptions...</div>
         ) : !showDashboard ? (
           <CloudCostFilters

@@ -19,8 +19,8 @@ describe('Planning rename (static checks)', () => {
     expect(content).not.toContain('analyticsTab');
   });
 
-  it('App.tsx contains standardized Planning tab labels', () => {
-    const content = readWorkspaceFile('src/client/App.tsx');
+  it('PlanningTabs.tsx contains standardized Planning tab labels', () => {
+    const content = readWorkspaceFile('src/client/components/PlanningTabs.tsx');
 
     expect(content).toContain('Cycle Time');
     expect(content).toContain('Developer Stats');

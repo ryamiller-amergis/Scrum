@@ -26,6 +26,7 @@ function load<T>(key: string, fallback: T): T {
 export interface UseCloudCostReturn {
   subscriptions: AzureSubscription[];
   isLoadingSubscriptions: boolean;
+  subscriptionError: Error | null;
   dashboardData: DashboardData[];
   isLoadingDashboard: boolean;
   refreshDashboard: () => void;
@@ -59,7 +60,7 @@ export interface UseCloudCostReturn {
 export function useCloudCost(): UseCloudCostReturn {
   const queryClient = useQueryClient();
 
-  const { data: subscriptions = [], isLoading: isLoadingSubscriptions } = useQuery<AzureSubscription[]>({
+  const { data: subscriptions = [], isLoading: isLoadingSubscriptions, error: subscriptionQueryError } = useQuery<AzureSubscription[]>({
     queryKey: ['azureSubscriptions'],
     queryFn: () => azureCostService.getSubscriptionsWithResourceGroups(),
     staleTime: 10 * 60 * 1000,
@@ -171,7 +172,7 @@ export function useCloudCost(): UseCloudCostReturn {
   };
 
   return {
-    subscriptions, isLoadingSubscriptions,
+    subscriptions, isLoadingSubscriptions, subscriptionError: (subscriptionQueryError as Error | null) ?? null,
     dashboardData, isLoadingDashboard, refreshDashboard,
     selectedSubscription, setSelectedSubscription, handleSubscriptionChange,
     selectedResourceGroups, setSelectedResourceGroups,

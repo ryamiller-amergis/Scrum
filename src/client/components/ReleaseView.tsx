@@ -144,6 +144,11 @@ const ReleaseView: React.FC<ReleaseViewProps> = ({ project, areaPath, onSelectIt
         return next;
       });
       refreshReleaseEpics();
+    } else {
+      const data = await res.json().catch(() => ({}));
+      const msg = (data as any).error || 'Unknown error';
+      console.error('Unlink error:', msg);
+      alert(`Failed to unlink item: ${msg}`);
     }
   };
 
@@ -158,6 +163,11 @@ const ReleaseView: React.FC<ReleaseViewProps> = ({ project, areaPath, onSelectIt
       if (res.ok) {
         setDeletingEpicId(null);
         refreshReleaseEpics();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        const msg = (data as any).error || 'Unknown error';
+        console.error('Delete error:', msg);
+        alert(`Failed to delete epic: ${msg}`);
       }
     } finally {
       setIsDeleting(false);
