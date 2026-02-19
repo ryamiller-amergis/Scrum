@@ -49,13 +49,32 @@ style={{ color: 'var(--text-primary)' }}
 
 ## Co-located Stylesheets
 
-Every component gets its own `.css` file with the same name, in the same folder:
+The project uses a **two-tier CSS strategy**:
+
+**Simple / new components** → CSS Modules (`.module.css`):
 
 ```
 src/client/components/
   WorkItemCard.tsx
-  WorkItemCard.css   ← import './WorkItemCard.css' at the top of the component
+  WorkItemCard.module.css   ← import styles from './WorkItemCard.module.css'
 ```
+
+Reference classes with `styles['class-name']` (bracket notation for kebab-case) or `styles.camelCase`:
+
+```tsx
+<div className={styles['work-item-card']}>
+  <span className={styles.title}>...</span>
+</div>
+```
+
+**Large / shared components** (ScrumCalendar, ReleaseView, CloudCost, DevStats, DetailsPanel, etc.) → plain `.css` with a side-effect import. These files are too complex for CSS Modules and use global class names intentionally:
+
+```tsx
+import './ScrumCalendar.css';
+// classNames stay as plain strings: className="calendar-cell"
+```
+
+When creating a **new** component, always use CSS Modules. Do not convert existing large `.css` files to modules without explicit instruction.
 
 ## Inline Styles
 

@@ -38,9 +38,10 @@ Inside every component, declare hooks in this order:
 
 1. `useState`
 2. `useRef`
-3. `useMemo` / `useCallback`
-4. `useEffect`
-5. `useContext` / custom hooks
+3. `useQuery` / `useMutation` (TanStack Query)
+4. `useMemo` / `useCallback`
+5. `useEffect`
+6. `useContext` / custom hooks
 
 ## Early Returns
 
@@ -56,12 +57,50 @@ return workItem ? <div>...</div> : null;
 
 ## State Management
 
-- Local state: `useState`
-- Shared cross-cutting state: `useContext` with a dedicated context in `src/client/contexts/`
+- **Local UI state**: `useState`
+- **Server / async state**: TanStack Query (`useQuery`, `useMutation`, `useQueryClient`) — never fetch in `useEffect`
+- **Shared cross-cutting state**: `useContext` with a dedicated context in `src/client/contexts/`
 - No Redux or other global state libraries
+
+## Forms
+
+Use `react-hook-form` + `zod` for all forms with validation:
+
+```tsx
+const schema = z.object({ reason: z.string().min(1, 'Required') });
+type FormValues = z.infer<typeof schema>;
+
+const { register, handleSubmit, formState: { errors } } = useForm<FormValues>({
+  resolver: zodResolver(schema),
+  defaultValues: { reason: '' },
+});
+```
+
+Never manage form field state manually with `useState`.
+
+## Code Splitting
+
+Lazy-load heavy view components from `App.tsx`:
+
+```tsx
+const ScrumCalendar = React.lazy(() => import('./components/ScrumCalendar'));
+
+<Suspense fallback={<ViewSkeleton />}>
+  <ErrorBoundary FallbackComponent={ViewErrorFallback}>
+    <ScrumCalendar ... />
+  </ErrorBoundary>
+</Suspense>
+```
+
+Wrap every lazy view in both `Suspense` (loading) and `ErrorBoundary` (errors).
+
+## Environment Variables
+
+Access client-side `VITE_*` variables only through `src/client/config/env.ts` — never via `import.meta.env` directly in components or hooks. Add new variables to the Zod schema in that file.
 
 ## Code Organisation
 
 - Reusable stateful logic → custom hook in `src/client/hooks/`
-- API / data-fetching logic → service in `src/client/services/`
-- Shared TypeScript types → `src/client/types/`
+- API / data-fetching logic → TanStack Query inside custom hooks (not in services)
+- Shared TypeScript types → `src/shared/types/` (re-exported from `src/client/types/` and `src/server/types/`)
+- Client-only types → `src/client/types/`
