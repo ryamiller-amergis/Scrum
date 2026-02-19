@@ -451,3 +451,33 @@ body {
   background: var(--bg-primary);
 }
 
+/* View skeleton for Suspense lazy loading */
+@keyframes skeleton-shimmer {
+  0% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+  100% { opacity: 0.4; }
+}
+
+.skeleton-pulse {
+  background: var(--bg-tertiary, #2a2a2a);
+  border-radius: 6px;
+  animation: skeleton-shimmer 1.6s ease-in-out infinite;
+}
+
+.view-skeleton {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.view-skeleton__header {
+  height: 32px;
+  width: 40%;
+  margin-bottom: 8px;
+}
+
+.view-skeleton__row {
+  height: 20px;
+}
+

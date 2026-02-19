@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { WorkItem } from '../types/workitem';
 import { workItemService } from '../services/workItemService';
 import './CycleTimeAnalytics.css';
@@ -24,77 +25,40 @@ export interface CycleTimeData {
   qaCycleTimeDays?: number;
 }
 
-const CYCLE_TIME_DATA_KEY = 'cycleTimeData';
-const CYCLE_TIME_LOADING_STATE_KEY = 'cycleTimeLoadingState';
-const CYCLE_TIME_FILTERS_KEY = 'cycleTimeFilters';
-const CYCLE_TIME_SESSION_INITIALIZED_KEY = 'cycleTimeSessionInitialized';
-
-// Check for page refresh once - this runs before component render
-const checkAndClearOnRefresh = () => {
-  // If session was already initialized, this is a tab switch, not a page refresh
-  const wasInitialized = sessionStorage.getItem(CYCLE_TIME_SESSION_INITIALIZED_KEY);
-  
-  if (!wasInitialized) {
-    // First load or actual page refresh - clear everything
-    console.log('CycleTimeAnalytics - Page refresh/first load detected, clearing sessionStorage');
-    sessionStorage.removeItem(CYCLE_TIME_DATA_KEY);
-    sessionStorage.removeItem(CYCLE_TIME_LOADING_STATE_KEY);
-    sessionStorage.removeItem(CYCLE_TIME_FILTERS_KEY);
-    sessionStorage.setItem(CYCLE_TIME_SESSION_INITIALIZED_KEY, 'true');
-    return true;
-  }
-  
-  console.log('CycleTimeAnalytics - Tab navigation detected, restoring from sessionStorage');
-  return false;
-};
-
 export const CycleTimeAnalytics: React.FC<CycleTimeAnalyticsProps> = ({ workItems, project, areaPath }) => {
-  const [isPageRefresh] = useState(() => checkAndClearOnRefresh());
-
-  // Restore data from sessionStorage on mount
-  const [selectedIterations, setSelectedIterations] = useState<string[]>(() => {
-    if (isPageRefresh) return [];
-    const savedFilters = sessionStorage.getItem(CYCLE_TIME_FILTERS_KEY);
-    return savedFilters ? JSON.parse(savedFilters).selectedIterations : [];
-  });
-  const [selectedDeveloper, setSelectedDeveloper] = useState<string>(() => {
-    if (isPageRefresh) return '';
-    const savedFilters = sessionStorage.getItem(CYCLE_TIME_FILTERS_KEY);
-    return savedFilters ? JSON.parse(savedFilters).selectedDeveloper : '';
-  });
-  const [selectedQa, setSelectedQa] = useState<string>(() => {
-    if (isPageRefresh) return '';
-    const savedFilters = sessionStorage.getItem(CYCLE_TIME_FILTERS_KEY);
-    return savedFilters ? JSON.parse(savedFilters).selectedQa : '';
-  });
-  const [cycleTimeMap, setCycleTimeMap] = useState<Record<number, any>>(() => {
-    if (isPageRefresh) return {};
-    const savedData = sessionStorage.getItem(CYCLE_TIME_DATA_KEY);
-    return savedData ? JSON.parse(savedData).cycleTimeMap : {};
-  });
-  const [loading, setLoading] = useState(() => {
-    if (isPageRefresh) return false;
-    const savedLoading = sessionStorage.getItem(CYCLE_TIME_LOADING_STATE_KEY);
-    return savedLoading ? JSON.parse(savedLoading).loading : false;
-  });
+  const [selectedIterations, setSelectedIterations] = useState<string[]>([]);
+  const [selectedDeveloper, setSelectedDeveloper] = useState<string>('');
+  const [selectedQa, setSelectedQa] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
-  const [hasLoaded, setHasLoaded] = useState(() => {
-    if (isPageRefresh) return false;
-    const savedData = sessionStorage.getItem(CYCLE_TIME_DATA_KEY);
-    return savedData ? JSON.parse(savedData).hasLoaded : false;
-  });
-  const [showNotification, setShowNotification] = useState(() => {
-    if (isPageRefresh) return false;
-    const savedLoading = sessionStorage.getItem(CYCLE_TIME_LOADING_STATE_KEY);
-    return savedLoading ? JSON.parse(savedLoading).loading : false;
-  });
-  const [notificationMessage, setNotificationMessage] = useState(() => {
-    if (isPageRefresh) return '';
-    const savedLoading = sessionStorage.getItem(CYCLE_TIME_LOADING_STATE_KEY);
-    return savedLoading && JSON.parse(savedLoading).loading ? 'Calculating cycle time in background...' : '';
-  });
+  const [showNotification, setShowNotification] = useState(false);
+  const [notificationMessage, setNotificationMessage] = useState('');
   const [showDevSection, setShowDevSection] = useState(true);
   const [showQaSection, setShowQaSection] = useState(true);
+  const [queryEnabled, setQueryEnabled] = useState(false);
+
+  // Stable query key derived from user-selected iterations
+  const iterationsKey = useMemo(
+    () => [...selectedIterations].sort().join(','),
+    [selectedIterations]
+  );
+
+  const filteredWorkItemIds = useMemo(
+    () => workItems.filter(item => selectedIterations.includes(item.iterationPath)).map(item => item.id),
+    [workItems, selectedIterations]
+  );
+
+  const {
+    data: cycleTimeMap = {},
+    isFetching: loading,
+    isSuccess: hasLoaded,
+    refetch,
+  } = useQuery<Record<number, any>>({
+    queryKey: ['cycleTime', project, areaPath, iterationsKey],
+    queryFn: () => workItemService.calculateCycleTime(filteredWorkItemIds, project, areaPath),
+    enabled: queryEnabled && filteredWorkItemIds.length > 0,
+    staleTime: Infinity,
+    gcTime: 30 * 60 * 1000,
+  });
 
   // Extract unique iterations from work items
   const availableIterations = useMemo(() => {
@@ -129,41 +93,13 @@ export const CycleTimeAnalytics: React.FC<CycleTimeAnalyticsProps> = ({ workItem
     return Array.from(testers).sort();
   }, [cycleTimeMap]);
 
-  // Save data to sessionStorage whenever it changes
-  useEffect(() => {
-    if (!isPageRefresh) {
-      sessionStorage.setItem(CYCLE_TIME_DATA_KEY, JSON.stringify({
-        cycleTimeMap,
-        hasLoaded
-      }));
-    }
-  }, [cycleTimeMap, hasLoaded, isPageRefresh]);
-
-  // Save loading state to sessionStorage
-  useEffect(() => {
-    if (!isPageRefresh) {
-      sessionStorage.setItem(CYCLE_TIME_LOADING_STATE_KEY, JSON.stringify({
-        loading
-      }));
-    }
-  }, [loading, isPageRefresh]);
-
-  // Save filters to sessionStorage
-  useEffect(() => {
-    if (!isPageRefresh) {
-      sessionStorage.setItem(CYCLE_TIME_FILTERS_KEY, JSON.stringify({
-        selectedIterations,
-        selectedDeveloper,
-        selectedQa
-      }));
-    }
-  }, [selectedIterations, selectedDeveloper, selectedQa, isPageRefresh]);
-
   // Auto-select first iteration on load
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     if (availableIterations.length > 0 && selectedIterations.length === 0) {
       setSelectedIterations([availableIterations[0]]);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [availableIterations]);
 
   const toggleIteration = (iteration: string) => {
@@ -187,45 +123,16 @@ export const CycleTimeAnalytics: React.FC<CycleTimeAnalyticsProps> = ({ workItem
       setError('Please select at least one iteration');
       return;
     }
-
-    setLoading(true);
     setError(null);
     setShowNotification(true);
     setNotificationMessage('Loading cycle time data in background...');
-
-    // Run the calculation asynchronously
-    (async () => {
-      try {
-        const filteredItems = workItems.filter(item => 
-          selectedIterations.includes(item.iterationPath)
-        );
-        
-        const workItemIds = filteredItems.map(item => item.id);
-        console.log(`Calculating cycle time for ${workItemIds.length} items in ${selectedIterations.length} iterations`);
-        
-        const result = await workItemService.calculateCycleTime(workItemIds, project, areaPath);
-        console.log('Cycle time result:', result);
-        console.log('Items with cycle time data:', Object.keys(result).length);
-        
-        // Update state after successful fetch
-        setCycleTimeMap(result);
-        setHasLoaded(true);
-        setNotificationMessage('Cycle time data loaded successfully!');
-        setLoading(false);
-        
-        // Immediately update sessionStorage to ensure loading state is cleared
-        sessionStorage.setItem(CYCLE_TIME_LOADING_STATE_KEY, JSON.stringify({ loading: false }));
-        sessionStorage.setItem(CYCLE_TIME_DATA_KEY, JSON.stringify({ cycleTimeMap: result, hasLoaded: true }));
-      } catch (err: any) {
-        console.error('Error calculating cycle time:', err);
-        setError(err.message || 'Failed to calculate cycle time');
-        setNotificationMessage('Failed to load cycle time data');
-        setLoading(false);
-        
-        // Immediately update sessionStorage to ensure loading state is cleared
-        sessionStorage.setItem(CYCLE_TIME_LOADING_STATE_KEY, JSON.stringify({ loading: false }));
-      }
-    })();
+    setQueryEnabled(true);
+    refetch().then(() => {
+      setNotificationMessage('Cycle time data loaded successfully!');
+    }).catch((err: any) => {
+      setError(err.message || 'Failed to calculate cycle time');
+      setNotificationMessage('Failed to load cycle time data');
+    });
   };
 
   // Get all dev cycle time data (unfiltered for visibility check)
@@ -633,3 +540,5 @@ export const CycleTimeAnalytics: React.FC<CycleTimeAnalyticsProps> = ({ workItem
     </div>
   );
 };
+
+

@@ -3,7 +3,6 @@ import { WorkItem } from '../types/workitem';
 import {
   RoadmapItem,
   TimelineColumn,
-  prepareRoadmapItems,
   generateMonthlyTimeline,
   generateQuarterlyTimeline,
   isDateInColumn,
@@ -306,10 +305,6 @@ const RoadmapView: React.FC<RoadmapViewProps> = ({ workItems, project, areaPath,
       }
       setExpandedItems(prev => new Set(prev).add(itemId));
     }
-  };
-
-  const getItemsInColumn = (column: TimelineColumn): RoadmapItem[] => {
-    return roadmapItems.filter(item => isDateInColumn(item.targetDate, column));
   };
 
   const formatDate = (dateString: string): string => {
@@ -785,7 +780,6 @@ const RoadmapView: React.FC<RoadmapViewProps> = ({ workItems, project, areaPath,
                                       // For PBI/TBI, check dueDate; for Bug, check targetDate
                                       const isPBIorTBIType = grandChild.workItemType === 'Product Backlog Item' || 
                                                               grandChild.workItemType === 'Technical Backlog Item';
-                                      const isBugType = grandChild.workItemType === 'Bug';
                                       const dateToCheck = isPBIorTBIType ? grandChild.dueDate : grandChild.targetDate;
                                       const isItemInColumn = dateToCheck && isDateInColumn(dateToCheck, column);
                                       
@@ -853,3 +847,5 @@ const RoadmapView: React.FC<RoadmapViewProps> = ({ workItems, project, areaPath,
 };
 
 export { RoadmapView };
+
+

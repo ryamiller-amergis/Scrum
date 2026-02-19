@@ -1,4 +1,3 @@
-import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import ReleaseView from '../ReleaseView';
@@ -25,7 +24,7 @@ const installFetchMock = (options: {
   const epicChildren = options.epicChildren ?? [];
   const featureChildren = options.featureChildren ?? [];
 
-  (global.fetch as jest.Mock).mockImplementation((input: any, init?: any) => {
+  (global.fetch as jest.Mock).mockImplementation((input: any, _init?: any) => {
     const url = typeof input === 'string' ? input : String(input);
 
     if (url.startsWith('/api/releases/epics')) {

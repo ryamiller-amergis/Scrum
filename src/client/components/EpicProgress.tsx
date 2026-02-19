@@ -258,3 +258,5 @@ export const EpicProgress: React.FC<EpicProgressProps> = ({ epicId, project, are
     </div>
   );
 };
+
+

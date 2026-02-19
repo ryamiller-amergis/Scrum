@@ -1,0 +1,35 @@
+---
+description: Run tsc type-check after any TypeScript changes to catch compiler errors before declaring done
+globs: **/*.ts,**/*.tsx
+alwaysApply: false
+---
+
+# TypeScript Type-Check After Changes
+
+After making any changes to `.ts` or `.tsx` files, **always run the TypeScript compiler** to catch type errors — `ReadLints` only runs ESLint and will NOT catch `tsc` errors.
+
+## Commands to run
+
+```bash
+# Client (React/Vite)
+npx tsc -p tsconfig.client.json --noEmit
+
+# Server (Node/Express)
+npx tsc -p tsconfig.server.json --noEmit
+```
+
+Run the relevant one(s) based on which files were changed. Fix all errors before declaring the task done.
+
+## Common pitfall
+
+`ReturnType<typeof setTimeout>` resolves to `NodeJS.Timeout` when `@types/node` is in scope (even in client code). Use explicit `number` for browser timers instead:
+
+```typescript
+// ❌ BAD - breaks when @types/node is present
+let timerId: ReturnType<typeof setTimeout> | null = null;
+timerId = window.setTimeout(...);
+
+// ✅ GOOD
+let timerId: number | null = null;
+timerId = window.setTimeout(...);
+```

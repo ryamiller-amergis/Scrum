@@ -1,0 +1,27 @@
+---
+description: Keep changes scoped to what was asked — do not modify config, env, or infrastructure files unless explicitly requested
+alwaysApply: true
+---
+
+# Scope Discipline
+
+Only change files **directly required** to fulfill the user's request. Do not touch config, environment, or infrastructure files as a side effect of debugging or troubleshooting.
+
+## Files that require explicit permission to change
+
+- `vite.config.ts`
+- `src/server/index.ts`
+- `src/server/routes/auth.ts`
+- `.env.example`
+- `tsconfig*.json`
+- `jest.config.*`
+- `package.json`
+- Any CI/CD pipeline files (`.github/`, `azure-pipelines.yml`, etc.)
+
+## Rule
+
+If a runtime issue is encountered during development (port conflicts, auth errors, etc.) that seems to require config changes:
+
+1. **Report the issue** to the user and explain what is causing it.
+2. **Ask explicitly** before modifying any config/infrastructure files.
+3. Do not bundle config changes into a feature implementation without asking.

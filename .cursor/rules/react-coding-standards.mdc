@@ -1,0 +1,67 @@
+---
+description: React/TypeScript component conventions for this project
+globs: **/*.tsx
+alwaysApply: false
+---
+
+# React Coding Standards
+
+## Component Structure
+
+Always use functional components with explicit `React.FC` typing:
+
+```tsx
+// ✅ GOOD
+interface WorkItemCardProps {
+  id: number;
+  title: string;
+  isDragging?: boolean;
+}
+
+export const WorkItemCard: React.FC<WorkItemCardProps> = ({ id, title, isDragging = false }) => {
+  return <div>...</div>;
+};
+
+// ❌ BAD — class components, anonymous exports, missing types
+export default function({ id }) { ... }
+```
+
+## Props Interfaces
+
+- Name interfaces `ComponentNameProps`
+- Define the interface directly above the component
+- Optional props use `?`; set defaults in the destructuring signature
+
+## Hooks Order
+
+Inside every component, declare hooks in this order:
+
+1. `useState`
+2. `useRef`
+3. `useMemo` / `useCallback`
+4. `useEffect`
+5. `useContext` / custom hooks
+
+## Early Returns
+
+Return `null` early for missing data or loading states — do not nest the entire render in a conditional:
+
+```tsx
+// ✅ GOOD
+if (!workItem) return null;
+
+// ❌ BAD
+return workItem ? <div>...</div> : null;
+```
+
+## State Management
+
+- Local state: `useState`
+- Shared cross-cutting state: `useContext` with a dedicated context in `src/client/contexts/`
+- No Redux or other global state libraries
+
+## Code Organisation
+
+- Reusable stateful logic → custom hook in `src/client/hooks/`
+- API / data-fetching logic → service in `src/client/services/`
+- Shared TypeScript types → `src/client/types/`

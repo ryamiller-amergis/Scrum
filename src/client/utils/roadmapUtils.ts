@@ -38,7 +38,6 @@ export function calculateHealthStatus(
   daysRemaining: number,
   remainingItems?: number
 ): 'on-track' | 'in-progress' | 'behind' | 'ahead' {
-  const DEADLINE_WARNING_THRESHOLD = 5; // Days before deadline to start warning
   const PLANNING_HORIZON_DAYS = 60; // Don't flag items as in-progress if deadline is beyond this
   const REASONABLE_ITEMS_PER_DAY = 1; // Expected velocity: items we can complete per day
   

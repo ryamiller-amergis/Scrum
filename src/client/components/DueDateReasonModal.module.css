@@ -270,3 +270,10 @@
 [data-theme='dark'] .modal-content {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
 }
+
+.field-error {
+  color: var(--error-color, #ef4444);
+  font-size: 0.8rem;
+  margin-top: 4px;
+  margin-bottom: 0;
+}

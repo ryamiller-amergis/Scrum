@@ -1,7 +1,6 @@
 import React from 'react';
 import { WorkItem } from '../types/workitem';
-import { getAssigneeColor, getEpicColor } from '../utils/assigneeColors';
-import './WorkItemCard.css';
+import styles from './WorkItemCard.module.css';
 
 interface WorkItemCardProps {
   workItem: WorkItem;
@@ -19,52 +18,44 @@ export const WorkItemCard: React.FC<WorkItemCardProps> = ({
   const isBug = workItem.workItemType === 'Bug';
   const isPBI = workItem.workItemType === 'Product Backlog Item';
   const isTBI = workItem.workItemType === 'Technical Backlog Item';
-  
-  // Get subtle accent colors for different work item types
+
   const getTypeColor = () => {
-    if (isEpic) return '#8b5cf6'; // Purple
-    if (isFeature) return '#3b82f6'; // Blue
-    if (isBug) return '#ef4444'; // Red
-    if (isPBI) return '#10b981'; // Green
-    if (isTBI) return '#f59e0b'; // Amber
-    return '#6b7280'; // Gray
+    if (isEpic) return '#8b5cf6';
+    if (isFeature) return '#3b82f6';
+    if (isBug) return '#ef4444';
+    if (isPBI) return '#10b981';
+    if (isTBI) return '#f59e0b';
+    return '#6b7280';
   };
-  
+
   return (
     <div
-      className={`work-item-card ${isDragging ? 'dragging' : ''} ${isEpic ? 'epic-card' : ''} ${isFeature ? 'feature-card' : ''}`}
+      className={[
+        styles['work-item-card'],
+        isDragging ? styles.dragging : '',
+        isEpic ? styles['epic-card'] : '',
+        isFeature ? styles['feature-card'] : '',
+      ].filter(Boolean).join(' ')}
       onClick={onClick}
-      style={{
-        opacity: isDragging ? 0.5 : 1,
-        cursor: 'pointer',
-        borderLeftColor: getTypeColor(),
-      }}
+      style={{ opacity: isDragging ? 0.5 : 1, cursor: 'pointer', borderLeftColor: getTypeColor() }}
     >
-      <div className="work-item-header">
-        <div className="work-item-id">
-          {isEpic && <span className="type-icon">👑</span>}
-          {isFeature && <span className="type-icon">⭐</span>}
-          {isBug && <span className="type-icon">🐛</span>}
-          {isPBI && <span className="type-icon">📋</span>}
-          {isTBI && <span className="type-icon">🔧</span>}
-          <span className="id-number">#{workItem.id}</span>
+      <div className={styles['work-item-header']}>
+        <div className={styles['work-item-id']}>
+          {isEpic && <span className={styles['type-icon']}>👑</span>}
+          {isFeature && <span className={styles['type-icon']}>⭐</span>}
+          {isBug && <span className={styles['type-icon']}>🐛</span>}
+          {isPBI && <span className={styles['type-icon']}>📋</span>}
+          {isTBI && <span className={styles['type-icon']}>🔧</span>}
+          <span className={styles['id-number']}>#{workItem.id}</span>
         </div>
-        <div className="work-item-state">
-          {workItem.state}
-        </div>
+        <div className={styles['work-item-state']}>{workItem.state}</div>
       </div>
-      <div className="work-item-title">
-        {workItem.title}
-      </div>
+      <div className={styles['work-item-title']}>{workItem.title}</div>
       {workItem.assignedTo && (
-        <div className="work-item-assigned">
-          {workItem.assignedTo}
-        </div>
+        <div className={styles['work-item-assigned']}>{workItem.assignedTo}</div>
       )}
       {(isEpic || isFeature || isBug) && workItem.targetDate && (
-        <div className="work-item-target-date">
-          Target: {workItem.targetDate}
-        </div>
+        <div className={styles['work-item-target-date']}>Target: {workItem.targetDate}</div>
       )}
     </div>
   );

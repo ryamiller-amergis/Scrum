@@ -1,0 +1,89 @@
+---
+description: UI/UX design standards — CSS variables, dark mode, co-located styles, and transitions
+globs: **/*.tsx,**/*.css
+alwaysApply: false
+---
+
+# UI Design Standards
+
+## CSS Variables — Always Use Tokens
+
+Never hardcode colors, shadows, or borders. Use the CSS custom properties defined in `App.css`:
+
+```css
+/* ✅ GOOD */
+background: var(--bg-primary);
+color: var(--text-secondary);
+border: 1px solid var(--border-color);
+box-shadow: var(--shadow-md);
+
+/* ❌ BAD */
+background: #ffffff;
+color: #666;
+border: 1px solid #ddd;
+```
+
+### Available token groups
+
+| Group | Variables |
+|-------|-----------|
+| Backgrounds | `--bg-primary`, `--bg-secondary`, `--bg-tertiary` |
+| Text | `--text-primary`, `--text-secondary`, `--text-muted` |
+| Accent | `--accent-color`, `--accent-hover` |
+| Borders | `--border-color`, `--border-color-light` |
+| Shadows | `--shadow-sm`, `--shadow-md` |
+| Status | `--success-color`, `--error-color` |
+
+## Dark Mode
+
+Dark mode is handled automatically by `[data-theme="dark"]` in `App.css`. Do not add manual dark-mode overrides via inline styles or JavaScript theme checks:
+
+```tsx
+// ❌ BAD
+const isDark = document.body.dataset.theme === 'dark';
+style={{ color: isDark ? '#fff' : '#000' }}
+
+// ✅ GOOD — use a CSS variable and let the theme do the work
+style={{ color: 'var(--text-primary)' }}
+```
+
+## Co-located Stylesheets
+
+Every component gets its own `.css` file with the same name, in the same folder:
+
+```
+src/client/components/
+  WorkItemCard.tsx
+  WorkItemCard.css   ← import './WorkItemCard.css' at the top of the component
+```
+
+## Inline Styles
+
+Reserve inline styles for values that are truly dynamic (driven by runtime state). Use CSS classes for everything else:
+
+```tsx
+// ✅ GOOD — dynamic value from state
+style={{ opacity: isDragging ? 0.5 : 1, width: `${panelWidth}px` }}
+
+// ❌ BAD — static values belong in CSS
+style={{ padding: '8px 12px', borderRadius: '4px' }}
+```
+
+## Transitions
+
+Use consistent timing:
+
+- **Micro-interactions** (hover, focus, button states): `transition: all 0.2s ease`
+- **Panel / modal animations** (open/close, slide): `transition: all 0.3s ease`
+
+## Typography
+
+Do not override the system font stack. The project uses:
+
+```css
+font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+```
+
+## Spacing & Sizing
+
+Align spacing with existing components — avoid arbitrary magic numbers. Prefer values from the existing scale (4, 8, 12, 16, 24, 32 px).

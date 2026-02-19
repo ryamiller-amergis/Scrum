@@ -1,3 +1,4 @@
+  .field-error { color: var(--error-color, #ef4444); font-size: 0.8rem; margin-top: 4px; margin-bottom: 0; }
 .release-view {
   padding: 20px;
   height: 100%;
@@ -1763,3 +1764,4 @@
     gap: 12px;
   }
 }
+

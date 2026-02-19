@@ -1,3 +1,4 @@
+  .field-error { color: var(--error-color, #ef4444); font-size: 0.8rem; margin-top: 4px; margin-bottom: 0; }
 .cloud-cost {
   display: flex;
   flex-direction: column;
@@ -1368,3 +1369,4 @@
 [data-theme="dark"] .cost-table thead {
   background: var(--bg-primary);
 }
+

@@ -505,7 +505,6 @@ export const ScrumCalendar: React.FC<ScrumCalendarProps> = ({
   const EventComponent = ({ event }: EventProps<CalendarEvent>) => {
     const isEpic = event.resource.workItemType === 'Epic';
     const isFeature = event.resource.workItemType === 'Feature';
-    const isBug = event.resource.workItemType === 'Bug';
     const isPBI = event.resource.workItemType === 'Product Backlog Item';
     const isTBI = event.resource.workItemType === 'Technical Backlog Item';
     const isSpecialType = isEpic || isFeature;
