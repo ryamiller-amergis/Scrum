@@ -111,9 +111,9 @@ export function PrefetchProvider({ children, project, areaPath, isAuthenticated,
       }
     };
 
-    let staggerTimerId: ReturnType<typeof setTimeout> | null = null;
+    let staggerTimerId: number | null = null;
 
-    const delayTimerId = window.setTimeout(() => {
+    const delayTimerId: number = window.setTimeout(() => {
       if (cancelled) return;
       prefetchReleases();
       staggerTimerId = window.setTimeout(() => {
@@ -123,8 +123,8 @@ export function PrefetchProvider({ children, project, areaPath, isAuthenticated,
 
     return () => {
       cancelled = true;
-      clearTimeout(delayTimerId);
-      if (staggerTimerId !== null) clearTimeout(staggerTimerId);
+      window.clearTimeout(delayTimerId);
+      if (staggerTimerId !== null) window.clearTimeout(staggerTimerId);
     };
   }, [isAuthenticated, project, areaPath, mainViewReady]);
 
