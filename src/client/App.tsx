@@ -35,7 +35,7 @@ function App() {
       ? 'cloudcost'
       : 'calendar';
 
-  const planningTab = (location.pathname.split('/')[2] as PlanningTab) || 'cycle-time';
+  const planningTab = (location.pathname.split('/')[2] as PlanningTab) || 'dev-stats';
 
   const {
     isAuthenticated,

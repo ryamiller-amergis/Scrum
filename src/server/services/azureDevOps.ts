@@ -1,6 +1,6 @@
 import * as azdev from 'azure-devops-node-api';
 import { WorkItemExpand } from 'azure-devops-node-api/interfaces/WorkItemTrackingInterfaces';
-import { WorkItem, CycleTimeData, DueDateChange, DeveloperDueDateStats, DueDateHitRateStats, Release, ReleaseMetrics } from '../types/workitem';
+import { WorkItem, CycleTimeData, DueDateChange, DeveloperDueDateStats, DueDateHitRateStats, Release, ReleaseMetrics, InProgressTimeStats } from '../types/workitem';
 import { retryWithBackoff } from '../utils/retry';
 
 export class AzureDevOpsService {
@@ -437,6 +437,14 @@ export class AzureDevOpsService {
               
               const currentDueDate = fields['Microsoft.VSTS.Scheduling.DueDate'];
               const changedBy = fields['System.ChangedBy']?.displayName || fields['System.ChangedBy'] || 'Unknown';
+              // System.AssignedTo can be an identity object {displayName, uniqueName} or a plain string
+              const assignedToRaw = fields['System.AssignedTo'];
+              const assignedTo: string =
+                (assignedToRaw && typeof assignedToRaw === 'object' && assignedToRaw.displayName)
+                  ? assignedToRaw.displayName
+                  : (typeof assignedToRaw === 'string' && assignedToRaw)
+                    ? assignedToRaw
+                    : 'Unassigned';
               const changedDate = fields['System.ChangedDate'];
               
               // Try multiple possible field names for the reason
@@ -473,7 +481,7 @@ export class AzureDevOpsService {
                 // DEBUG: Log all available fields when a due date change is detected
                 console.log(`\n=== Due Date Change Detected for Work Item ${workItemId} ===`);
                 console.log(`Old: ${normalizedPrevious} -> New: ${normalizedCurrent}`);
-                console.log(`Changed by: ${changedBy}`);
+                console.log(`Changed by: ${changedBy}, Assigned to: ${assignedTo} (raw: ${JSON.stringify(assignedToRaw)})`);
                 console.log(`Changed date: ${changedDate}`);
                 console.log(`Reason found:`, reason);
                 console.log(`History field:`, fields['System.History']?.substring(0, 200));
@@ -482,6 +490,7 @@ export class AzureDevOpsService {
                 allChanges.push({
                   changedDate: new Date(changedDate).toISOString(),
                   changedBy,
+                  assignedTo,
                   oldDueDate: normalizedPrevious,
                   newDueDate: normalizedCurrent,
                   reason: reason || 'No reason provided'
@@ -510,20 +519,29 @@ export class AzureDevOpsService {
         project: this.project,
         areaPath: this.areaPath,
         from,
-        to
+        to,
+        developerFilter
       });
       
-      // For stats, we want work items that have been in progress at some point
       const witApi = await this.connection.getWorkItemTrackingApi();
       
-      let wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${this.project}' AND [System.WorkItemType] = 'Product Backlog Item'`;
+      // Include all schedulable work item types that can have a due date.
+      // NOTE: Do NOT add date filters to WIQL – ADO WIQL date literals are unreliable.
+      // Date filtering is applied in JS after fetching revision history.
+      let wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${this.project}'`;
+      wiql += ` AND [System.WorkItemType] IN ('Product Backlog Item', 'Technical Backlog Item', 'Bug', 'Task', 'Feature', 'User Story')`;
 
       if (this.areaPath) {
         wiql += ` AND [System.AreaPath] UNDER '${this.areaPath}'`;
       }
 
-      // Don't restrict by date in the initial query - get all PBIs, then filter by revision dates
-      // This ensures we don't miss items that had due date changes but weren't recently modified
+      // When a specific developer is selected, scope WIQL to items currently assigned to
+      // them so we avoid the need for any hard item cap.
+      if (developerFilter) {
+        const escaped = developerFilter.replace(/'/g, "''");
+        wiql += ` AND [System.AssignedTo] = '${escaped}'`;
+      }
+
       wiql += ' ORDER BY [System.ChangedDate] DESC';
       
       console.log('Executing WIQL:', wiql);
@@ -534,63 +552,46 @@ export class AzureDevOpsService {
       );
 
       if (!queryResult.workItems || queryResult.workItems.length === 0) {
-        console.log('No work items found for area path');
+        console.log('No work items found matching criteria');
         return [];
       }
 
       const ids = queryResult.workItems.map((wi) => wi.id!);
-      console.log(`Found ${ids.length} work items in area path`);
+      console.log(`Found ${ids.length} work items`);
       
-      // OPTIMIZATION: Limit to most recent work items to avoid processing too many
-      const maxItems = 150;
-      const limitedIds = ids.slice(0, maxItems);
-      if (ids.length > maxItems) {
-        console.log(`Limiting to ${maxItems} most recently changed work items for performance`);
+      // For "all developers" cap at 400 most-recently-changed items to stay performant.
+      // For a specific developer there's no cap – their item set is already narrow.
+      const limitedIds = developerFilter ? ids : ids.slice(0, 400);
+      if (!developerFilter && ids.length > 400) {
+        console.log(`All-developers query: limiting to 400 of ${ids.length} work items`);
       }
       
-      // Filter work items that have been in "In Progress" state
-      console.log('Filtering work items that have been In Progress...');
-      const inProgressIds: number[] = [];
-      
-      for (const workItemId of limitedIds) {
-        try {
-          const revisions = await witApi.getRevisions(workItemId);
-          const hasBeenInProgress = revisions.some(rev => 
-            rev.fields && rev.fields['System.State'] === 'In Progress'
-          );
-          
-          if (hasBeenInProgress) {
-            inProgressIds.push(workItemId);
-          }
-        } catch (error) {
-          console.error(`Error checking state for work item ${workItemId}:`, error);
-        }
-      }
-      
-      console.log(`Found ${inProgressIds.length} work items that have been In Progress out of ${limitedIds.length} total`);
-      
-      if (inProgressIds.length === 0) {
-        console.log('No work items found that have been In Progress');
-        return [];
-      }
-      
-      console.log(`Processing ${inProgressIds.length} work items for due date change history...`);
-      // Get due date change history for filtered work items
-      const changes = await this.getDueDateChangeHistory(inProgressIds);
-      console.log(`Found ${changes.length} due date changes`);
-      
-      // Filter by developer if specified
-      const filteredChanges = developerFilter 
-        ? changes.filter(change => change.changedBy === developerFilter)
-        : changes;
+      console.log(`Processing ${limitedIds.length} work items for due date change history...`);
+      const changes = await this.getDueDateChangeHistory(limitedIds);
+      console.log(`Found ${changes.length} due date changes total`);
+
+      // Filter by date range using JS Date comparison (reliable, no WIQL date quirks)
+      const fromMs = from ? new Date(from).getTime() : 0;
+      const toMs   = to   ? new Date(`${to}T23:59:59.999Z`).getTime() : Infinity;
+      const dateFilteredChanges = changes.filter(change => {
+        const t = new Date(change.changedDate).getTime();
+        return t >= fromMs && t <= toMs;
+      });
+      console.log(`After date filter (${from ?? 'all'} – ${to ?? 'all'}): ${dateFilteredChanges.length} changes`);
+
+      // Filter by assigned owner – when WIQL already scoped by assignee, changes from
+      // revisions where the item was assigned to someone else are excluded here too.
+      const filteredChanges = developerFilter
+        ? dateFilteredChanges.filter(change => change.assignedTo === developerFilter)
+        : dateFilteredChanges;
       
       console.log(`After developer filter: ${filteredChanges.length} changes`);
       
-      // Aggregate by developer
+      // Aggregate by assigned owner
       const statsByDev = new Map<string, { totalChanges: number, reasonBreakdown: Map<string, number> }>();
       
       for (const change of filteredChanges) {
-        const developer = change.changedBy;
+        const developer = change.assignedTo;
         
         if (!statsByDev.has(developer)) {
           statsByDev.set(developer, {
@@ -2825,6 +2826,149 @@ export class AzureDevOpsService {
       return result;
     } catch (error) {
       console.error('Error in getQABugStats:', error);
+      return [];
+    }
+  }
+
+  async getInProgressTimeStats(from?: string, to?: string, developerFilter?: string): Promise<InProgressTimeStats[]> {
+    try {
+      console.log('=== AzureDevOpsService.getInProgressTimeStats START ===', { from, to, developerFilter });
+
+      const witApi = await this.connection.getWorkItemTrackingApi();
+
+      let wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${this.project}'`;
+      wiql += ` AND [System.WorkItemType] IN ('Technical Backlog Item')`;
+
+      if (this.areaPath) {
+        wiql += ` AND [System.AreaPath] UNDER '${this.areaPath}'`;
+      }
+
+      if (developerFilter) {
+        const escaped = developerFilter.replace(/'/g, "''");
+        wiql += ` AND [System.AssignedTo] = '${escaped}'`;
+      }
+
+      wiql += ' ORDER BY [System.ChangedDate] DESC';
+
+      const queryResult = await witApi.queryByWiql({ query: wiql }, { project: this.project });
+
+      if (!queryResult.workItems || queryResult.workItems.length === 0) {
+        return [];
+      }
+
+      const ids = queryResult.workItems.map(wi => wi.id!);
+      const limitedIds = developerFilter ? ids : ids.slice(0, 400);
+      console.log(`Processing ${limitedIds.length} work items for In Progress time stats`);
+
+      const fromMs = from ? new Date(from).getTime() : 0;
+      const toMs   = to   ? new Date(`${to}T23:59:59.999Z`).getTime() : Infinity;
+      const now = new Date();
+
+      const developerMap = new Map<string, InProgressTimeStats['workItemDetails']>();
+
+      for (const workItemId of limitedIds) {
+        try {
+          const revisions = await witApi.getRevisions(workItemId);
+          if (!revisions || revisions.length < 2) continue;
+
+          const title = revisions[revisions.length - 1]?.fields?.['System.Title'] || `Work Item ${workItemId}`;
+          const workItemType = revisions[revisions.length - 1]?.fields?.['System.WorkItemType'] || 'Unknown';
+          const currentAssignee: string =
+            (revisions[revisions.length - 1]?.fields?.['System.AssignedTo'] as any)?.displayName ||
+            revisions[revisions.length - 1]?.fields?.['System.AssignedTo'] || '';
+
+          // Accumulate all In Progress spans for this work item, then collapse into one entry
+          let enteredInProgress: Date | null = null;
+          let previousState = '';
+          let totalDays = 0;
+          let firstEntryDate: string | null = null;
+          let lastExitDate: string | null = null;
+          let isCurrentlyInProgress = false;
+          let developer = developerFilter || currentAssignee || 'Unassigned';
+
+          for (let i = 0; i < revisions.length; i++) {
+            const fields = revisions[i].fields;
+            if (!fields) continue;
+
+            const state: string = fields['System.State'] || '';
+            const changedDate = fields['System.ChangedDate'] ? new Date(fields['System.ChangedDate']) : null;
+
+            const assignedToRaw = fields['System.AssignedTo'];
+            const assignee: string =
+              (assignedToRaw && typeof assignedToRaw === 'object' && (assignedToRaw as any).displayName)
+                ? (assignedToRaw as any).displayName
+                : (typeof assignedToRaw === 'string' ? assignedToRaw : currentAssignee);
+
+            if (!changedDate) { previousState = state; continue; }
+
+            if (state === 'In Progress' && previousState !== 'In Progress') {
+              enteredInProgress = changedDate;
+              if (!developerFilter) developer = assignee || 'Unassigned';
+            } else if (state !== 'In Progress' && previousState === 'In Progress' && enteredInProgress) {
+              const entered = enteredInProgress;
+              const exited = changedDate;
+
+              if (exited.getTime() >= fromMs && entered.getTime() <= toMs) {
+                const effectiveEntry = new Date(Math.max(entered.getTime(), fromMs));
+                const effectiveExit  = new Date(Math.min(exited.getTime(), toMs));
+                const days = (effectiveExit.getTime() - effectiveEntry.getTime()) / (1000 * 60 * 60 * 24);
+                totalDays += days;
+                if (!firstEntryDate) firstEntryDate = entered.toISOString().split('T')[0];
+                lastExitDate = exited.toISOString().split('T')[0];
+              }
+              enteredInProgress = null;
+            }
+
+            // Last revision and still In Progress
+            if (i === revisions.length - 1 && state === 'In Progress' && enteredInProgress) {
+              const entered = enteredInProgress;
+              const effectiveEntry = new Date(Math.max(entered.getTime(), fromMs));
+              const effectiveExit  = new Date(Math.min(now.getTime(), toMs));
+
+              if (effectiveExit.getTime() >= fromMs && effectiveEntry.getTime() <= toMs) {
+                const days = (effectiveExit.getTime() - effectiveEntry.getTime()) / (1000 * 60 * 60 * 24);
+                totalDays += days;
+                if (!firstEntryDate) firstEntryDate = entered.toISOString().split('T')[0];
+                isCurrentlyInProgress = true;
+              }
+            }
+
+            previousState = state;
+          }
+
+          // Only add the work item if it had any qualifying In Progress time
+          if (totalDays > 0 || isCurrentlyInProgress) {
+            if (!developerMap.has(developer)) developerMap.set(developer, []);
+            developerMap.get(developer)!.push({
+              id: workItemId,
+              title,
+              workItemType,
+              daysInProgress: Math.round(totalDays * 10) / 10,
+              enteredInProgressDate: firstEntryDate || '',
+              exitedInProgressDate: isCurrentlyInProgress ? null : lastExitDate,
+              isCurrentlyInProgress,
+            });
+          }
+        } catch (err) {
+          console.error(`Error processing work item ${workItemId} for in-progress stats:`, err);
+        }
+      }
+
+      const result: InProgressTimeStats[] = Array.from(developerMap.entries()).map(([developer, items]) => {
+        const totalDays = items.reduce((sum, i) => sum + i.daysInProgress, 0);
+        return {
+          developer,
+          totalItemsInProgress: items.length,
+          averageDaysInProgress: items.length > 0 ? Math.round((totalDays / items.length) * 10) / 10 : 0,
+          totalDaysInProgress: Math.round(totalDays * 10) / 10,
+          workItemDetails: items.sort((a, b) => b.daysInProgress - a.daysInProgress),
+        };
+      }).sort((a, b) => b.averageDaysInProgress - a.averageDaysInProgress);
+
+      console.log(`Returning In Progress time stats for ${result.length} developers`);
+      return result;
+    } catch (error) {
+      console.error('Error in getInProgressTimeStats:', error);
       return [];
     }
   }

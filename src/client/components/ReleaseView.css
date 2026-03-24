@@ -236,6 +236,30 @@
   font-size: 14px;
 }
 
+.epics-table th.sortable-th {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.epics-table th.sortable-th:hover {
+  background: var(--bg-hover, rgba(0, 0, 0, 0.06));
+}
+
+.sort-indicator {
+  display: inline-block;
+  margin-left: 4px;
+  font-size: 11px;
+  opacity: 0.45;
+  vertical-align: middle;
+  transition: opacity 0.15s;
+}
+
+.epics-table th.sortable-th:hover .sort-indicator,
+.epics-table th.sortable-th[data-active] .sort-indicator {
+  opacity: 1;
+}
+
 .epics-table td {
   padding: 16px 12px;
   border-bottom: 1px solid var(--border-color-light);

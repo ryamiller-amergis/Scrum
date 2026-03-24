@@ -1,6 +1,6 @@
 import express, { Request, Response } from 'express';
 import { AzureDevOpsService } from '../services/azureDevOps';
-import { WorkItemsQuery, UpdateDueDateRequest, DeveloperDueDateStats, DueDateHitRateStats, PullRequestTimeStats, CreateDeploymentRequest } from '../types/workitem';
+import { WorkItemsQuery, UpdateDueDateRequest, DeveloperDueDateStats, DueDateHitRateStats, PullRequestTimeStats, InProgressTimeStats, CreateDeploymentRequest } from '../types/workitem';
 import { getFeatureAutoCompleteService } from '../services/featureAutoComplete';
 import { DeploymentTrackingService } from '../services/deploymentTracking';
 
@@ -121,12 +121,11 @@ router.get('/health', async (req: Request, res: Response) => {
 // GET /api/due-date-stats - Get due date change statistics by developer
 router.get('/due-date-stats', async (req: Request, res: Response) => {
   try {
-    const { from, to, developer, project } = req.query as WorkItemsQuery & { developer?: string; project?: string };
+    const { from, to, developer, project, areaPath: areaPathParam } = req.query as WorkItemsQuery & { developer?: string; project?: string; areaPath?: string };
     
     // Define specific teams to query for developer statistics
-    // Using project-level query for now to ensure we get data
     const devStatsTeams = [
-      { project: 'MaxView', areaPath: '' } // Empty to get all from project
+      { project: 'MaxView', areaPath: areaPathParam || '' }
     ];
     
     // Fetch stats from all teams and aggregate
@@ -176,14 +175,12 @@ router.get('/due-date-stats', async (req: Request, res: Response) => {
 // GET /api/due-date-hit-rate - Get statistics on whether developers hit their due dates
 router.get('/due-date-hit-rate', async (req: Request, res: Response) => {
   try {
-    const { from, to, developer } = req.query as WorkItemsQuery & { developer?: string };
+    const { from, to, developer, areaPath: areaPathParam } = req.query as WorkItemsQuery & { developer?: string; areaPath?: string };
     
     // Define specific teams to query
     const devStatsTeams = [
-      { project: 'MaxView', areaPath: '' } // Empty to get all from project
+      { project: 'MaxView', areaPath: areaPathParam || '' }
     ];
-    
-    // Fetch hit rate stats from all teams and aggregate
     const allStats: DueDateHitRateStats[] = [];
     
     for (const team of devStatsTeams) {
@@ -237,15 +234,13 @@ router.get('/due-date-hit-rate', async (req: Request, res: Response) => {
 router.get('/pull-request-time-stats', async (req: Request, res: Response) => {
   try {
     console.log('=== API: /pull-request-time-stats called ===');
-    const { from, to, developer } = req.query as WorkItemsQuery & { developer?: string };
-    console.log('Query params:', { from, to, developer });
+    const { from, to, developer, areaPath: areaPathParam } = req.query as WorkItemsQuery & { developer?: string; areaPath?: string };
+    console.log('Query params:', { from, to, developer, areaPath: areaPathParam });
     
     // Define specific teams to query
     const devStatsTeams = [
-      { project: 'MaxView', areaPath: '' } // Empty to get all from project
+      { project: 'MaxView', areaPath: areaPathParam || '' }
     ];
-    
-    // Fetch pull request time stats from all teams and aggregate
     const allStats: any[] = [];
     
     for (const team of devStatsTeams) {
@@ -305,15 +300,13 @@ router.get('/pull-request-time-stats', async (req: Request, res: Response) => {
 router.get('/qa-bug-stats', async (req: Request, res: Response) => {
   try {
     console.log('=== API: /qa-bug-stats called ===');
-    const { from, to, developer } = req.query as WorkItemsQuery & { developer?: string };
-    console.log('Query params:', { from, to, developer });
+    const { from, to, developer, areaPath: areaPathParam } = req.query as WorkItemsQuery & { developer?: string; areaPath?: string };
+    console.log('Query params:', { from, to, developer, areaPath: areaPathParam });
     
     // Define specific teams to query
     const devStatsTeams = [
-      { project: 'MaxView', areaPath: '' } // Empty to get all from project
+      { project: 'MaxView', areaPath: areaPathParam || '' }
     ];
-    
-    // Fetch QA bug stats from all teams and aggregate
     const allStats: any[] = [];
     
     for (const team of devStatsTeams) {
@@ -365,6 +358,53 @@ router.get('/qa-bug-stats', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error fetching QA bug stats:', error);
     res.status(500).json({ error: 'Failed to fetch QA bug statistics' });
+  }
+});
+
+// GET /api/in-progress-stats - Get time spent In Progress grouped by developer
+router.get('/in-progress-stats', async (req: Request, res: Response) => {
+  try {
+    const { from, to, developer, areaPath: areaPathParam } = req.query as { from?: string; to?: string; developer?: string; areaPath?: string };
+
+    const devTeams = [
+      { project: 'MaxView', areaPath: areaPathParam || '' }
+    ];
+
+    const allStats: InProgressTimeStats[] = [];
+
+    for (const team of devTeams) {
+      try {
+        const adoService = new AzureDevOpsService(team.project, team.areaPath);
+        const teamStats = await adoService.getInProgressTimeStats(from, to, developer);
+        allStats.push(...teamStats);
+      } catch (err) {
+        console.error(`Error fetching in-progress stats for ${team.project}:`, err);
+      }
+    }
+
+    // Aggregate by developer
+    const aggregatedStats = new Map<string, InProgressTimeStats>();
+    for (const stat of allStats) {
+      if (aggregatedStats.has(stat.developer)) {
+        const existing = aggregatedStats.get(stat.developer)!;
+        existing.workItemDetails.push(...stat.workItemDetails);
+        existing.totalItemsInProgress = existing.workItemDetails.length;
+        const total = existing.workItemDetails.reduce((s, i) => s + i.daysInProgress, 0);
+        existing.totalDaysInProgress = Math.round(total * 10) / 10;
+        existing.averageDaysInProgress = Math.round((total / existing.workItemDetails.length) * 10) / 10;
+      } else {
+        aggregatedStats.set(stat.developer, { ...stat, workItemDetails: [...stat.workItemDetails] });
+      }
+    }
+
+    const result = Array.from(aggregatedStats.values())
+      .sort((a, b) => b.averageDaysInProgress - a.averageDaysInProgress);
+
+    console.log(`Returning in-progress stats for ${result.length} developers`);
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error fetching in-progress stats:', error);
+    res.status(500).json({ error: 'Failed to fetch in-progress statistics' });
   }
 });
 

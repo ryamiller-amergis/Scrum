@@ -8,7 +8,7 @@ interface PlanningTabsProps {
 }
 
 const TABS: { id: PlanningTab; label: string }[] = [
-  { id: 'cycle-time', label: 'Cycle Time' },
+  // { id: 'cycle-time', label: 'Cycle Time' }, // Hidden — not currently in use
   { id: 'dev-stats', label: 'Developer Stats' },
   { id: 'qa', label: 'QA Metrics' },
   { id: 'roadmap', label: 'Roadmap' },
