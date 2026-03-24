@@ -1,6 +1,6 @@
 import { WorkItem, DeveloperDueDateStats, DueDateHitRateStats, PullRequestTimeStats, QABugStats, InProgressTimeStats } from '../types/workitem';
 import './DevStats.css';
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 
 interface DevStatsProps {
   workItems: WorkItem[];
@@ -47,7 +47,7 @@ const checkAndClearOnRefresh = () => {
   return false;
 };
 
-export const DevStats: React.FC<DevStatsProps> = ({ workItems, project, areaPath, onSelectItem }) => {
+export const DevStats: React.FC<DevStatsProps> = ({ workItems, onSelectItem }) => {
   const [isPageRefresh] = useState(() => checkAndClearOnRefresh());
 
   // Restore data from sessionStorage on mount
@@ -204,8 +204,6 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, project, areaPath
   const [isQaBugCollapsed, setIsQaBugCollapsed] = useState(true);
   const [isInProgressCollapsed, setIsInProgressCollapsed] = useState(true);
   const [collapsedReasons, setCollapsedReasons] = useState<Set<string>>(new Set());
-  const [collapsedHitRate, setCollapsedHitRate] = useState<Set<string>>(new Set());
-  const [collapsedPrTime, setCollapsedPrTime] = useState<Set<string>>(new Set());
   const [collapsedQaBug, setCollapsedQaBug] = useState<Set<string>>(new Set());
   
   // Filter states - restore from sessionStorage
@@ -1317,8 +1315,6 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, project, areaPath
         {!isHitRateCollapsed && hitRateHasLoaded && !hitRateLoading && filteredHitRateStats.length > 0 && (
           <div className="developer-stats-list">
             {filteredHitRateStats.map((stats, index) => {
-              const devKey = `hitrate-${stats.developer}`;
-              const isCollapsed = collapsedHitRate.has(devKey);
               
               return (
                 <div key={index} className="developer-stat-card">
@@ -1501,8 +1497,6 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, project, areaPath
         {!isPrTimeCollapsed && prTimeHasLoaded && !prTimeLoading && filteredPrTimeStats.length > 0 && (
           <div className="developer-stats-list">
             {filteredPrTimeStats.map((stats, index) => {
-              const devKey = `prtime-${stats.developer}`;
-              const isCollapsed = collapsedPrTime.has(devKey);
               
               return (
                 <div key={index} className="developer-stat-card">
@@ -1653,8 +1647,6 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, project, areaPath
         {!isQaBugCollapsed && qaBugHasLoaded && !qaBugLoading && filteredQaBugStats.length > 0 && (
           <div className="developer-stats-list">
             {filteredQaBugStats.map((stats, index) => {
-              const devKey = `qabug-${stats.developer}`;
-              const isCollapsed = collapsedQaBug.has(devKey);
               
               return (
                 <div key={index} className="developer-stat-card">

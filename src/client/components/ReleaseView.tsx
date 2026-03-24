@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { WorkItem, Release, ReleaseMetrics, Deployment, DeploymentEnvironment } from '../types/workitem';
+import { WorkItem, ReleaseMetrics, Deployment, DeploymentEnvironment } from '../types/workitem';
 import './ReleaseView.css';
 
 interface ReleaseViewProps {
@@ -10,12 +10,11 @@ interface ReleaseViewProps {
 }
 
 const ReleaseView: React.FC<ReleaseViewProps> = ({
-  workItems,
   project,
   areaPath,
   onSelectItem,
 }) => {
-  const [releases, setReleases] = useState<string[]>([]);
+  const [, setReleases] = useState<string[]>([]);
   const [selectedRelease, setSelectedRelease] = useState<string | null>(null);
   const [releaseWorkItems, setReleaseWorkItems] = useState<WorkItem[]>([]);
   const [releaseMetrics, setReleaseMetrics] = useState<ReleaseMetrics | null>(null);
@@ -38,13 +37,10 @@ const ReleaseView: React.FC<ReleaseViewProps> = ({
   const [newReleaseTargetDate, setNewReleaseTargetDate] = useState('');
   const [newReleaseDescription, setNewReleaseDescription] = useState('');
   const [newReleaseStatus, setNewReleaseStatus] = useState<string>('New');
-  const [selectedWorkItemsForRelease, setSelectedWorkItemsForRelease] = useState<number[]>([]);
+  const [, setSelectedWorkItemsForRelease] = useState<number[]>([]);
   const [releaseEpics, setReleaseEpics] = useState<any[]>([]);
   const [loadingEpics, setLoadingEpics] = useState(false);
   const [openActionMenuId, setOpenActionMenuId] = useState<number | null>(null);
-  const [expandedEpicIds, setExpandedEpicIds] = useState<Set<number>>(new Set());
-  const [linkedItems, setLinkedItems] = useState<Map<number, WorkItem[]>>(new Map());
-  const [loadingLinkedItems, setLoadingLinkedItems] = useState<Set<number>>(new Set());
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
   const [childItems, setChildItems] = useState<Map<number, WorkItem[]>>(new Map());
   const [loadingChildren, setLoadingChildren] = useState<Set<number>>(new Set());
@@ -136,46 +132,6 @@ const ReleaseView: React.FC<ReleaseViewProps> = ({
     } finally {
       setSearchLoading(false);
     }
-  };
-
-  const fetchLinkedItems = async (epicId: number) => {
-    if (linkedItems.has(epicId)) {
-      return; // Already fetched
-    }
-
-    setLoadingLinkedItems(prev => new Set(prev).add(epicId));
-    try {
-      const response = await fetch(
-        `/api/releases/${epicId}/related-items?project=${encodeURIComponent(project)}&areaPath=${encodeURIComponent(areaPath)}`
-      );
-      
-      if (!response.ok) {
-        console.error('Failed to fetch related items:', response.status);
-        return;
-      }
-      
-      const data = await response.json();
-      setLinkedItems(prev => new Map(prev).set(epicId, data));
-    } catch (error) {
-      console.error('Error fetching related items:', error);
-    } finally {
-      setLoadingLinkedItems(prev => {
-        const next = new Set(prev);
-        next.delete(epicId);
-        return next;
-      });
-    }
-  };
-
-  const toggleEpicExpansion = (epicId: number) => {
-    const newExpanded = new Set(expandedEpicIds);
-    if (newExpanded.has(epicId)) {
-      newExpanded.delete(epicId);
-    } else {
-      newExpanded.add(epicId);
-      fetchLinkedItems(epicId);
-    }
-    setExpandedEpicIds(newExpanded);
   };
 
   // Debounce search
@@ -688,11 +644,6 @@ const ReleaseView: React.FC<ReleaseViewProps> = ({
       return sortDirection === 'asc' ? cmp : -cmp;
     });
   }, [releaseEpics, sortColumn, sortDirection]);
-
-  const availableFeatures = workItems.filter(
-    wi => (wi.workItemType === 'Feature' || wi.workItemType === 'Epic') && 
-    !wi.tags?.includes('Release:')
-  );
 
   const healthStatus = getHealthStatus();
   const completionPercentage = calculateCompletionPercentage();

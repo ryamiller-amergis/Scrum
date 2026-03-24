@@ -1,6 +1,5 @@
 import React from 'react';
 import { WorkItem } from '../types/workitem';
-import { getAssigneeColor, getEpicColor } from '../utils/assigneeColors';
 import './WorkItemCard.css';
 
 interface WorkItemCardProps {

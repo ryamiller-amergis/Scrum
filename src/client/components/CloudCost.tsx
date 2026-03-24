@@ -39,7 +39,7 @@ const loadFromStorage = <T,>(key: string, defaultValue: T): T => {
   }
 };
 
-export const CloudCost: React.FC<CloudCostProps> = ({ project, areaPath }) => {
+export const CloudCost: React.FC<CloudCostProps> = () => {
   // Initialize state from sessionStorage
   const [subscriptions, setSubscriptions] = useState<AzureSubscription[]>(() => 
     loadFromStorage(STORAGE_KEYS.SUBSCRIPTIONS, [])
@@ -892,7 +892,7 @@ export const CloudCost: React.FC<CloudCostProps> = ({ project, areaPath }) => {
                           ))}
                         </div>
                         <div className="chart-bars">
-                          {aggregateCostData(costData.costByDay, timePeriod).map((day, index, array) => {
+                          {aggregateCostData(costData.costByDay, timePeriod).map((day, index) => {
                             const aggregatedData = aggregateCostData(costData.costByDay, timePeriod);
                             const maxCost = Math.max(...aggregatedData.map(d => d.cost));
                             const heightPercent = maxCost > 0 ? (day.cost / maxCost) * 100 : 0;
