@@ -798,7 +798,7 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
         )}
 
         {/* Due Date Changes Section */}
-        {(workItem.workItemType === 'Product Backlog Item' || workItem.workItemType === 'TBI') && (
+        {(workItem.workItemType === 'Product Backlog Item' || workItem.workItemType === 'Technical Backlog Item' || workItem.workItemType === 'Bug') && (
           <div className="related-items-section">
             <div 
               className="related-items-header"
@@ -827,11 +827,9 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
                         <div className="related-item-title">
                           {change.oldDueDate ? new Date(change.oldDueDate).toLocaleDateString() : 'No Date'} → {change.newDueDate ? new Date(change.newDueDate).toLocaleDateString() : 'No Date'}
                         </div>
-                        {change.reason && (
-                          <div className="related-item-assignee">
-                            Reason: {change.reason}
-                          </div>
-                        )}
+                        <div className="related-item-assignee">
+                          Reason: {change.reason || 'No reason provided'}
+                        </div>
                       </li>
                     ))}
                   </ul>

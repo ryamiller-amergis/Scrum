@@ -62,8 +62,10 @@ export interface DueDateHitRateStats {
   workItemDetails: Array<{
     id: number;
     title: string;
+    workItemType: string;
     dueDate: string;
     completionDate: string;
+    dueDateChangeReasons: string[];
     hit: boolean;
     status: 'hit' | 'miss' | 'in-progress';
   }>;

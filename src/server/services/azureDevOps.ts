@@ -1,6 +1,6 @@
 import * as azdev from 'azure-devops-node-api';
 import { WorkItemExpand } from 'azure-devops-node-api/interfaces/WorkItemTrackingInterfaces';
-import { WorkItem, CycleTimeData, DueDateChange, DeveloperDueDateStats, DueDateHitRateStats, Release, ReleaseMetrics, InProgressTimeStats } from '../types/workitem';
+import { WorkItem, CycleTimeData, DueDateChange, DeveloperDueDateStats, DueDateHitRateStats, Release, ReleaseMetrics, InProgressTimeStats, QACycleTimeStats, UATCycleTimeStats, UATSittingItem } from '../types/workitem';
 import { retryWithBackoff } from '../utils/retry';
 
 export class AzureDevOpsService {
@@ -476,8 +476,9 @@ export class AzureDevOpsService {
               const normalizedCurrent = normalizeDate(currentDueDate);
               const normalizedPrevious = normalizeDate(previousDueDate);
               
-              // Check if due date changed in this revision
-              if (normalizedCurrent !== normalizedPrevious && changedDate) {
+              // Check if due date changed in this revision, including initial assignment.
+              // Record when a due date is set or changed (but not when it is removed).
+              if (normalizedCurrent !== normalizedPrevious && normalizedCurrent !== undefined && changedDate) {
                 // DEBUG: Log all available fields when a due date change is detected
                 console.log(`\n=== Due Date Change Detected for Work Item ${workItemId} ===`);
                 console.log(`Old: ${normalizedPrevious} -> New: ${normalizedCurrent}`);
@@ -581,9 +582,15 @@ export class AzureDevOpsService {
 
       // Filter by assigned owner – when WIQL already scoped by assignee, changes from
       // revisions where the item was assigned to someone else are excluded here too.
-      const filteredChanges = developerFilter
+      const devFilteredChanges = developerFilter
         ? dateFilteredChanges.filter(change => change.assignedTo === developerFilter)
         : dateFilteredChanges;
+
+      // Exclude initialization entries — changes whose reason indicates the due date
+      // was being set for the first time rather than genuinely moved.
+      const filteredChanges = devFilteredChanges.filter(
+        change => !/^initializ/i.test(change.reason || '')
+      );
       
       console.log(`After developer filter: ${filteredChanges.length} changes`);
       
@@ -875,11 +882,11 @@ export class AzureDevOpsService {
     return retryWithBackoff(async () => {
       const witApi = await this.connection.getWorkItemTrackingApi();
 
-      // Build WIQL query to get PBIs and Technical Backlog Items with due dates
-      let wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${this.project}' AND ([System.WorkItemType] = 'Product Backlog Item' OR [System.WorkItemType] = 'Technical Backlog Item') AND [Microsoft.VSTS.Scheduling.DueDate] <> ''`;
+      // Build WIQL query to get PBIs, Technical Backlog Items, and Bugs with due dates
+      let wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${this.project}' AND ([System.WorkItemType] = 'Product Backlog Item' OR [System.WorkItemType] = 'Technical Backlog Item' OR [System.WorkItemType] = 'Bug') AND [Microsoft.VSTS.Scheduling.DueDate] <> ''`;
 
       if (this.areaPath) {
-        wiql += ` AND [System.AreaPath] = '${this.areaPath}'`;
+        wiql += ` AND [System.AreaPath] UNDER '${this.areaPath}'`;
       }
 
       // Filter by date range based on when items were changed
@@ -921,6 +928,7 @@ export class AzureDevOpsService {
         'System.State',
         'System.AssignedTo',
         'Microsoft.VSTS.Scheduling.DueDate',
+        'System.WorkItemType',
       ];
 
       interface WorkItemAnalysis {
@@ -928,7 +936,9 @@ export class AzureDevOpsService {
         title: string;
         assignedTo?: string;
         dueDate?: string;
+        workItemType: string;
         dueDateChangeCount: number;
+        dueDateChangeReasons: string[];
         hit: boolean;
         completionInfo: string;
         status: 'hit' | 'miss' | 'in-progress';
@@ -980,6 +990,7 @@ export class AzureDevOpsService {
 
             // Track due date changes and state transitions
             let dueDateChangeCount = 0;
+            let dueDateChangeReasons: string[] = [];
             let previousDueDate: string | null = null;
             let transitionDate: string | null = null;
             let dueDateAtTransition: string | null = null;
@@ -1014,6 +1025,23 @@ export class AzureDevOpsService {
                 
                 if (previousDueDate && previousDueDate !== dueDateStr) {
                   dueDateChangeCount++;
+
+                  // Extract reason from custom fields or history (same logic as getDueDateChangeHistory)
+                  const revFields = revision.fields ?? {};
+                  let changeReason: string =
+                    revFields['Custom.DueDateMovementReasons'] ||
+                    revFields['Custom.DueDateMovementReason'] ||
+                    revFields['Custom.DueDateReason'] ||
+                    '';
+                  if (!changeReason && revFields['System.History']) {
+                    const match = (revFields['System.History'] as string).match(
+                      /Due date change reason:\s*(.+?)(?:<|$)/i
+                    );
+                    if (match) changeReason = match[1].trim();
+                  }
+                  if (!/^initializ/i.test(changeReason)) {
+                    dueDateChangeReasons.push(changeReason || 'No reason provided');
+                  }
                 }
                 
                 previousDueDate = dueDateStr;
@@ -1064,6 +1092,7 @@ export class AzureDevOpsService {
 
             const currentDueDateStr = currentDueDate.split('T')[0];
             const currentState = wi.fields['System.State'];
+            const workItemType = wi.fields['System.WorkItemType'] || '';
             const today = new Date().toISOString().split('T')[0];
             
             // Determine hit/miss/in-progress status
@@ -1122,7 +1151,9 @@ export class AzureDevOpsService {
               title: wi.fields['System.Title'] || '',
               assignedTo: developerForStats,
               dueDate: currentDueDateStr,
+              workItemType,
               dueDateChangeCount,
+              dueDateChangeReasons,
               hit,
               completionInfo,
               status
@@ -1160,8 +1191,10 @@ export class AzureDevOpsService {
           workItemDetails: workItems.map(wi => ({
             id: wi.id,
             title: wi.title,
+            workItemType: wi.workItemType,
             dueDate: wi.dueDate!,
             completionDate: wi.completionInfo,
+            dueDateChangeReasons: wi.dueDateChangeReasons,
             hit: wi.hit,
             status: wi.status
           }))
@@ -1332,17 +1365,21 @@ export class AzureDevOpsService {
         const changedBy = revision.fields?.['System.ChangedBy']?.displayName || 'Unknown';
         const changedDate = revision.fields?.['System.ChangedDate'];
         
-        // Try to get reason from custom field first, then from history
-        let reason = revision.fields?.['Custom.DueDateChangeReason'] || null;
+        // Try to get reason from custom fields (same names as getDueDateChangeHistory)
+        let reason: string | null =
+          revision.fields?.['Custom.DueDateMovementReasons'] ||
+          revision.fields?.['Custom.DueDateMovementReason'] ||
+          revision.fields?.['Custom.DueDateReason'] ||
+          null;
         if (!reason) {
           const history = revision.fields?.['System.History'];
           if (history && typeof history === 'string') {
-            const match = history.match(/Due date change reason: (.+)/);
-            if (match) {
-              reason = match[1];
-            }
+            const match = history.match(/Due date change reason:\s*(.+?)(?:<|$)/i);
+            if (match) reason = match[1].trim();
           }
         }
+        // Exclude initialization entries
+        if (reason && /^initializ/i.test(reason)) reason = null;
 
         // Detect due date change (skip initial setting from null)
         if (currentDueDateStr !== previousDueDate && previousDueDate !== null) {
@@ -1351,7 +1388,7 @@ export class AzureDevOpsService {
             changedBy,
             oldDueDate: previousDueDate,
             newDueDate: currentDueDateStr,
-            reason
+            reason: reason || 'No reason provided'
           });
         }
 
@@ -2969,6 +3006,329 @@ export class AzureDevOpsService {
       return result;
     } catch (error) {
       console.error('Error in getInProgressTimeStats:', error);
+      return [];
+    }
+  }
+
+  async getQACycleTimeStats(from?: string, to?: string, qaFilter?: string): Promise<QACycleTimeStats[]> {
+    try {
+      console.log('=== AzureDevOpsService.getQACycleTimeStats START ===', { from, to, qaFilter });
+
+      const witApi = await this.connection.getWorkItemTrackingApi();
+
+      let wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${this.project}'`;
+      wiql += ` AND [System.WorkItemType] IN ('Product Backlog Item', 'Technical Backlog Item', 'Bug')`;
+
+      if (this.areaPath) {
+        wiql += ` AND [System.AreaPath] UNDER '${this.areaPath}'`;
+      }
+
+      wiql += ' ORDER BY [System.ChangedDate] DESC';
+
+      const queryResult = await witApi.queryByWiql({ query: wiql }, { project: this.project });
+
+      if (!queryResult.workItems || queryResult.workItems.length === 0) {
+        return [];
+      }
+
+      const ids = queryResult.workItems.map(wi => wi.id!);
+      const limitedIds = qaFilter ? ids : ids.slice(0, 500);
+      console.log(`Processing ${limitedIds.length} work items for QA cycle time stats`);
+
+      const fromMs = from ? new Date(from).getTime() : 0;
+      const toMs   = to   ? new Date(`${to}T23:59:59.999Z`).getTime() : Infinity;
+
+      const qaMap = new Map<string, QACycleTimeStats['workItemDetails']>();
+
+      const IN_TEST_STATE = 'In Test';
+      const EXIT_STATES = new Set(['Done', 'UAT - Ready For Test', 'Closed']);
+
+      for (const workItemId of limitedIds) {
+        try {
+          const revisions = await witApi.getRevisions(workItemId);
+          if (!revisions || revisions.length < 2) continue;
+
+          const lastRevision = revisions[revisions.length - 1];
+          const title: string = lastRevision?.fields?.['System.Title'] || `Work Item ${workItemId}`;
+          const workItemType: string = lastRevision?.fields?.['System.WorkItemType'] || 'Unknown';
+
+          // Walk revisions looking for In Test → Done/UAT transitions
+          let enteredInTest: Date | null = null;
+          let qaAssigneeAtInTest: string | null = null;
+          let previousState = '';
+
+          for (let i = 0; i < revisions.length; i++) {
+            const fields = revisions[i].fields;
+            if (!fields) { previousState = ''; continue; }
+
+            const state: string = fields['System.State'] || '';
+            const changedDate = fields['System.ChangedDate'] ? new Date(fields['System.ChangedDate']) : null;
+            if (!changedDate) { previousState = state; continue; }
+
+            const assignedToRaw = fields['System.AssignedTo'];
+            const assignee: string =
+              (assignedToRaw && typeof assignedToRaw === 'object' && (assignedToRaw as any).displayName)
+                ? (assignedToRaw as any).displayName
+                : (typeof assignedToRaw === 'string' ? assignedToRaw : '');
+
+            // Entering In Test
+            if (state === IN_TEST_STATE && previousState !== IN_TEST_STATE) {
+              enteredInTest = changedDate;
+              qaAssigneeAtInTest = assignee || null;
+            }
+
+            // Leaving In Test to an exit state
+            if (previousState === IN_TEST_STATE && EXIT_STATES.has(state) && enteredInTest) {
+              const entered = enteredInTest;
+              const exited = changedDate;
+
+              // Only include if the span overlaps with the requested date range
+              if (exited.getTime() >= fromMs && entered.getTime() <= toMs) {
+                const effectiveEntry = new Date(Math.max(entered.getTime(), fromMs));
+                const effectiveExit  = new Date(Math.min(exited.getTime(), toMs));
+                const days = Math.round(
+                  ((effectiveExit.getTime() - effectiveEntry.getTime()) / (1000 * 60 * 60 * 24)) * 10
+                ) / 10;
+
+                const qaAssignee = qaAssigneeAtInTest || 'Unassigned';
+
+                if (!qaFilter || qaAssignee === qaFilter) {
+                  if (!qaMap.has(qaAssignee)) qaMap.set(qaAssignee, []);
+                  qaMap.get(qaAssignee)!.push({
+                    id: workItemId,
+                    title,
+                    workItemType,
+                    cycleTimeDays: days,
+                    enteredInTestDate: entered.toISOString().split('T')[0],
+                    exitedInTestDate: exited.toISOString().split('T')[0],
+                    exitState: state,
+                  });
+                }
+              }
+
+              enteredInTest = null;
+              qaAssigneeAtInTest = null;
+            }
+
+            previousState = state;
+          }
+        } catch (err) {
+          console.error(`Error processing work item ${workItemId} for QA cycle time:`, err);
+        }
+      }
+
+      const result: QACycleTimeStats[] = Array.from(qaMap.entries()).map(([qaAssignee, items]) => {
+        const totalDays = items.reduce((sum, i) => sum + i.cycleTimeDays, 0);
+        return {
+          qaAssignee,
+          totalItems: items.length,
+          averageCycleTimeDays: items.length > 0 ? Math.round((totalDays / items.length) * 10) / 10 : 0,
+          totalCycleTimeDays: Math.round(totalDays * 10) / 10,
+          workItemDetails: items.sort((a, b) => b.cycleTimeDays - a.cycleTimeDays),
+        };
+      }).sort((a, b) => b.averageCycleTimeDays - a.averageCycleTimeDays);
+
+      console.log(`=== getQACycleTimeStats returning ${result.length} QA members ===`);
+      return result;
+    } catch (error) {
+      console.error('Error in getQACycleTimeStats:', error);
+      return [];
+    }
+  }
+
+  async getUATCycleTimeStats(from?: string, to?: string, assigneeFilter?: string): Promise<UATCycleTimeStats[]> {
+    try {
+      console.log('=== AzureDevOpsService.getUATCycleTimeStats START ===', { from, to, assigneeFilter });
+
+      const witApi = await this.connection.getWorkItemTrackingApi();
+
+      let wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${this.project}'`;
+      wiql += ` AND [System.WorkItemType] IN ('Product Backlog Item', 'Technical Backlog Item', 'Bug')`;
+      if (this.areaPath) {
+        wiql += ` AND [System.AreaPath] UNDER '${this.areaPath}'`;
+      }
+      wiql += ' ORDER BY [System.ChangedDate] DESC';
+
+      const queryResult = await witApi.queryByWiql({ query: wiql }, { project: this.project });
+      if (!queryResult.workItems || queryResult.workItems.length === 0) return [];
+
+      const ids = queryResult.workItems.map(wi => wi.id!);
+      const limitedIds = assigneeFilter ? ids : ids.slice(0, 500);
+      console.log(`Processing ${limitedIds.length} work items for UAT cycle time stats`);
+
+      const fromMs = from ? new Date(from).getTime() : 0;
+      const toMs   = to   ? new Date(`${to}T23:59:59.999Z`).getTime() : Infinity;
+
+      const uatMap = new Map<string, UATCycleTimeStats['workItemDetails']>();
+
+      const UAT_ENTRY_STATE = 'UAT - Ready For Test';
+      const UAT_EXIT_STATE  = 'UAT - Test Done';
+
+      for (const workItemId of limitedIds) {
+        try {
+          const revisions = await witApi.getRevisions(workItemId);
+          if (!revisions || revisions.length < 2) continue;
+
+          const lastRevision = revisions[revisions.length - 1];
+          const title: string = lastRevision?.fields?.['System.Title'] || `Work Item ${workItemId}`;
+          const workItemType: string = lastRevision?.fields?.['System.WorkItemType'] || 'Unknown';
+
+          let enteredUATReady: Date | null = null;
+          // Captured when the item first enters UAT - Ready For Test; this is the grouping key
+          let uatEntryAssignee: string = '';
+          let previousState = '';
+
+          for (let i = 0; i < revisions.length; i++) {
+            const fields = revisions[i].fields;
+            if (!fields) { previousState = ''; continue; }
+
+            const state: string = fields['System.State'] || '';
+            const changedDate = fields['System.ChangedDate'] ? new Date(fields['System.ChangedDate']) : null;
+            if (!changedDate) { previousState = state; continue; }
+
+            const assignedToRaw = fields['System.AssignedTo'];
+            const revisionAssignee: string =
+              (assignedToRaw && typeof assignedToRaw === 'object' && (assignedToRaw as any).displayName)
+                ? (assignedToRaw as any).displayName
+                : (typeof assignedToRaw === 'string' ? assignedToRaw : '');
+
+            // Capture the assignee at the moment the item enters UAT - Ready For Test
+            if (state === UAT_ENTRY_STATE && previousState !== UAT_ENTRY_STATE) {
+              enteredUATReady = changedDate;
+              uatEntryAssignee = revisionAssignee || 'Unassigned';
+            }
+
+            if (previousState === UAT_ENTRY_STATE && state === UAT_EXIT_STATE && enteredUATReady) {
+              const entered = enteredUATReady;
+              const exited  = changedDate;
+
+              if (exited.getTime() >= fromMs && entered.getTime() <= toMs) {
+                const effectiveEntry = new Date(Math.max(entered.getTime(), fromMs));
+                const effectiveExit  = new Date(Math.min(exited.getTime(), toMs));
+                const days = Math.round(
+                  ((effectiveExit.getTime() - effectiveEntry.getTime()) / (1000 * 60 * 60 * 24)) * 10
+                ) / 10;
+
+                const groupKey = uatEntryAssignee || 'Unassigned';
+                if (!assigneeFilter || groupKey === assigneeFilter) {
+                  if (!uatMap.has(groupKey)) uatMap.set(groupKey, []);
+                  uatMap.get(groupKey)!.push({
+                    id: workItemId,
+                    title,
+                    workItemType,
+                    cycleTimeDays: days,
+                    enteredUATReadyDate: entered.toISOString().split('T')[0],
+                    exitedUATReadyDate: exited.toISOString().split('T')[0],
+                  });
+                }
+              }
+
+              enteredUATReady = null;
+              uatEntryAssignee = '';
+            }
+
+            previousState = state;
+          }
+        } catch (err) {
+          console.error(`Error processing work item ${workItemId} for UAT cycle time:`, err);
+        }
+      }
+
+      const result: UATCycleTimeStats[] = Array.from(uatMap.entries()).map(([assignee, items]) => {
+        const totalDays = items.reduce((sum, i) => sum + i.cycleTimeDays, 0);
+        return {
+          assignee,
+          totalItems: items.length,
+          averageCycleTimeDays: items.length > 0 ? Math.round((totalDays / items.length) * 10) / 10 : 0,
+          totalCycleTimeDays: Math.round(totalDays * 10) / 10,
+          workItemDetails: items.sort((a, b) => b.cycleTimeDays - a.cycleTimeDays),
+        };
+      }).sort((a, b) => b.averageCycleTimeDays - a.averageCycleTimeDays);
+
+      console.log(`=== getUATCycleTimeStats returning ${result.length} assignees ===`);
+      return result;
+    } catch (error) {
+      console.error('Error in getUATCycleTimeStats:', error);
+      return [];
+    }
+  }
+
+  async getUATSittingStats(): Promise<UATSittingItem[]> {
+    try {
+      console.log('=== AzureDevOpsService.getUATSittingStats START ===');
+
+      const witApi = await this.connection.getWorkItemTrackingApi();
+
+      // Only items currently in UAT - Ready For Test
+      let wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${this.project}'`;
+      wiql += ` AND [System.State] = 'UAT - Ready For Test'`;
+      wiql += ` AND [System.WorkItemType] IN ('Product Backlog Item', 'Technical Backlog Item', 'Bug')`;
+      if (this.areaPath) {
+        wiql += ` AND [System.AreaPath] UNDER '${this.areaPath}'`;
+      }
+      wiql += ' ORDER BY [System.ChangedDate] ASC';
+
+      const queryResult = await witApi.queryByWiql({ query: wiql }, { project: this.project });
+      if (!queryResult.workItems || queryResult.workItems.length === 0) return [];
+
+      const ids = queryResult.workItems.map(wi => wi.id!);
+      console.log(`Found ${ids.length} items currently in UAT - Ready For Test`);
+
+      const now = new Date();
+      const results: UATSittingItem[] = [];
+
+      for (const workItemId of ids) {
+        try {
+          const revisions = await witApi.getRevisions(workItemId);
+          if (!revisions || revisions.length === 0) continue;
+
+          const lastRevision = revisions[revisions.length - 1];
+          const title: string = lastRevision?.fields?.['System.Title'] || `Work Item ${workItemId}`;
+          const workItemType: string = lastRevision?.fields?.['System.WorkItemType'] || 'Unknown';
+          const assignedToRaw = lastRevision?.fields?.['System.AssignedTo'];
+          const assignedTo: string =
+            (assignedToRaw && typeof assignedToRaw === 'object' && (assignedToRaw as any).displayName)
+              ? (assignedToRaw as any).displayName
+              : (typeof assignedToRaw === 'string' ? assignedToRaw : 'Unassigned');
+
+          // Find the most recent time it entered UAT - Ready For Test
+          let lastEnteredUATReady: Date | null = null;
+          let previousState = '';
+          for (const revision of revisions) {
+            const state: string = revision.fields?.['System.State'] || '';
+            const changedDate = revision.fields?.['System.ChangedDate']
+              ? new Date(revision.fields['System.ChangedDate'])
+              : null;
+            if (state === 'UAT - Ready For Test' && previousState !== 'UAT - Ready For Test' && changedDate) {
+              lastEnteredUATReady = changedDate;
+            }
+            previousState = state;
+          }
+
+          if (lastEnteredUATReady) {
+            const daysSitting = Math.round(
+              ((now.getTime() - lastEnteredUATReady.getTime()) / (1000 * 60 * 60 * 24)) * 10
+            ) / 10;
+            results.push({
+              id: workItemId,
+              title,
+              workItemType,
+              assignedTo,
+              enteredUATReadyDate: lastEnteredUATReady.toISOString().split('T')[0],
+              daysSitting,
+            });
+          }
+        } catch (err) {
+          console.error(`Error processing work item ${workItemId} for UAT sitting stats:`, err);
+        }
+      }
+
+      // Sort by longest sitting first
+      results.sort((a, b) => b.daysSitting - a.daysSitting);
+      console.log(`=== getUATSittingStats returning ${results.length} items ===`);
+      return results;
+    } catch (error) {
+      console.error('Error in getUATSittingStats:', error);
       return [];
     }
   }

@@ -1,6 +1,6 @@
 import express, { Request, Response } from 'express';
 import { AzureDevOpsService } from '../services/azureDevOps';
-import { WorkItemsQuery, UpdateDueDateRequest, DeveloperDueDateStats, DueDateHitRateStats, PullRequestTimeStats, InProgressTimeStats, CreateDeploymentRequest } from '../types/workitem';
+import { WorkItemsQuery, UpdateDueDateRequest, DeveloperDueDateStats, DueDateHitRateStats, PullRequestTimeStats, InProgressTimeStats, QACycleTimeStats, UATCycleTimeStats, UATSittingItem, CreateDeploymentRequest } from '../types/workitem';
 import { getFeatureAutoCompleteService } from '../services/featureAutoComplete';
 import { DeploymentTrackingService } from '../services/deploymentTracking';
 
@@ -405,6 +405,140 @@ router.get('/in-progress-stats', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error fetching in-progress stats:', error);
     res.status(500).json({ error: 'Failed to fetch in-progress statistics' });
+  }
+});
+
+// GET /api/qa-cycle-time-stats - Time a QA member spends moving items from In Test to Done/UAT Ready
+router.get('/qa-cycle-time-stats', async (req: Request, res: Response) => {
+  try {
+    console.log('=== API: /qa-cycle-time-stats called ===');
+    const { from, to, qaAssignee, areaPath: areaPathParam } = req.query as {
+      from?: string; to?: string; qaAssignee?: string; areaPath?: string;
+    };
+    console.log('Query params:', { from, to, qaAssignee, areaPath: areaPathParam });
+
+    const teams = [
+      { project: 'MaxView', areaPath: areaPathParam || '' }
+    ];
+
+    const allStats: QACycleTimeStats[] = [];
+
+    for (const team of teams) {
+      try {
+        const adoService = new AzureDevOpsService(team.project, team.areaPath);
+        const teamStats = await adoService.getQACycleTimeStats(from, to, qaAssignee);
+        allStats.push(...teamStats);
+      } catch (err) {
+        console.error(`Error fetching QA cycle time stats for ${team.project}:`, err);
+      }
+    }
+
+    // Aggregate by qaAssignee across teams
+    const aggregated = new Map<string, QACycleTimeStats>();
+    for (const stat of allStats) {
+      if (aggregated.has(stat.qaAssignee)) {
+        const existing = aggregated.get(stat.qaAssignee)!;
+        existing.workItemDetails.push(...stat.workItemDetails);
+        existing.totalItems = existing.workItemDetails.length;
+        const total = existing.workItemDetails.reduce((s, i) => s + i.cycleTimeDays, 0);
+        existing.totalCycleTimeDays = Math.round(total * 10) / 10;
+        existing.averageCycleTimeDays = Math.round((total / existing.workItemDetails.length) * 10) / 10;
+      } else {
+        aggregated.set(stat.qaAssignee, { ...stat, workItemDetails: [...stat.workItemDetails] });
+      }
+    }
+
+    const result = Array.from(aggregated.values())
+      .sort((a, b) => b.averageCycleTimeDays - a.averageCycleTimeDays);
+
+    console.log(`=== API: Returning QA cycle time stats for ${result.length} QA members ===`);
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error fetching QA cycle time stats:', error);
+    res.status(500).json({ error: 'Failed to fetch QA cycle time statistics' });
+  }
+});
+
+// GET /api/uat-cycle-time-stats - Time an assignee spends moving items from UAT - Ready For Test to UAT - Test Done
+router.get('/uat-cycle-time-stats', async (req: Request, res: Response) => {
+  try {
+    console.log('=== API: /uat-cycle-time-stats called ===');
+    const { from, to, assignee, areaPath: areaPathParam } = req.query as {
+      from?: string; to?: string; assignee?: string; areaPath?: string;
+    };
+
+    const teams = [{ project: 'MaxView', areaPath: areaPathParam || '' }];
+    const allStats: UATCycleTimeStats[] = [];
+
+    for (const team of teams) {
+      try {
+        const adoService = new AzureDevOpsService(team.project, team.areaPath);
+        const teamStats = await adoService.getUATCycleTimeStats(from, to, assignee);
+        allStats.push(...teamStats);
+      } catch (err) {
+        console.error(`Error fetching UAT cycle time stats for ${team.project}:`, err);
+      }
+    }
+
+    // Aggregate by assignee
+    const aggregated = new Map<string, UATCycleTimeStats>();
+    for (const stat of allStats) {
+      if (aggregated.has(stat.assignee)) {
+        const existing = aggregated.get(stat.assignee)!;
+        existing.workItemDetails.push(...stat.workItemDetails);
+        existing.totalItems = existing.workItemDetails.length;
+        const total = existing.workItemDetails.reduce((s, i) => s + i.cycleTimeDays, 0);
+        existing.totalCycleTimeDays = Math.round(total * 10) / 10;
+        existing.averageCycleTimeDays = Math.round((total / existing.workItemDetails.length) * 10) / 10;
+      } else {
+        aggregated.set(stat.assignee, { ...stat, workItemDetails: [...stat.workItemDetails] });
+      }
+    }
+
+    const result = Array.from(aggregated.values())
+      .sort((a, b) => b.averageCycleTimeDays - a.averageCycleTimeDays);
+
+    console.log(`=== API: Returning UAT cycle time stats for ${result.length} assignees ===`);
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error fetching UAT cycle time stats:', error);
+    res.status(500).json({ error: 'Failed to fetch UAT cycle time statistics' });
+  }
+});
+
+// GET /api/uat-sitting-stats - Items currently sitting in UAT - Ready For Test and how long
+router.get('/uat-sitting-stats', async (req: Request, res: Response) => {
+  try {
+    console.log('=== API: /uat-sitting-stats called ===');
+    const { areaPath: areaPathParam } = req.query as { areaPath?: string };
+
+    const teams = [{ project: 'MaxView', areaPath: areaPathParam || '' }];
+    const allItems: UATSittingItem[] = [];
+
+    for (const team of teams) {
+      try {
+        const adoService = new AzureDevOpsService(team.project, team.areaPath);
+        const items = await adoService.getUATSittingStats();
+        allItems.push(...items);
+      } catch (err) {
+        console.error(`Error fetching UAT sitting stats for ${team.project}:`, err);
+      }
+    }
+
+    // Dedup by id in case of overlapping area paths, keep longest sitting
+    const deduped = new Map<number, UATSittingItem>();
+    for (const item of allItems) {
+      if (!deduped.has(item.id) || item.daysSitting > deduped.get(item.id)!.daysSitting) {
+        deduped.set(item.id, item);
+      }
+    }
+
+    const result = Array.from(deduped.values()).sort((a, b) => b.daysSitting - a.daysSitting);
+    console.log(`=== API: Returning ${result.length} UAT sitting items ===`);
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error fetching UAT sitting stats:', error);
+    res.status(500).json({ error: 'Failed to fetch UAT sitting statistics' });
   }
 });
 

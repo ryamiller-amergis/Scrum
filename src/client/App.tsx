@@ -19,6 +19,7 @@ const UnscheduledList = lazy(() => import('./components/UnscheduledList').then(m
 const DetailsPanel = lazy(() => import('./components/DetailsPanel').then(m => ({ default: m.DetailsPanel })));
 const CycleTimeAnalytics = lazy(() => import('./components/CycleTimeAnalytics').then(m => ({ default: m.CycleTimeAnalytics })));
 const DevStats = lazy(() => import('./components/DevStats').then(m => ({ default: m.DevStats })));
+const QAMetrics = lazy(() => import('./components/QAMetrics').then(m => ({ default: m.QAMetrics })));
 const RoadmapView = lazy(() => import('./components/RoadmapView').then(m => ({ default: m.RoadmapView })));
 const ReleaseView = lazy(() => import('./components/ReleaseView'));
 const CloudCost = lazy(() => import('./components/CloudCost').then(m => ({ default: m.CloudCost })));
@@ -188,10 +189,11 @@ function App() {
                       </Suspense>
                     </ErrorBoundary>
                   ) : planningTab === 'qa' ? (
-                    <div style={{ padding: '24px' }}>
-                      <h2 style={{ margin: '0 0 20px 0', fontSize: '24px', color: 'var(--text-primary)', fontWeight: '600' }}>QA Metrics</h2>
-                      <p style={{ color: 'var(--text-secondary)' }}>Coming soon...</p>
-                    </div>
+                    <ErrorBoundary FallbackComponent={ViewErrorFallback}>
+                      <Suspense fallback={<ViewSkeleton />}>
+                        <QAMetrics workItems={workItems} project={selectedProject} areaPath={selectedAreaPath} onSelectItem={setSelectedItem} />
+                      </Suspense>
+                    </ErrorBoundary>
                   ) : planningTab === 'roadmap' ? (
                     <ErrorBoundary FallbackComponent={ViewErrorFallback}>
                       <Suspense fallback={<ViewSkeleton />}>

@@ -472,6 +472,7 @@
   align-items: center;
   padding: 8px 0;
   border-bottom: 1px solid var(--border-light);
+  gap: 8px;
 }
 
 .reason-item:last-child {
@@ -494,6 +495,62 @@
   font-weight: 600;
   min-width: 30px;
   text-align: center;
+}
+
+/* Due Date Changes Bar */
+.changes-bar-container {
+  height: 20px;
+  background: var(--bg-secondary);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 14px;
+  border: 1px solid var(--border-color);
+}
+
+.changes-bar {
+  height: 100%;
+  min-width: 4px;
+  background: linear-gradient(135deg, #3498db, #5dade2);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 6px;
+  transition: width 0.4s ease;
+  box-sizing: border-box;
+}
+
+.changes-bar-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: white;
+  white-space: nowrap;
+}
+
+/* Per-reason mini bar */
+.reason-bar-wrap {
+  flex: 1;
+  height: 8px;
+  background: var(--bg-secondary);
+  border-radius: 4px;
+  overflow: hidden;
+  max-width: 80px;
+}
+
+.reason-bar {
+  height: 100%;
+  background: linear-gradient(135deg, #3498db, #5dade2);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+  min-width: 2px;
+}
+
+/* Work item type icon in hit-rate list */
+.work-item-type-icon {
+  font-size: 13px;
+  margin-right: 4px;
+  vertical-align: middle;
+  line-height: 1;
 }
 
 /* Hit Rate Visualization Styles */
@@ -598,7 +655,7 @@
 .work-item {
   display: grid;
   grid-template-columns: auto 1fr minmax(0, auto) minmax(0, auto);
-  gap: 12px;
+  gap: 8px 12px;
   align-items: center;
   padding: 12px;
   margin-bottom: 8px;
@@ -607,6 +664,33 @@
   border-left: 3px solid transparent;
   font-size: 13px;
   transition: background 0.2s, transform 0.1s;
+}
+
+/* Reasons row spans all 4 columns */
+.due-date-change-reasons {
+  grid-column: 1 / -1;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.due-date-change-reason {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(244, 67, 54, 0.12);
+  color: #c62828;
+  border: 1px solid rgba(244, 67, 54, 0.25);
+  white-space: nowrap;
+}
+
+[data-theme="dark"] .due-date-change-reason {
+  background: rgba(244, 67, 54, 0.18);
+  color: #ef9a9a;
+  border-color: rgba(244, 67, 54, 0.35);
 }
 
 .work-item.clickable {

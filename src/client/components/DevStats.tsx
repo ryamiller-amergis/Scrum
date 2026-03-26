@@ -259,38 +259,34 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, onSelectItem }) =
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [allTeamMembers, setAllTeamMembers] = useState<string[]>([]);
 
-  // Combined list for dropdown: team members + developers from stats
+  // Combined list for dropdown: team members only (optionally extended by stats developers
+  // who are also team members, so the list is always restricted to the 3 dev teams).
   const dropdownDevelopers = useMemo(() => {
-    const combinedSet = new Set<string>();
-    
-    // Add team members based on selection
-    if (selectedTeam === 'all') {
-      allTeamMembers.forEach(dev => combinedSet.add(dev));
-    } else {
-      teamMembers.forEach(dev => combinedSet.add(dev));
+    const relevantMembers = selectedTeam === 'all' ? allTeamMembers : teamMembers;
+    const memberSet = new Set(relevantMembers);
+    const combinedSet = new Set<string>(relevantMembers);
+
+    // Only add developers from loaded stats if they are in the team member list
+    if (memberSet.size > 0) {
+      developers.forEach(dev => { if (memberSet.has(dev)) combinedSet.add(dev); });
     }
-    
-    // Always add developers from loaded stats
-    developers.forEach(dev => combinedSet.add(dev));
-    
+
     const result = Array.from(combinedSet).sort();
     console.log('DevStats - Dropdown developers:', {
       count: result.length,
-      developers: result,
       selectedTeam,
       teamMembersCount: teamMembers.length,
       allTeamMembersCount: allTeamMembers.length,
-      statsDevsCount: developers.length
     });
     return result;
   }, [selectedTeam, allTeamMembers, teamMembers, developers]);
 
-  // Available teams
+  // Available teams — areaPath values must match ADO area path structure exactly
   const teams = [
-    { id: 'all', name: 'All Teams', areaPath: '' },
-    { id: 'maxview-dev', name: 'MaxView - Dev', teamName: 'MaxView - Dev', project: 'MaxView', areaPath: 'MaxView\\MaxView - Dev' },
-    { id: 'maxview-infra', name: 'MaxView Infra Team', teamName: 'MaxView Infra Team', project: 'MaxView', areaPath: 'MaxView\\MaxView Infra Team' },
-    { id: 'mobile-dev', name: 'Mobile - Dev', teamName: 'Mobile - Dev', project: 'MaxView', areaPath: 'MaxView\\Mobile - Dev' }
+    { id: 'all',           name: 'All Teams',          areaPath: '' },
+    { id: 'maxview-dev',   name: 'MaxView - Dev',       teamName: 'MaxView - Dev',      project: 'MaxView', areaPath: 'MaxView' },
+    { id: 'maxview-infra', name: 'MaxView Infra Team',  teamName: 'MaxView Infra Team', project: 'MaxView', areaPath: 'MaxView\\MaxView Infra Team' },
+    { id: 'mobile-dev',    name: 'Mobile - Dev',        teamName: 'Mobile - Dev',       project: 'MaxView', areaPath: 'MaxView\\Mobile - Team' }
   ];
 
   // Fetch team members when team selection changes
@@ -877,136 +873,64 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, onSelectItem }) =
     }
   };
 
+  // Active member allow-list: allTeamMembers for "all", teamMembers for a specific team.
+  // null means the list is still loading — don't filter yet.
+  const activeMemberSet = useMemo((): Set<string> | null => {
+    if (selectedTeam === 'all') {
+      return allTeamMembers.length > 0 ? new Set(allTeamMembers) : null;
+    }
+    return teamMembers.length > 0 ? new Set(teamMembers) : null;
+  }, [selectedTeam, teamMembers, allTeamMembers]);
+
   // Filter the results by developer if needed, and by team if selected
   const filteredStats = useMemo(() => {
-    let stats = dueDateStats;
-    
-    console.log('DevStats - Filtering:', {
-      totalStats: dueDateStats.length,
-      selectedTeam,
-      teamMembersCount: teamMembers.length,
-      allTeamMembersCount: allTeamMembers.length,
-      selectedDeveloper
-    });
-    
-    // Only apply team filtering if a specific team is selected (not "all")
-    // This prevents filtering out all results when team members list is loading
-    if (selectedTeam !== 'all' && teamMembers.length > 0) {
-      stats = stats.filter(stat => teamMembers.includes(stat.developer));
-      console.log('DevStats - After team filter:', stats.length);
-    }
-    // When selectedTeam === 'all', show all stats without filtering by team membership
-    
-    // Further filter by specific developer if selected
-    if (selectedDeveloper !== 'all') {
-      stats = stats.filter(stat => stat.developer === selectedDeveloper);
-      console.log('DevStats - After developer filter:', stats.length);
-    }
-    
-    console.log('DevStats - Final filtered stats:', stats.length);
+    let stats = activeMemberSet
+      ? dueDateStats.filter(s => activeMemberSet.has(s.developer))
+      : dueDateStats;
+    if (selectedDeveloper !== 'all') stats = stats.filter(s => s.developer === selectedDeveloper);
     return stats;
-  }, [dueDateStats, selectedDeveloper, selectedTeam, teamMembers, allTeamMembers]);
+  }, [dueDateStats, selectedDeveloper, activeMemberSet]);
 
-  // Filter hit rate stats similarly
   const filteredHitRateStats = useMemo(() => {
-    let stats = hitRateStats;
-    
-    console.log('DevStats - Filtering Hit Rate:', {
-      totalHitRateStats: hitRateStats.length,
-      selectedTeam,
-      teamMembersCount: teamMembers.length,
-      selectedDeveloper
-    });
-    
-    // Only filter by team if a specific team is selected (not "all")
-    if (selectedTeam !== 'all' && teamMembers.length > 0) {
-      const teamMemberNames = new Set(teamMembers);
-      stats = stats.filter(stat => teamMemberNames.has(stat.developer));
-      console.log('DevStats - After team filter for hit rate:', stats.length);
-    }
-    // When selectedTeam === 'all', show all hit rate stats without filtering
-    
-    // Further filter by specific developer if selected
-    if (selectedDeveloper !== 'all') {
-      stats = stats.filter(stat => stat.developer === selectedDeveloper);
-      console.log('DevStats - After developer filter for hit rate:', stats.length);
-    }
-    
-    console.log('DevStats - Final filtered hit rate stats:', stats.length);
+    let stats = activeMemberSet
+      ? hitRateStats.filter(s => activeMemberSet.has(s.developer))
+      : hitRateStats;
+    if (selectedDeveloper !== 'all') stats = stats.filter(s => s.developer === selectedDeveloper);
     return stats;
-  }, [hitRateStats, selectedDeveloper, selectedTeam, teamMembers, allTeamMembers]);
+  }, [hitRateStats, selectedDeveloper, activeMemberSet]);
 
-  // Filter PR time stats similarly
   const filteredPrTimeStats = useMemo(() => {
-    let stats = prTimeStats;
-    
-    console.log('DevStats - Filtering PR Time:', {
-      totalPrTimeStats: prTimeStats.length,
-      selectedTeam,
-      teamMembersCount: teamMembers.length,
-      allTeamMembersCount: allTeamMembers.length,
-      selectedDeveloper,
-      developers: prTimeStats.map(s => s.developer)
-    });
-    
-    // Only filter by team if a specific team is selected (not "all")
-    if (selectedTeam !== 'all' && teamMembers.length > 0) {
-      const teamMemberNames = new Set(teamMembers);
-      stats = stats.filter(stat => teamMemberNames.has(stat.developer));
-      console.log('DevStats - After team filter for PR time:', stats.length);
-    }
-    // When selectedTeam === 'all', show all PR time stats without filtering
-    
-    // Further filter by specific developer if selected
-    if (selectedDeveloper !== 'all') {
-      stats = stats.filter(stat => stat.developer === selectedDeveloper);
-      console.log('DevStats - After developer filter for PR time:', stats.length);
-    }
-    
-    console.log('DevStats - Final filtered PR time stats:', stats.length);
+    let stats = activeMemberSet
+      ? prTimeStats.filter(s => activeMemberSet.has(s.developer))
+      : prTimeStats;
+    if (selectedDeveloper !== 'all') stats = stats.filter(s => s.developer === selectedDeveloper);
     return stats;
-  }, [prTimeStats, selectedDeveloper, selectedTeam, teamMembers, allTeamMembers]);
+  }, [prTimeStats, selectedDeveloper, activeMemberSet]);
 
   const filteredQaBugStats = useMemo(() => {
-    let stats = qaBugStats;
-    
-    console.log('DevStats - Filtering QA Bug Stats:', {
-      totalQaBugStats: qaBugStats.length,
-      selectedTeam,
-      teamMembersCount: teamMembers.length,
-      allTeamMembersCount: allTeamMembers.length,
-      selectedDeveloper,
-      developers: qaBugStats.map(s => s.developer)
-    });
-    
-    // Only filter by team if a specific team is selected (not "all")
-    if (selectedTeam !== 'all' && teamMembers.length > 0) {
-      const teamMemberNames = new Set(teamMembers);
-      stats = stats.filter(stat => teamMemberNames.has(stat.developer));
-      console.log('DevStats - After team filter for QA bugs:', stats.length);
-    }
-    // When selectedTeam === 'all', show all QA bug stats without filtering
-    
-    // Further filter by specific developer if selected
-    if (selectedDeveloper !== 'all') {
-      stats = stats.filter(stat => stat.developer === selectedDeveloper);
-      console.log('DevStats - After developer filter for QA bugs:', stats.length);
-    }
-    
-    console.log('DevStats - Final filtered QA bug stats:', stats.length);
+    let stats = activeMemberSet
+      ? qaBugStats.filter(s => activeMemberSet.has(s.developer))
+      : qaBugStats;
+    if (selectedDeveloper !== 'all') stats = stats.filter(s => s.developer === selectedDeveloper);
     return stats;
-  }, [qaBugStats, selectedDeveloper, selectedTeam, teamMembers, allTeamMembers]);
+  }, [qaBugStats, selectedDeveloper, activeMemberSet]);
 
   const filteredInProgressStats = useMemo(() => {
-    let stats = inProgressStats;
-    if (selectedTeam !== 'all' && teamMembers.length > 0) {
-      stats = stats.filter(s => teamMembers.includes(s.developer));
-    }
-    if (selectedDeveloper !== 'all') {
-      stats = stats.filter(s => s.developer === selectedDeveloper);
-    }
+    let stats = activeMemberSet
+      ? inProgressStats.filter(s => activeMemberSet.has(s.developer))
+      : inProgressStats;
+    if (selectedDeveloper !== 'all') stats = stats.filter(s => s.developer === selectedDeveloper);
     return stats;
-  }, [inProgressStats, selectedDeveloper, selectedTeam, teamMembers]);
+  }, [inProgressStats, selectedDeveloper, activeMemberSet]);
+
+  const getWorkItemTypeIcon = (type: string): string => {
+    switch (type) {
+      case 'Product Backlog Item': return '📋';
+      case 'Technical Backlog Item': return '🔧';
+      case 'Bug': return '🐛';
+      default: return '📄';
+    }
+  };
 
   return (
     <div className="dev-stats-container">
@@ -1127,12 +1051,13 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, onSelectItem }) =
             </button>
             <p>
               <strong>What this section shows:</strong><br />
-              Statistics on how often developers changed due dates on their work items. 
-              Each time a due date is modified, it counts as a change and the reason is tracked.
+              How many times due dates were changed on PBIs, TBIs, and Bugs owned by each developer.
+              Each change is counted against whoever was the <em>assigned owner</em> of the work item at the time the due date was modified — regardless of who made the change.
             </p>
             <p>
               <strong>How to interpret:</strong><br />
-              • <strong>Total Changes:</strong> Number of times the developer modified due dates<br />
+              • <strong>Bar width:</strong> Relative number of changes compared to the developer with the most changes<br />
+              • <strong>Total Changes:</strong> Total due date changes on items owned by this developer<br />
               • <strong>Reasons:</strong> Breakdown of why due dates were changed
             </p>
           </div>
@@ -1174,56 +1099,84 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, onSelectItem }) =
           <p className="placeholder-text">No due date changes found for the selected filters.</p>
         )}
         
-        {!isChangesCollapsed && hasLoaded && !loading && filteredStats.length > 0 && (
-          <div className="developer-stats-list">
-            {filteredStats.map((devStats, index) => {
-              const devKey = `changes-${devStats.developer}`;
-              const isCollapsed = collapsedReasons.has(devKey);
-              
-              return (
-                <div key={index} className="developer-stat-card">
-                  <div className="developer-header">
-                    <span className="developer-name">{devStats.developer}</span>
-                    <span className="total-changes">{devStats.totalChanges} changes</span>
-                  </div>
-                  
-                  <div className="reason-breakdown">
-                    <h4>
-                      <button 
-                        className="collapse-button-small"
-                        onClick={() => {
-                          const newSet = new Set(collapsedReasons);
-                          if (isCollapsed) {
-                            newSet.delete(devKey);
-                          } else {
-                            newSet.add(devKey);
-                          }
-                          setCollapsedReasons(newSet);
-                        }}
-                        aria-label={isCollapsed ? 'Expand reasons' : 'Collapse reasons'}
+        {!isChangesCollapsed && hasLoaded && !loading && filteredStats.length > 0 && (() => {
+          // Pre-compute per-developer filtered reasons and totals (excluding Initialize entries)
+          const cardsData = filteredStats.map(devStats => {
+            const filteredReasons = Object.entries(devStats.reasonBreakdown)
+              .filter(([reason]) => !/^initializ/i.test(reason));
+            const displayTotal = filteredReasons.reduce((sum, [, c]) => sum + c, 0);
+            return { devStats, filteredReasons, displayTotal };
+          });
+          const maxChanges = cardsData.reduce((m, { displayTotal }) => Math.max(m, displayTotal), 0);
+
+          return (
+            <div className="developer-stats-list">
+              {cardsData.map(({ devStats, filteredReasons, displayTotal }, index) => {
+                const devKey = `changes-${devStats.developer}`;
+                const isCollapsed = collapsedReasons.has(devKey);
+                const barPct = maxChanges > 0 ? (displayTotal / maxChanges) * 100 : 0;
+                
+                return (
+                  <div key={index} className="developer-stat-card">
+                    <div className="developer-header">
+                      <span className="developer-name">{devStats.developer}</span>
+                      <span className="total-changes">{displayTotal} changes</span>
+                    </div>
+
+                    <div className="changes-bar-container">
+                      <div
+                        className="changes-bar"
+                        style={{ width: `${barPct}%` }}
+                        title={`${displayTotal} due date change${displayTotal !== 1 ? 's' : ''}`}
                       >
-                        {isCollapsed ? '▶' : '▼'}
-                      </button>
-                      Reasons:
-                    </h4>
-                    {!isCollapsed && (
-                      <ul className="reason-list">
-                        {Object.entries(devStats.reasonBreakdown)
-                          .sort(([, a], [, b]) => b - a)
-                          .map(([reason, count], idx) => (
-                            <li key={idx} className="reason-item">
-                              <span className="reason-text">{reason}</span>
-                              <span className="reason-count">{count}</span>
-                            </li>
-                          ))}
-                      </ul>
-                    )}
+                        {barPct > 20 && <span className="changes-bar-label">{displayTotal}</span>}
+                      </div>
+                    </div>
+                    
+                    <div className="reason-breakdown">
+                      <h4>
+                        <button 
+                          className="collapse-button-small"
+                          onClick={() => {
+                            const newSet = new Set(collapsedReasons);
+                            if (isCollapsed) {
+                              newSet.delete(devKey);
+                            } else {
+                              newSet.add(devKey);
+                            }
+                            setCollapsedReasons(newSet);
+                          }}
+                          aria-label={isCollapsed ? 'Expand reasons' : 'Collapse reasons'}
+                        >
+                          {isCollapsed ? '▶' : '▼'}
+                        </button>
+                        Reasons:
+                      </h4>
+                      {!isCollapsed && (
+                        <ul className="reason-list">
+                          {filteredReasons
+                            .sort(([, a], [, b]) => b - a)
+                            .map(([reason, count], idx) => {
+                              const reasonPct = displayTotal > 0 ? (count / displayTotal) * 100 : 0;
+                              return (
+                                <li key={idx} className="reason-item">
+                                  <span className="reason-text">{reason}</span>
+                                  <div className="reason-bar-wrap">
+                                    <div className="reason-bar" style={{ width: `${reasonPct}%` }} />
+                                  </div>
+                                  <span className="reason-count">{count}</span>
+                                </li>
+                              );
+                            })}
+                        </ul>
+                      )}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                );
+              })}
+            </div>
+          );
+        })()}
       </div>
 
       <div className="stats-section">
@@ -1362,6 +1315,8 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, onSelectItem }) =
                       <ul className="work-item-list">
                         {stats.workItemDetails.map((item, idx) => {
                           const fullWorkItem = workItems.find(wi => wi.id === item.id);
+                          const typeIcon = getWorkItemTypeIcon(item.workItemType || fullWorkItem?.workItemType || '');
+                          const uniqueReasons = Array.from(new Set(item.dueDateChangeReasons ?? []));
                           return (
                             <li 
                               key={idx} 
@@ -1374,15 +1329,22 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, onSelectItem }) =
                               role={onSelectItem && fullWorkItem ? 'button' : undefined}
                               tabIndex={onSelectItem && fullWorkItem ? 0 : undefined}
                             >
-                              <span className="work-item-id">#{item.id}</span>
-                              <span className="work-item-title">{item.title}</span>
-                              <span className="work-item-dates">
-                                Due: {item.dueDate} | 
-                                {item.completionDate}
+                              <span className="work-item-id">
+                                <span className="work-item-type-icon" title={item.workItemType}>{typeIcon}</span>
+                                #{item.id}
                               </span>
+                              <span className="work-item-title">{item.title}</span>
+                              <span className="work-item-dates">Due: {item.dueDate}</span>
                               <span className={`work-item-status ${item.status}`}>
                                 {item.status === 'hit' ? '✓ Hit' : item.status === 'in-progress' ? `⏳ ${item.completionDate}` : `✗ ${item.completionDate}`}
                               </span>
+                              {item.status === 'miss' && uniqueReasons.length > 0 && (
+                                <ul className="due-date-change-reasons">
+                                  {uniqueReasons.map((reason, rIdx) => (
+                                    <li key={rIdx} className="due-date-change-reason">{reason}</li>
+                                  ))}
+                                </ul>
+                              )}
                             </li>
                           );
                         })}

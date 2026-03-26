@@ -58,8 +58,10 @@ export interface DueDateHitRateStats {
   workItemDetails: Array<{
     id: number;
     title: string;
+    workItemType: string;
     dueDate: string;
     completionDate: string;
+    dueDateChangeReasons: string[];
     hit: boolean;
     status: 'hit' | 'miss' | 'in-progress';
   }>;
@@ -110,6 +112,46 @@ export interface InProgressTimeStats {
     exitedInProgressDate: string | null;
     isCurrentlyInProgress: boolean;
   }>;
+}
+
+export interface QACycleTimeStats {
+  qaAssignee: string;
+  totalItems: number;
+  averageCycleTimeDays: number;
+  totalCycleTimeDays: number;
+  workItemDetails: Array<{
+    id: number;
+    title: string;
+    workItemType: string;
+    cycleTimeDays: number;
+    enteredInTestDate: string;
+    exitedInTestDate: string;
+    exitState: string;
+  }>;
+}
+
+export interface UATCycleTimeStats {
+  assignee: string;
+  totalItems: number;
+  averageCycleTimeDays: number;
+  totalCycleTimeDays: number;
+  workItemDetails: Array<{
+    id: number;
+    title: string;
+    workItemType: string;
+    cycleTimeDays: number;
+    enteredUATReadyDate: string;
+    exitedUATReadyDate: string;
+  }>;
+}
+
+export interface UATSittingItem {
+  id: number;
+  title: string;
+  workItemType: string;
+  assignedTo: string;
+  enteredUATReadyDate: string;
+  daysSitting: number;
 }
 
 export type DeploymentEnvironment = 'dev' | 'staging' | 'production';
