@@ -369,6 +369,18 @@ export const CloudCost: React.FC<CloudCostProps> = () => {
     return `${sign}${change.toFixed(1)}%`;
   };
 
+  const renderTrend = (trend: number, className?: string) => {
+    if (Math.abs(trend) <= 2) {
+      return <span className={`trend-stable ${className || ''}`}>—</span>;
+    }
+    const isUp = trend > 0;
+    return (
+      <span className={`${isUp ? 'trend-up' : 'trend-down'} ${className || ''}`}>
+        {isUp ? '↗' : '↘'} {formatPercentChange(trend)}
+      </span>
+    );
+  };
+
   // Aggregate cost data based on time period for better visualization
   const aggregateCostData = (costByDay: Array<{ date: string; cost: number }>, period: string) => {
     if (!costByDay || costByDay.length === 0) return [];
@@ -762,9 +774,7 @@ export const CloudCost: React.FC<CloudCostProps> = () => {
                               <div className="rg-name">{rg.name}</div>
                               <div className="rg-cost-row">
                                 <span className="rg-cost">{formatCurrency(rg.cost)}</span>
-                                <span className={`rg-trend ${rg.trend >= 0 ? 'trend-up' : 'trend-down'}`}>
-                                  {rg.trend >= 0 ? '↗' : '↘'} {formatPercentChange(rg.trend)}
-                                </span>
+                                {renderTrend(rg.trend, 'rg-trend')}
                               </div>
                             </div>
                           </div>
@@ -866,9 +876,7 @@ export const CloudCost: React.FC<CloudCostProps> = () => {
                       </div>
                       <div className="trend-stat">
                         <span className="trend-label">Trend Direction</span>
-                        <span className={`trend-value ${costData.percentChange >= 0 ? 'trend-up' : 'trend-down'}`}>
-                          {costData.percentChange >= 0 ? '↗' : '↘'} {formatPercentChange(costData.percentChange)}
-                        </span>
+                        {renderTrend(costData.percentChange, 'trend-value')}
                       </div>
                     </div>
                     <div className="cost-chart">
@@ -1030,8 +1038,8 @@ export const CloudCost: React.FC<CloudCostProps> = () => {
                           <td>{detail.resource}</td>
                           <td>{formatCurrency(detail.dailyCost)}</td>
                           <td className="total-cost">{formatCurrency(detail.totalCost)}</td>
-                          <td className={`trend ${detail.trend >= 0 ? 'up' : 'down'}`}>
-                            {formatPercentChange(detail.trend)}
+                          <td className="trend">
+                            {renderTrend(detail.trend)}
                           </td>
                         </tr>
                       ))

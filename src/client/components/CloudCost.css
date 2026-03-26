@@ -858,6 +858,11 @@
   color: #22c55e;
 }
 
+.rg-trend.trend-stable {
+  background: rgba(156, 163, 175, 0.1);
+  color: var(--text-muted);
+}
+
 .dashboard-footer {
   margin-top: 32px;
   padding: 20px;
@@ -1034,6 +1039,11 @@
 
 .trend-value.trend-down {
   color: #10b981;
+}
+
+.trend-value.trend-stable {
+  color: var(--text-muted);
+  font-size: 22px;
 }
 
 [data-theme="dark"] .trend-value.trend-up {
@@ -1297,12 +1307,20 @@
   color: #10b981;
 }
 
+.cost-table .trend .trend-stable {
+  color: var(--text-muted);
+}
+
 [data-theme="dark"] .cost-table .trend.up {
   color: #fbbf24;
 }
 
 [data-theme="dark"] .cost-table .trend.down {
   color: #34d399;
+}
+
+[data-theme="dark"] .cost-table .trend .trend-stable {
+  color: var(--text-muted);
 }
 
 .cost-table .no-data {
