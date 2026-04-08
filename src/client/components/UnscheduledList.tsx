@@ -21,6 +21,7 @@ export const UnscheduledList: React.FC<UnscheduledListProps> = ({
   onUpdateDueDate,
 }) => {
   const [searchTerm, setSearchTerm] = useState<string>('');
+  const [idSearch, setIdSearch] = useState<string>('');
   const [selectedIteration, setSelectedIteration] = useState<string>('');
   const [selectedWorkItemType, setSelectedWorkItemType] = useState<string>('');
   const [selectedAssignedTo, setSelectedAssignedTo] = useState<string>('');
@@ -81,6 +82,12 @@ export const UnscheduledList: React.FC<UnscheduledListProps> = ({
     });
     return Array.from(unique).sort();
   }, [workItems]);
+
+  const idSearchResults = useMemo(() => {
+    const trimmed = idSearch.trim();
+    if (!trimmed) return [];
+    return workItems.filter(item => item.id.toString().includes(trimmed));
+  }, [workItems, idSearch]);
 
   const filteredItems = useMemo(() => {
     let items = workItems;
@@ -367,8 +374,54 @@ export const UnscheduledList: React.FC<UnscheduledListProps> = ({
           )}
             </>
           )}
+
+          <div className="id-search-section">
+            <div className="id-search-divider">
+              <span>Find by ID</span>
+            </div>
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              placeholder="Enter work item ID..."
+              value={idSearch}
+              onChange={(e) => {
+                setIdSearch(e.target.value);
+                onSelectItem(null as any);
+              }}
+              className="id-search-input"
+            />
+            {idSearch.trim() && (
+              <div className="id-search-meta">
+                {idSearchResults.length === 0
+                  ? 'No items found'
+                  : `${idSearchResults.length} item${idSearchResults.length !== 1 ? 's' : ''} found`}
+                <button
+                  className="id-search-clear"
+                  onClick={() => setIdSearch('')}
+                  title="Clear ID search"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+          </div>
+
           <div className="unscheduled-items">
-            {hierarchicalItems.length === 0 ? (
+            {idSearch.trim() ? (
+              idSearchResults.length === 0 ? (
+                <div className="empty-state">No items match ID "{idSearch.trim()}"</div>
+              ) : (
+                idSearchResults.map(item => (
+                  <div key={item.id} className="item-wrapper no-children">
+                    <DraggableWorkItem
+                      workItem={item}
+                      onClick={() => onSelectItem(item)}
+                    />
+                  </div>
+                ))
+              )
+            ) : hierarchicalItems.length === 0 ? (
               <div className="empty-state">
                 {searchTerm ? 'No items match your search' : 'No unscheduled items'}
               </div>
