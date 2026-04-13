@@ -676,23 +676,24 @@ const ReleaseView: React.FC<ReleaseViewProps> = ({
                     </button>
                   </div>
                   <div className="tooltip-content">
-                    <p>Release progress is based on completed work items only:</p>
+                    <p>The progress bar shows a color-coded breakdown of work item states:</p>
                     <div className="calculation-breakdown">
                       <div className="calc-item">
-                        <span className="calc-badge complete">✓ Completed</span>
-                        <span className="calc-label">Done, Closed, Ready For Release</span>
+                        <span className="calc-badge calc-green">✓ Green</span>
+                        <span className="calc-label">Ready For Release, UAT - Test Done, Done, Closed</span>
                       </div>
                       <div className="calc-item">
-                        <span className="calc-badge not-started">○ Not Completed</span>
+                        <span className="calc-badge calc-amber">● Amber</span>
+                        <span className="calc-label">UAT - Ready For Test</span>
+                      </div>
+                      <div className="calc-item">
+                        <span className="calc-badge calc-red">○ Red</span>
                         <span className="calc-label">All other states</span>
                       </div>
                     </div>
                     <p className="tooltip-note">
-                      <strong>Example:</strong> If you have 2 items Done and 2 items In Progress out of 4 total items:<br/>
-                      Progress = 2 completed / 4 total = 50%
-                    </p>
-                    <p className="tooltip-note">
-                      This conservative approach ensures the progress bar accurately reflects release readiness.
+                      The completion percentage reflects only <strong>green</strong> items (fully complete).<br/>
+                      Amber indicates items in UAT awaiting testing. Red indicates items still in progress or not started.
                     </p>
                   </div>
                 </div>
@@ -764,10 +765,25 @@ const ReleaseView: React.FC<ReleaseViewProps> = ({
                   <td>
                     <div className="progress-cell">
                       <div className="progress-bar-container">
-                        <div 
-                          className="progress-bar-fill" 
-                          style={{ width: `${epic.progress}%` }}
-                        ></div>
+                        {epic.totalItems > 0 && (
+                          <>
+                            <div 
+                              className="progress-bar-segment segment-green" 
+                              style={{ width: `${(epic.greenItems / epic.totalItems) * 100}%` }}
+                              title={`Ready: ${epic.greenItems}`}
+                            ></div>
+                            <div 
+                              className="progress-bar-segment segment-amber" 
+                              style={{ width: `${(epic.amberItems / epic.totalItems) * 100}%` }}
+                              title={`UAT Ready for Test: ${epic.amberItems}`}
+                            ></div>
+                            <div 
+                              className="progress-bar-segment segment-red" 
+                              style={{ width: `${(epic.redItems / epic.totalItems) * 100}%` }}
+                              title={`Other: ${epic.redItems}`}
+                            ></div>
+                          </>
+                        )}
                       </div>
                       <span className="progress-text">{epic.progress}%</span>
                       <span className="progress-details">({epic.completedItems}/{epic.totalItems} items)</span>
@@ -1059,12 +1075,32 @@ const ReleaseView: React.FC<ReleaseViewProps> = ({
           <div className="release-progress">
             <div className="progress-header">
               <span>Completion: {completionPercentage}%</span>
+              <div className="progress-legend">
+                <span className="legend-item"><span className="legend-dot legend-green"></span>Ready / Done</span>
+                <span className="legend-item"><span className="legend-dot legend-amber"></span>UAT Ready for Test</span>
+                <span className="legend-item"><span className="legend-dot legend-red"></span>Other</span>
+              </div>
             </div>
             <div className="progress-bar">
-              <div 
-                className="progress-fill" 
-                style={{ width: `${completionPercentage}%` }}
-              ></div>
+              {releaseMetrics && releaseMetrics.totalFeatures > 0 && (
+                <>
+                  <div 
+                    className="progress-segment segment-green" 
+                    style={{ width: `${(releaseMetrics.completedFeatures / releaseMetrics.totalFeatures) * 100}%` }}
+                    title={`Ready / Done: ${releaseMetrics.completedFeatures}`}
+                  ></div>
+                  <div 
+                    className="progress-segment segment-amber" 
+                    style={{ width: `${((releaseMetrics.uatReadyForTestFeatures || 0) / releaseMetrics.totalFeatures) * 100}%` }}
+                    title={`UAT Ready for Test: ${releaseMetrics.uatReadyForTestFeatures || 0}`}
+                  ></div>
+                  <div 
+                    className="progress-segment segment-red" 
+                    style={{ width: `${((releaseMetrics.totalFeatures - releaseMetrics.completedFeatures - (releaseMetrics.uatReadyForTestFeatures || 0)) / releaseMetrics.totalFeatures) * 100}%` }}
+                    title={`Other: ${releaseMetrics.totalFeatures - releaseMetrics.completedFeatures - (releaseMetrics.uatReadyForTestFeatures || 0)}`}
+                  ></div>
+                </>
+              )}
             </div>
           </div>
 

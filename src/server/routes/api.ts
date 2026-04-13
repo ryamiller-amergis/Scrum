@@ -1,6 +1,6 @@
 import express, { Request, Response } from 'express';
 import { AzureDevOpsService } from '../services/azureDevOps';
-import { WorkItemsQuery, UpdateDueDateRequest, DeveloperDueDateStats, DueDateHitRateStats, PullRequestTimeStats, InProgressTimeStats, QACycleTimeStats, UATCycleTimeStats, UATSittingItem, CreateDeploymentRequest } from '../types/workitem';
+import { WorkItemsQuery, UpdateDueDateRequest, DeveloperDueDateStats, DueDateHitRateStats, PullRequestTimeStats, InProgressTimeStats, QACycleTimeStats, UATCycleTimeStats, UATSittingItem, CreateDeploymentRequest, AIWorkItemHealthSummary } from '../types/workitem';
 import { getFeatureAutoCompleteService } from '../services/featureAutoComplete';
 import { DeploymentTrackingService } from '../services/deploymentTracking';
 
@@ -1182,6 +1182,47 @@ router.get('/releases/:version/notes', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error generating release notes:', error);
     res.status(500).json({ error: 'Failed to generate release notes' });
+  }
+});
+
+// GET /api/ai-analysis-summary - Lightweight aggregate health score for ai-code items
+router.get('/ai-analysis-summary', async (req: Request, res: Response) => {
+  try {
+    const { from, to, project, areaPath } = req.query as { from?: string; to?: string; project?: string; areaPath?: string };
+    const adoService = new AzureDevOpsService(project, areaPath);
+    const summary = await adoService.getAIWorkItemHealthMetrics(from, to);
+    // Return only the aggregate fields — no per-item detail
+    const { items: _items, ...aggregate } = summary;
+    res.json({ ...aggregate, totalItems: summary.totalItems });
+  } catch (error: any) {
+    console.error('Error fetching AI analysis summary:', error);
+    res.status(500).json({ error: 'Failed to fetch AI analysis summary' });
+  }
+});
+
+// GET /api/ai-work-item-health - Full health metrics including per-item breakdown
+router.get('/ai-work-item-health', async (req: Request, res: Response) => {
+  try {
+    const { from, to, project, areaPath } = req.query as { from?: string; to?: string; project?: string; areaPath?: string };
+    const adoService = new AzureDevOpsService(project, areaPath);
+    const summary: AIWorkItemHealthSummary = await adoService.getAIWorkItemHealthMetrics(from, to);
+    res.json(summary);
+  } catch (error: any) {
+    console.error('Error fetching AI work item health:', error);
+    res.status(500).json({ error: 'Failed to fetch AI work item health metrics' });
+  }
+});
+
+// GET /api/ai-work-item-details - Per-item detail list for drill-down views
+router.get('/ai-work-item-details', async (req: Request, res: Response) => {
+  try {
+    const { from, to, project, areaPath } = req.query as { from?: string; to?: string; project?: string; areaPath?: string };
+    const adoService = new AzureDevOpsService(project, areaPath);
+    const summary = await adoService.getAIWorkItemHealthMetrics(from, to);
+    res.json(summary.items);
+  } catch (error: any) {
+    console.error('Error fetching AI work item details:', error);
+    res.status(500).json({ error: 'Failed to fetch AI work item details' });
   }
 });
 

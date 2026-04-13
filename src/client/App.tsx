@@ -23,8 +23,9 @@ const QAMetrics = lazy(() => import('./components/QAMetrics').then(m => ({ defau
 const RoadmapView = lazy(() => import('./components/RoadmapView').then(m => ({ default: m.RoadmapView })));
 const ReleaseView = lazy(() => import('./components/ReleaseView'));
 const CloudCost = lazy(() => import('./components/CloudCost').then(m => ({ default: m.CloudCost })));
+const AIAnalysis = lazy(() => import('./components/AIAnalysis').then(m => ({ default: m.AIAnalysis })));
 
-type PlanningTab = 'cycle-time' | 'dev-stats' | 'qa' | 'roadmap' | 'releases';
+type PlanningTab = 'cycle-time' | 'dev-stats' | 'qa' | 'ai-analysis' | 'roadmap' | 'releases';
 
 function App() {
   const navigate = useNavigate();
@@ -192,6 +193,12 @@ function App() {
                     <ErrorBoundary FallbackComponent={ViewErrorFallback}>
                       <Suspense fallback={<ViewSkeleton />}>
                         <QAMetrics workItems={workItems} project={selectedProject} areaPath={selectedAreaPath} onSelectItem={setSelectedItem} />
+                      </Suspense>
+                    </ErrorBoundary>
+                  ) : planningTab === 'ai-analysis' ? (
+                    <ErrorBoundary FallbackComponent={ViewErrorFallback}>
+                      <Suspense fallback={<ViewSkeleton />}>
+                        <AIAnalysis workItems={workItems} project={selectedProject} areaPath={selectedAreaPath} onSelectItem={setSelectedItem} />
                       </Suspense>
                     </ErrorBoundary>
                   ) : planningTab === 'roadmap' ? (

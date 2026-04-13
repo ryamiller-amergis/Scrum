@@ -1,6 +1,6 @@
 import * as azdev from 'azure-devops-node-api';
 import { WorkItemExpand } from 'azure-devops-node-api/interfaces/WorkItemTrackingInterfaces';
-import { WorkItem, CycleTimeData, DueDateChange, DeveloperDueDateStats, DueDateHitRateStats, Release, ReleaseMetrics, InProgressTimeStats, QACycleTimeStats, UATCycleTimeStats, UATSittingItem } from '../types/workitem';
+import { WorkItem, CycleTimeData, DueDateChange, DeveloperDueDateStats, DueDateHitRateStats, Release, ReleaseMetrics, InProgressTimeStats, QACycleTimeStats, UATCycleTimeStats, UATSittingItem, AIWorkItemMetric, AIWorkItemHealthSummary } from '../types/workitem';
 import { retryWithBackoff } from '../utils/retry';
 
 export class AzureDevOpsService {
@@ -1597,8 +1597,10 @@ export class AzureDevOpsService {
       let inProgressFeatures = 0;
       let blockedFeatures = 0;
       let readyForReleaseFeatures = 0;
+      let uatReadyForTestFeatures = 0;
 
       const completedStates = ['Ready For Release', 'UAT - Test Done', 'Done', 'Closed'];
+      const amberStates = ['UAT - Ready For Test', 'UAT Ready For Test', 'UAT-Ready For Test'];
       const inProgressStates = ['Committed', 'In Progress', 'Ready For Test', 'In Test', 'UAT - Ready For Test'];
       const blockedStates = ['Blocked'];
 
@@ -1610,6 +1612,9 @@ export class AzureDevOpsService {
         }
         if (state === 'Ready For Release') {
           readyForReleaseFeatures++;
+        }
+        if (amberStates.includes(state)) {
+          uatReadyForTestFeatures++;
         }
         if (inProgressStates.includes(state)) {
           inProgressFeatures++;
@@ -1626,7 +1631,8 @@ export class AzureDevOpsService {
         inProgressFeatures,
         blockedFeatures,
         readyForReleaseFeatures,
-        deploymentHistory: [], // Will be populated from deployment tracking
+        uatReadyForTestFeatures,
+        deploymentHistory: [],
       };
     });
   }
@@ -1852,28 +1858,36 @@ export class AzureDevOpsService {
         let totalItems = 0;
         let completedItems = 0;
         let progress = 0;
+        let greenItems = 0;
+        let amberItems = 0;
+        let redItems = 0;
 
         if (childrenResponse.ok) {
           const childrenData = await childrenResponse.json() as any;
           const childIds = childrenData.workItemRelations
-            ?.filter((rel: any) => rel.target && rel.target.id !== wi.id) // Exclude parent Epic
+            ?.filter((rel: any) => rel.target && rel.target.id !== wi.id)
             .map((rel: any) => rel.target.id) || [];
 
           if (childIds.length > 0) {
             const childWorkItems = await witApi.getWorkItems(childIds, ['System.State', 'System.WorkItemType', 'System.Id']);
-            // Filter out the parent Epic in case it got through
             const actualChildren = childWorkItems.filter((child) => child.id !== wi.id);
             totalItems = actualChildren.length;
             
-            // Calculate simple completion ratio - only fully completed items count
-            completedItems = 0;
+            const greenStates = ['Ready For Release', 'UAT - Test Done', 'Done', 'Closed'];
+            const amberStates = ['UAT - Ready For Test', 'UAT Ready For Test', 'UAT-Ready For Test'];
+
             actualChildren.forEach((child) => {
               const state = child.fields?.['System.State'];
-              if (['Done', 'Closed', 'Ready For Release'].includes(state)) {
-                completedItems++;
+              if (greenStates.includes(state)) {
+                greenItems++;
+              } else if (amberStates.includes(state)) {
+                amberItems++;
+              } else {
+                redItems++;
               }
             });
-            
+
+            completedItems = greenItems;
             progress = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
           }
         }
@@ -1888,6 +1902,9 @@ export class AzureDevOpsService {
           progress,
           totalItems,
           completedItems,
+          greenItems,
+          amberItems,
+          redItems,
         });
       }
 
@@ -3330,6 +3347,281 @@ export class AzureDevOpsService {
     } catch (error) {
       console.error('Error in getUATSittingStats:', error);
       return [];
+    }
+  }
+
+  async getAIWorkItemHealthMetrics(from?: string, to?: string): Promise<AIWorkItemHealthSummary> {
+    const empty: AIWorkItemHealthSummary = {
+      totalItems: 0,
+      aggregateScore: 0,
+      avgDevTimeDays: 0,
+      medianDevTimeDays: 0,
+      avgBugCount: 0,
+      avgPRModifications: 0,
+      avgFullCycleTimeDays: 0,
+      reworkRate: 0,
+      firstPassRate: 0,
+      itemsWithZeroBugs: 0,
+      itemsWithCleanPRMerge: 0,
+      items: [],
+    };
+
+    try {
+      console.log('=== AzureDevOpsService.getAIWorkItemHealthMetrics START ===', { from, to });
+
+      const witApi = await this.connection.getWorkItemTrackingApi();
+
+      let wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${this.project}'`;
+      wiql += ` AND ([System.WorkItemType] = 'Product Backlog Item' OR [System.WorkItemType] = 'Technical Backlog Item')`;
+      wiql += ` AND [System.Tags] CONTAINS 'ai-code'`;
+
+      if (this.areaPath) {
+        wiql += ` AND [System.AreaPath] UNDER '${this.areaPath}'`;
+      }
+
+      if (from || to) {
+        const fromDate = from || '1900-01-01';
+        const toDate = to || '2999-12-31';
+        wiql += ` AND [System.ChangedDate] >= '${fromDate}' AND [System.ChangedDate] <= '${toDate}'`;
+      }
+
+      wiql += ' ORDER BY [System.ChangedDate] DESC';
+
+      const queryResult = await witApi.queryByWiql({ query: wiql }, { project: this.project });
+
+      if (!queryResult.workItems || queryResult.workItems.length === 0) {
+        console.log('No ai-code tagged work items found');
+        return empty;
+      }
+
+      const ids = queryResult.workItems.map(wi => wi.id!).slice(0, 300);
+      console.log(`Processing ${ids.length} ai-code tagged work items`);
+
+      // SDLC state ordering — used to detect rework (backward transitions)
+      const STATE_RANK: Record<string, number> = {
+        'New': 0,
+        'Active': 1,
+        'Committed': 1,
+        'In Progress': 1,
+        'In Pull Request': 2,
+        'Ready For Test': 3,
+        'Ready for Test': 3,
+        'In Test': 4,
+        'UAT - Ready For Test': 5,
+        'UAT - Test Done': 6,
+        'Ready For Release': 7,
+        'Done': 8,
+        'Closed': 8,
+        'Resolved': 8,
+      };
+
+      const items: AIWorkItemMetric[] = [];
+
+      for (const workItemId of ids) {
+        try {
+          const revisions = await witApi.getRevisions(workItemId);
+          if (!revisions || revisions.length < 2) continue;
+
+          const lastRev = revisions[revisions.length - 1];
+          const title: string = lastRev?.fields?.['System.Title'] || `Work Item ${workItemId}`;
+          const workItemType: string = lastRev?.fields?.['System.WorkItemType'] || 'Unknown';
+          const assignedToRaw = lastRev?.fields?.['System.AssignedTo'];
+          const assignedTo: string =
+            (assignedToRaw && typeof assignedToRaw === 'object' && (assignedToRaw as any).displayName)
+              ? (assignedToRaw as any).displayName
+              : (typeof assignedToRaw === 'string' ? assignedToRaw : 'Unassigned');
+
+          // Walk revisions to gather state transition timestamps
+          let inProgressDate: Date | null = null;
+          let inPullRequestDate: Date | null = null;
+          let uatReadyDate: Date | null = null;
+          let inPullRequestCount = 0;
+          let highestRankSeen = -1;
+          let hasRework = false;
+          let previousState = '';
+
+          for (const rev of revisions) {
+            const fields = rev.fields;
+            if (!fields) continue;
+
+            const state: string = fields['System.State'] || '';
+            const changedDate = fields['System.ChangedDate'] ? new Date(fields['System.ChangedDate']) : null;
+            if (!changedDate) { previousState = state; continue; }
+
+            const rank = STATE_RANK[state] ?? -1;
+
+            // Detect rework: any backward movement through development states
+            if (rank >= 0 && highestRankSeen >= 1 && rank < highestRankSeen && rank <= 2) {
+              hasRework = true;
+            }
+            if (rank > highestRankSeen) highestRankSeen = rank;
+
+            if (state === 'In Progress' && previousState !== 'In Progress' && !inProgressDate) {
+              inProgressDate = changedDate;
+            }
+
+            if (state === 'In Pull Request' && previousState !== 'In Pull Request') {
+              inPullRequestCount++;
+              if (inPullRequestCount === 1) {
+                inPullRequestDate = changedDate;
+              }
+            }
+
+            if (
+              (state === 'UAT - Ready For Test') &&
+              previousState !== 'UAT - Ready For Test' &&
+              !uatReadyDate
+            ) {
+              uatReadyDate = changedDate;
+            }
+
+            previousState = state;
+          }
+
+          // Compute timing metrics
+          const devTimeDays =
+            inProgressDate && inPullRequestDate
+              ? Math.round(
+                  ((inPullRequestDate.getTime() - inProgressDate.getTime()) / (1000 * 60 * 60 * 24)) * 10
+                ) / 10
+              : null;
+
+          const fullCycleTimeDays =
+            inProgressDate && uatReadyDate
+              ? Math.round(
+                  ((uatReadyDate.getTime() - inProgressDate.getTime()) / (1000 * 60 * 60 * 24)) * 10
+                ) / 10
+              : null;
+
+          // PR modification rounds = number of times entered "In Pull Request" minus 1
+          // (0 = clean single PR pass, 1+ = item went back and re-submitted)
+          const prModificationRounds = Math.max(0, inPullRequestCount - 1);
+
+          // Fetch linked bugs via relations
+          let bugCount = 0;
+          const bugList: Array<{ id: number; title: string; state: string }> = [];
+          try {
+            const fullItem = await witApi.getWorkItem(workItemId, undefined, undefined, WorkItemExpand.Relations);
+            const relations = fullItem?.relations || [];
+            const candidateIds: number[] = [];
+            for (const rel of relations) {
+              if (
+                rel.rel === 'System.LinkTypes.Hierarchy-Forward' ||
+                rel.rel === 'System.LinkTypes.Related'
+              ) {
+                const match = rel.url?.match(/\/workItems\/(\d+)$/);
+                if (match) candidateIds.push(parseInt(match[1], 10));
+              }
+            }
+            if (candidateIds.length > 0) {
+              const linked = await witApi.getWorkItems(
+                candidateIds,
+                ['System.WorkItemType', 'System.Title', 'System.State']
+              );
+              for (const li of linked) {
+                if (li.fields?.['System.WorkItemType'] === 'Bug') {
+                  bugList.push({
+                    id: li.id!,
+                    title: li.fields?.['System.Title'] || '',
+                    state: li.fields?.['System.State'] || '',
+                  });
+                }
+              }
+              bugCount = bugList.length;
+            }
+          } catch (relErr) {
+            console.error(`Error fetching relations for work item ${workItemId}:`, relErr);
+          }
+
+          const isFirstPassSuccess = bugCount === 0 && !hasRework;
+
+          items.push({
+            id: workItemId,
+            title,
+            workItemType,
+            assignedTo,
+            devTimeDays,
+            bugCount,
+            prModificationRounds,
+            fullCycleTimeDays,
+            hasRework,
+            isFirstPassSuccess,
+            inProgressDate: inProgressDate ? inProgressDate.toISOString().split('T')[0] : null,
+            inPullRequestDate: inPullRequestDate ? inPullRequestDate.toISOString().split('T')[0] : null,
+            uatReadyDate: uatReadyDate ? uatReadyDate.toISOString().split('T')[0] : null,
+            bugs: bugList,
+          });
+        } catch (err) {
+          console.error(`Error processing ai-code work item ${workItemId}:`, err);
+        }
+      }
+
+      if (items.length === 0) return empty;
+
+      // --- Aggregate metrics ---
+      const devTimes = items.map(i => i.devTimeDays).filter((d): d is number => d !== null);
+      const cycleTimes = items.map(i => i.fullCycleTimeDays).filter((d): d is number => d !== null);
+
+      const avg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+      const median = (arr: number[]) => {
+        if (!arr.length) return 0;
+        const sorted = [...arr].sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+        return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+      };
+
+      const avgDevTimeDays = Math.round(avg(devTimes) * 10) / 10;
+      const medianDevTimeDays = Math.round(median(devTimes) * 10) / 10;
+      const avgBugCount = Math.round(avg(items.map(i => i.bugCount)) * 10) / 10;
+      const avgPRModifications = Math.round(avg(items.map(i => i.prModificationRounds)) * 10) / 10;
+      const avgFullCycleTimeDays = Math.round(avg(cycleTimes) * 10) / 10;
+      const reworkRate = Math.round((items.filter(i => i.hasRework).length / items.length) * 100) / 100;
+      const firstPassRate = Math.round((items.filter(i => i.isFirstPassSuccess).length / items.length) * 100) / 100;
+      const itemsWithZeroBugs = items.filter(i => i.bugCount === 0).length;
+      const itemsWithCleanPRMerge = items.filter(i => i.prModificationRounds === 0).length;
+
+      // --- Aggregate health score (0-100) ---
+      // Each sub-score normalized 0-100 with defined thresholds
+      const scoreDevTime = devTimes.length
+        ? Math.max(0, Math.min(100, 100 - Math.max(0, avgDevTimeDays - 2) * (100 / 13)))
+        : 50; // neutral when no data
+      const scoreBugs = Math.max(0, 100 - avgBugCount * 20);
+      const scorePRMods = Math.max(0, 100 - avgPRModifications * 33);
+      const scoreCycleTime = cycleTimes.length
+        ? Math.max(0, Math.min(100, 100 - Math.max(0, avgFullCycleTimeDays - 5) * (100 / 25)))
+        : 50;
+      const scoreRework = Math.round((1 - reworkRate) * 100);
+      const scoreFirstPass = Math.round(firstPassRate * 100);
+
+      const aggregateScore = Math.round(
+        scoreDevTime * 0.20 +
+        scoreBugs * 0.25 +
+        scorePRMods * 0.15 +
+        scoreCycleTime * 0.15 +
+        scoreRework * 0.10 +
+        scoreFirstPass * 0.15
+      );
+
+      const summary: AIWorkItemHealthSummary = {
+        totalItems: items.length,
+        aggregateScore,
+        avgDevTimeDays,
+        medianDevTimeDays,
+        avgBugCount,
+        avgPRModifications,
+        avgFullCycleTimeDays,
+        reworkRate,
+        firstPassRate,
+        itemsWithZeroBugs,
+        itemsWithCleanPRMerge,
+        items,
+      };
+
+      console.log(`=== getAIWorkItemHealthMetrics RESULT: ${items.length} items, score=${aggregateScore} ===`);
+      return summary;
+    } catch (error) {
+      console.error('Error in getAIWorkItemHealthMetrics:', error);
+      return empty;
     }
   }
 }

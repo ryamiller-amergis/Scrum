@@ -199,6 +199,7 @@ export interface ReleaseMetrics {
   inProgressFeatures: number;
   blockedFeatures: number;
   readyForReleaseFeatures: number;
+  uatReadyForTestFeatures: number;
   averageLeadTime?: number;
   deploymentHistory: Deployment[];
 }
@@ -208,4 +209,36 @@ export interface CreateDeploymentRequest {
   environment: DeploymentEnvironment;
   workItemIds: number[];
   notes?: string;
+}
+
+export interface AIWorkItemMetric {
+  id: number;
+  title: string;
+  workItemType: string;
+  assignedTo: string;
+  devTimeDays: number | null;
+  bugCount: number;
+  prModificationRounds: number;
+  fullCycleTimeDays: number | null;
+  hasRework: boolean;
+  isFirstPassSuccess: boolean;
+  inProgressDate: string | null;
+  inPullRequestDate: string | null;
+  uatReadyDate: string | null;
+  bugs: Array<{ id: number; title: string; state: string }>;
+}
+
+export interface AIWorkItemHealthSummary {
+  totalItems: number;
+  aggregateScore: number;
+  avgDevTimeDays: number;
+  medianDevTimeDays: number;
+  avgBugCount: number;
+  avgPRModifications: number;
+  avgFullCycleTimeDays: number;
+  reworkRate: number;
+  firstPassRate: number;
+  itemsWithZeroBugs: number;
+  itemsWithCleanPRMerge: number;
+  items: AIWorkItemMetric[];
 }
