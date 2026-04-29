@@ -2,6 +2,7 @@ import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedroc
 import https from 'https';
 import { getFigmaReference } from './figmaReferenceService';
 import type { DesignSystemCatalog } from './designSystemService';
+import type { UiSurfacePlan, PbiContribution, UiLayoutPattern, PbiContributionType } from '../../shared/types/backlog';
 
 const client = new BedrockRuntimeClient({
   region: process.env.AWS_REGION ?? 'us-east-1',
@@ -852,16 +853,45 @@ export interface FeatureMockContext {
   siblingViewTitles?: string[];
 }
 
+/**
+ * Layout-style hints passed to the model so parallel variants intentionally diverge.
+ * Index 0–3 map to variant IDs A–D.
+ */
+export const VARIANT_HINTS: ReadonlyArray<{ label: string; hint: string }> = [
+  {
+    label: 'Variant A',
+    hint: 'Minimal and clean: favour whitespace, card-based layout, concise labels, and a simple toolbar with only the most essential actions.',
+  },
+  {
+    label: 'Variant B',
+    hint: 'Data-dense, table-first: maximise information density with a full-featured DataTable, sortable columns, inline status chips, and a rich toolbar (Columns / Filters / Density / Export).',
+  },
+  {
+    label: 'Variant C',
+    hint: 'Card-grid visual: display records as cards in a responsive grid, emphasise status colour-coding, include a search bar and a summary stat row at the top.',
+  },
+  {
+    label: 'Variant D',
+    hint: 'Step-by-step wizard or detail panel: use a wizard stepper, split detail-panel layout (main + sidebar), or a multi-step form — ideal when the primary action requires guided input.',
+  },
+] as const;
+
 export interface GenerateUiMockInput {
   featureTitle: string;
   featureDescription?: string;
   featureTags?: string[];
   acceptanceCriteria?: string[];
   epicTitle?: string;
+  /** ID of the PBI being rendered (required when featurePlan is provided so the
+   *  prompt can look up this PBI's planned contribution). */
+  pbiId?: string;
   catalog: DesignSystemCatalog;
   /** When generating a PBI-scoped view, pass the feature-level mock context so the AI
    *  stays within the same page/tab structure rather than making a fresh routing decision. */
   featureContext?: FeatureMockContext;
+  /** Structured UI surface plan (from feature.uiSurfacePlan or synthesised from
+   *  feature.uiMock). When present, PBI generation is locked to the planned surface. */
+  featurePlan?: UiSurfacePlan;
   /** Free-form context provided by the BA/UX designer at generation time —
    *  e.g. tone, user persona, specific constraints, or layout preferences.
    *  Applied to every mock in a "Generate All" batch for consistency. */
@@ -870,6 +900,45 @@ export interface GenerateUiMockInput {
    *  of a "Generate All" batch). The inner content is extracted and shown to the AI so
    *  it can mirror the same layout patterns, CSS classes, and component choices. */
   featureOverviewHtml?: string;
+  /** Layout-style hint injected when generating one of N parallel variants.
+   *  Causes the model to intentionally diverge from the other variants. */
+  variantHint?: string;
+}
+
+/* ── UI Plan types ─────────────────────────────────────────── */
+
+export interface PbiSummary {
+  pbiId: string;
+  pbiTitle: string;
+  description?: string;
+  acceptanceCriteria?: string[];
+}
+
+export interface GenerateUiPlanInput {
+  scope: 'epic' | 'feature';
+  /** Title of the epic (when scope='epic') or feature (when scope='feature'). */
+  title: string;
+  description?: string;
+  epicTitle?: string;
+  /** All child PBIs under this epic or feature. */
+  childPbis: PbiSummary[];
+  /** All sibling features under the same epic (for epic-scope plans). */
+  siblingFeatures?: Array<{ title: string; description?: string }>;
+  catalog: DesignSystemCatalog;
+  additionalContext?: string;
+  /** When refining a feature plan from an epic plan, pass the epic plan here. */
+  epicPlan?: UiSurfacePlan;
+  /**
+   * Plans from OTHER features in the same epic that already target the same
+   * page route as this feature intends to use. When present, the prompt locks
+   * the shared surface structure (route, title, sub-tabs, layout, primary
+   * components) and asks the model to only describe this feature's additive
+   * delta — preventing each feature from independently re-inventing the page.
+   */
+  existingSurfacePlans?: Array<{
+    featureTitle: string;
+    plan: UiSurfacePlan;
+  }>;
 }
 
 export interface RegenerateUiMockInput extends GenerateUiMockInput {
@@ -1355,15 +1424,24 @@ function buildCatalogSection(catalog: DesignSystemCatalog): string {
     parts.push(`### Existing screens — detailed descriptions\n\n${catalog.uiKnowledgeBase.trim()}`);
   }
 
+  const routeLayoutHints = catalog.routeLayoutHints ?? {};
   const routeList = catalog.routes.length > 0
-    ? catalog.routes.map(r => `- \`${r.path}\` — ${r.title}`).join('\n')
+    ? catalog.routes.map(r => {
+        const layout = routeLayoutHints[r.path];
+        return `- \`${r.path}\` — ${r.title}${layout ? ` *(layout: ${layout})*` : ''}`;
+      }).join('\n')
     : DEFAULT_NAV_ITEMS.map(n => `- \`${n.route}\` — ${n.label}`).join('\n');
 
   parts.push(`### Existing application pages (MaxView sidebar nav)\n\n${routeList}`);
 
   if (catalog.componentNames.length > 0) {
     const names = catalog.componentNames.slice(0, 40);
-    parts.push('### Existing components in the codebase\n\n' + names.map(n => `- \`${n}\``).join('\n'));
+    const descriptions = catalog.componentDescriptions ?? {};
+    const componentLines = names.map(n => {
+      const desc = descriptions[n];
+      return desc ? `- \`${n}\` — ${desc}` : `- \`${n}\``;
+    });
+    parts.push('### Existing components in the codebase\n\n' + componentLines.join('\n'));
   }
 
   return `## MaxView Application Context\n\n${parts.join('\n\n')}\n\n---\n\n`;
@@ -1394,6 +1472,10 @@ function buildUiMockPrompt(input: GenerateUiMockInput, skillContent: string): st
       })()
     : '';
 
+  const variantHintSection = input.variantHint?.trim()
+    ? `\n## Layout variant instruction\n\n**Apply the following layout style** to this mock. This is one of several parallel alternatives being generated — your output should intentionally reflect this style so users can compare different approaches:\n\n> ${input.variantHint.trim()}\n`
+    : '';
+
   /* Get the Figma reference for nav items and visual context */
   const ref = getFigmaReference();
   const navItemsForRouteList = ref.navItems.length > 0 ? ref.navItems : DEFAULT_NAV_ITEMS;
@@ -1418,8 +1500,50 @@ The image attached to this message is a screenshot from the MaxView Figma design
 `
     : '';
 
-  /* ── PBI context block — locks page structure when generating a PBI-scoped view ── */
-  const ctx = input.featureContext;
+  /* ── Plan-locked surface block — takes priority over featureContext when present ── */
+  const plan = input.featurePlan;
+  const pbiContribution = plan && input.pbiId
+    ? plan.pbiContributions.find(c => c.pbiId === input.pbiId)
+    : undefined;
+
+  const planLockedSection = plan
+    ? `## Plan-locked UI surface — DO NOT deviate
+
+A UI Surface Plan has been established for this feature. **You MUST NOT change any of the locked values below.** Your only job is to render the specific delta described for this PBI.
+
+\`\`\`json
+${JSON.stringify({
+  decision: plan.decision,
+  targetPageRoute: plan.targetPageRoute ?? null,
+  targetPageTitle: plan.targetPageTitle ?? null,
+  subTabs: plan.subTabs,
+  activeSubTab: plan.activeSubTab ?? null,
+  layoutPattern: plan.layoutPattern ?? null,
+  primaryComponents: plan.primaryComponents,
+}, null, 2)}
+\`\`\`
+
+${pbiContribution ? `### This PBI's planned contribution
+
+- **Contribution type:** \`${pbiContribution.contributionType}\`
+- **Target area:** ${pbiContribution.targetArea}
+- **Delta summary:** ${pbiContribution.summary}
+
+Render ONLY this contribution as the inner content HTML. Wrap it in \`.annotation\` + \`.annotation-label "NEW"\` so it is visually distinguished. Keep any surrounding scaffolding (toolbar, table structure, other tabs) visually identical to the rest of the page.` : ''}
+
+**LOCKED values (DO NOT change in your output):**
+- \`decision\` → \`${plan.decision}\`
+- \`targetPageRoute\` → \`${plan.targetPageRoute ?? 'null'}\`
+- \`targetPageTitle\` → \`${plan.targetPageTitle ?? 'null'}\`
+- \`targetPageSubTabs\` → \`${JSON.stringify(plan.subTabs)}\` (add a new tab only if the contribution type is "new-tab")
+
+---
+
+`
+    : '';
+
+  /* ── Fallback: legacy featureContext block (used when no plan is present) ── */
+  const ctx = !plan ? input.featureContext : undefined;
   const featureContextSection = ctx
     ? `## Established page context for this feature
 
@@ -1443,18 +1567,20 @@ Your HTML must fit within this established page. Use the same \`targetPageRoute\
 ${screenshotSection}The app has a LEFT SIDEBAR navigation: ${navItemsForRouteList.map(n => n.label).join(', ')}.
 Each page has a page title header, optional sub-tabs (underline style), then a content body area.
 
-${skillSection}${catalogSection}${featureContextSection}## Feature to analyse
+${skillSection}${catalogSection}${planLockedSection}${featureContextSection}## Feature to analyse
 
 **Feature:** "${input.featureTitle}"
-${input.epicTitle ? `**Epic:** "${input.epicTitle}"\n` : ''}${input.featureDescription ? `**Description:**\n${input.featureDescription}\n` : ''}${acSection}${tagsSection}${additionalContextSection}${featureOverviewSection}
+${input.epicTitle ? `**Epic:** "${input.epicTitle}"\n` : ''}${input.featureDescription ? `**Description:**\n${input.featureDescription}\n` : ''}${acSection}${tagsSection}${additionalContextSection}${variantHintSection}${featureOverviewSection}
 
 ## Your task
 
 ### Step 1 — Make the UI decision
 
-${ctx
-  ? `The routing decision is already established (see "Established page context" above). Use **${ctx.decision}**${ctx.targetPageRoute ? ` targeting \`${ctx.targetPageRoute}\`` : ''}. Do not override it.`
-  : `Use the "Existing screens — detailed descriptions" section above to understand what each current page already covers before deciding.
+${plan
+  ? `The routing decision is LOCKED by the UI Surface Plan above. Use **${plan.decision}**${plan.targetPageRoute ? ` targeting \`${plan.targetPageRoute}\`` : ''}. Do NOT override it.`
+  : ctx
+    ? `The routing decision is already established (see "Established page context" above). Use **${ctx.decision}**${ctx.targetPageRoute ? ` targeting \`${ctx.targetPageRoute}\`` : ''}. Do not override it.`
+    : `Use the "Existing screens — detailed descriptions" section above to understand what each current page already covers before deciding.
 
 Decide whether this feature requires:
 1. **new-page** — warrants a brand new page/section in the left nav (no existing screen is a natural home for it).
@@ -1744,21 +1870,38 @@ async function invokeModel(
 
 function parseUiMockResult(
   text: string,
-  catalog: DesignSystemCatalog
+  catalog: DesignSystemCatalog,
+  /** When provided, locked fields are overridden from the plan regardless of model output. */
+  featurePlan?: UiSurfacePlan
 ): UiMockResult {
   const parsed = JSON.parse(extractJson(text, 'UiMock')) as Record<string, unknown>;
 
   const validDecisions: UiMockDecision[] = ['new-page', 'update-page', 'no-ui'];
-  const decision: UiMockDecision = validDecisions.includes(parsed.decision as UiMockDecision)
+  let decision: UiMockDecision = validDecisions.includes(parsed.decision as UiMockDecision)
     ? (parsed.decision as UiMockDecision)
     : 'no-ui';
 
-  const targetPageRoute = typeof parsed.targetPageRoute === 'string' ? parsed.targetPageRoute : undefined;
-  const targetPageTitle = typeof parsed.targetPageTitle === 'string' ? parsed.targetPageTitle : undefined;
-  const targetPageSubTabs = Array.isArray(parsed.targetPageSubTabs)
+  let targetPageRoute = typeof parsed.targetPageRoute === 'string' ? parsed.targetPageRoute : undefined;
+  let targetPageTitle = typeof parsed.targetPageTitle === 'string' ? parsed.targetPageTitle : undefined;
+  let targetPageSubTabs = Array.isArray(parsed.targetPageSubTabs)
     ? (parsed.targetPageSubTabs as string[])
     : [];
   const targetSubTabActive = typeof parsed.targetSubTabActive === 'string' ? parsed.targetSubTabActive : undefined;
+
+  /* Defensive overrides — if a plan was supplied, locked fields win over model output.
+     This prevents the model from inventing a different page even when the prompt is clear. */
+  if (featurePlan) {
+    decision = featurePlan.decision;
+    if (featurePlan.targetPageRoute !== undefined) targetPageRoute = featurePlan.targetPageRoute;
+    if (featurePlan.targetPageTitle !== undefined) targetPageTitle = featurePlan.targetPageTitle;
+    // Sub-tabs: use plan's unless the model added a new-tab contribution (which adds a tab)
+    if (featurePlan.subTabs.length > 0) {
+      // Accept any extra tabs the model produced that aren't already in the plan
+      const extraTabs = targetPageSubTabs.filter(t => !featurePlan.subTabs.includes(t));
+      targetPageSubTabs = [...featurePlan.subTabs, ...extraTabs];
+    }
+  }
+
   // Strip any leading <h1>/<h2> the model may have included despite instructions —
   // the shell already renders the page title above .mwx-content.
   const rawInner = typeof parsed.mockHtml === 'string' ? parsed.mockHtml : undefined;
@@ -1824,7 +1967,7 @@ export async function generateUiMockFromBedrock(
     : undefined;
 
   const text = await invokeModel(prompt, image, UI_MOCK_MODEL_ID, UI_MOCK_MAX_TOKENS);
-  return parseUiMockResult(text, input.catalog);
+  return parseUiMockResult(text, input.catalog, input.featurePlan);
 }
 
 export async function regenerateUiMockFromBedrock(
@@ -1846,5 +1989,281 @@ export async function regenerateUiMockFromBedrock(
     : undefined;
 
   const text = await invokeModel(prompt, image, UI_MOCK_MODEL_ID, UI_MOCK_MAX_TOKENS);
-  return parseUiMockResult(text, input.catalog);
+  return parseUiMockResult(text, input.catalog, input.featurePlan);
+}
+
+/**
+ * Generate N parallel variant mocks for the same input by injecting one of the
+ * VARIANT_HINTS into each call.  Results are returned in hint order (A, B, C, D).
+ * Any individual failure is silently dropped unless ALL variants fail, in which
+ * case the error from the first failure is re-thrown.
+ *
+ * @param input  Base generation input (variantHint must NOT be pre-set — it is
+ *               set internally per variant).
+ * @param count  Number of variants to generate (clamped to 1–4).
+ */
+export async function generateUiMockVariantsFromBedrock(
+  input: GenerateUiMockInput,
+  count: number
+): Promise<UiMockResult[]> {
+  const n = Math.max(1, Math.min(4, Math.floor(count)));
+  const hints = VARIANT_HINTS.slice(0, n);
+
+  const results = await Promise.allSettled(
+    hints.map(({ hint }) =>
+      generateUiMockFromBedrock({ ...input, variantHint: hint })
+    )
+  );
+
+  const successes: UiMockResult[] = [];
+  let firstError: unknown = null;
+
+  for (const result of results) {
+    if (result.status === 'fulfilled') {
+      successes.push(result.value);
+    } else {
+      console.warn('[bedrockService] Variant generation failed:', result.reason);
+      if (firstError === null) firstError = result.reason;
+    }
+  }
+
+  if (successes.length === 0) {
+    throw firstError ?? new Error('All variant generations failed');
+  }
+
+  return successes;
+}
+
+/* ════════════════════════════════════════════════════════════
+   UI SURFACE PLAN GENERATION
+   ════════════════════════════════════════════════════════════ */
+
+function buildUiPlanPrompt(input: GenerateUiPlanInput): string {
+  const catalogSection = buildCatalogSection(input.catalog);
+
+  const pbisSection = input.childPbis.length > 0
+    ? `## Child PBIs\n\n${input.childPbis.map(p => {
+        const ac = p.acceptanceCriteria?.length
+          ? `\n  Acceptance criteria:\n${p.acceptanceCriteria.map(a => `  - ${a}`).join('\n')}`
+          : '';
+        return `- **${p.pbiTitle}** (id: \`${p.pbiId}\`)${p.description ? `\n  ${p.description}` : ''}${ac}`;
+      }).join('\n\n')}`
+    : '';
+
+  const siblingFeaturesSection = input.siblingFeatures?.length
+    ? `## Sibling features under the same epic\n\n${input.siblingFeatures.map(f =>
+        `- **${f.title}**${f.description ? `: ${f.description}` : ''}`
+      ).join('\n')}\n\n`
+    : '';
+
+  const epicPlanSection = input.epicPlan
+    ? `## Parent epic UI surface plan (pre-established — align with this)\n\n\`\`\`json\n${JSON.stringify(input.epicPlan, null, 2)}\n\`\`\`\n\nYour feature plan must:\n- Use the same \`decision\`, \`targetPageRoute\`, \`targetPageTitle\`, and \`subTabs\` unless the epic plan is clearly insufficient for this feature.\n- Extend \`pbiContributions\` only for the PBIs belonging to **this feature**.\n\n`
+    : '';
+
+  // Build the sibling surface lock section — the most important constraint:
+  // if other features already own this route, this plan must be a pure delta.
+  const existingSurfaceSection = input.existingSurfacePlans?.length
+    ? (() => {
+        const plans = input.existingSurfacePlans!;
+        const lockedPlan = plans[0].plan; // use the first (canonical) plan's surface values
+
+        const otherFeaturesSummary = plans.map(p =>
+          `- **${p.featureTitle}**: ${p.plan.pbiContributions.map(c => c.summary).join('; ') || 'contributions pending'}`
+        ).join('\n');
+
+        return `## ⚠️ EXISTING SURFACE — DO NOT RE-PLAN THE PAGE STRUCTURE
+
+The following sibling feature(s) in this epic have **already established** a UI surface plan for **\`${lockedPlan.targetPageRoute ?? 'this page'}\`**. You MUST NOT change the surface structure. Your job is only to describe what THIS feature's PBIs add as deltas to the shared surface.
+
+**Locked surface values — copy these verbatim into your output:**
+\`\`\`json
+${JSON.stringify({
+  decision: lockedPlan.decision,
+  targetPageRoute: lockedPlan.targetPageRoute ?? null,
+  targetPageTitle: lockedPlan.targetPageTitle ?? null,
+  subTabs: lockedPlan.subTabs,
+  layoutPattern: lockedPlan.layoutPattern ?? null,
+  primaryComponents: lockedPlan.primaryComponents,
+}, null, 2)}
+\`\`\`
+
+**What other features already contribute to this surface:**
+${otherFeaturesSummary}
+
+**Your only task:** populate \`pbiContributions\` for THIS feature's PBIs — describe each PBI's additive delta (new section, new tab, action, filter, etc.) without touching or duplicating what the features above already deliver. Keep \`decision\`, \`targetPageRoute\`, \`targetPageTitle\`, \`subTabs\`, and \`layoutPattern\` exactly as shown in the locked values above.
+
+---
+
+`;
+      })()
+    : '';
+
+  const additionalSection = input.additionalContext?.trim()
+    ? `## Additional context from BA/UX\n\n${input.additionalContext.trim()}\n\n`
+    : '';
+
+  const validDecisions = ['new-page', 'update-page', 'no-ui'];
+  const validLayouts: UiLayoutPattern[] = ['table', 'calendar', 'dashboard', 'form', 'detail-page', 'wizard', 'modal', 'drawer', 'widget'];
+  const validContributions: PbiContributionType[] = ['new-section', 'new-tab', 'table-column', 'filter', 'action', 'state', 'modal', 'drawer', 'no-ui'];
+
+  const ref = getFigmaReference();
+  const navItemsForRouteList = ref.navItems.length > 0 ? ref.navItems : DEFAULT_NAV_ITEMS;
+  const validRoutes = input.catalog.routes.length > 0
+    ? input.catalog.routes.map(r => `"${r.path}"`)
+    : navItemsForRouteList.map(n => `"${n.route}"`);
+
+  // When existing surface plans are present, the decision/route/layout rules change
+  const routingRules = input.existingSurfacePlans?.length
+    ? `- The surface structure is LOCKED (see "EXISTING SURFACE" block above). Copy the locked values exactly.
+- Only populate \`pbiContributions\` with deltas specific to this feature's PBIs.
+- Do NOT add sub-tabs that are already listed in the locked \`subTabs\` array.`
+    : `- Use the "Existing screens — detailed descriptions" section to understand what each current page covers before deciding new-page vs update-page.
+- A "new-page" means a brand-new left-nav entry is warranted. Be conservative — prefer update-page.
+- "no-ui" means entirely backend/infra work with zero user-facing change.
+- \`targetPageRoute\` must be one of the valid routes: ${validRoutes.join(', ')} (or null for new-page/no-ui).
+- \`layoutPattern\` must be one of: ${validLayouts.map(l => `"${l}"`).join(', ')}.`;
+
+  return `You are a senior UX architect and product analyst for MaxView — a workforce management web application used by healthcare staffing agencies.
+
+${catalogSection}${epicPlanSection}${existingSurfaceSection}${siblingFeaturesSection}## ${input.scope === 'epic' ? 'Epic' : 'Feature'} to plan
+
+**${input.scope === 'epic' ? 'Epic' : 'Feature'}:** "${input.title}"
+${input.epicTitle && input.scope === 'feature' ? `**Epic:** "${input.epicTitle}"\n` : ''}${input.description ? `**Description:**\n${input.description}\n` : ''}
+
+${pbisSection}
+
+${additionalSection}## Your task
+
+${input.existingSurfacePlans?.length
+  ? `Produce a **UI Surface Plan** that adds this feature's PBI contributions as deltas to the already-established surface (see "EXISTING SURFACE" block above). Do NOT re-design the page structure.`
+  : `Produce a **UI Surface Plan** — a structured JSON document that specifies which existing MaxView page (or new page) will host this ${input.scope}'s functionality, the layout pattern, the page structure, and exactly how each child PBI contributes as a delta to that shared surface.`
+}
+
+Rules:
+${routingRules}
+- \`targetPageRoute\` must be one of the valid routes: ${validRoutes.join(', ')} (or null for new-page/no-ui).
+- \`primaryComponents\` should list MWx Design System component names (from existing components list) that best represent this surface.
+- For each PBI, specify \`contributionType\` (one of: ${validContributions.map(c => `"${c}"`).join(', ')}) and \`targetArea\` (the specific area of the page, e.g. "toolbar", "row actions", "new tab: Recurring Requests").
+- \`summary\` for each PBI is one sentence describing the delta only.
+
+## Output (JSON only)
+
+\`\`\`json
+{
+  "scope": "${input.scope}",
+  "decision": ${validDecisions.map(d => `"${d}"`).join(' | ')},
+  "targetPageRoute": "/existing-route" | null,
+  "targetPageTitle": "Human-readable page title" | null,
+  "subTabs": ["Tab One", "Tab Two"] | [],
+  "activeSubTab": "Tab One" | null,
+  "layoutPattern": "table" | "calendar" | "dashboard" | "form" | "detail-page" | "wizard" | "modal" | "drawer" | "widget" | null,
+  "primaryComponents": ["ComponentName", ...],
+  "rationale": "Two or three sentences explaining the decision and layout choice.",
+  "pbiContributions": [
+    {
+      "pbiId": "<id>",
+      "pbiTitle": "<title>",
+      "contributionType": "new-section" | "new-tab" | "table-column" | "filter" | "action" | "state" | "modal" | "drawer" | "no-ui",
+      "targetArea": "<specific area on the page>",
+      "summary": "<one sentence delta description>"
+    }
+  ]
+}
+\`\`\`
+
+Rules:
+- \`targetPageRoute\` is null for "no-ui" and for "new-page".
+- Every child PBI must have exactly one entry in \`pbiContributions\`.
+- Respond ONLY with the JSON fenced block — no other text.`;
+}
+
+function parseUiPlanResult(text: string): UiSurfacePlan {
+  const parsed = JSON.parse(extractJson(text, 'UiPlan')) as Record<string, unknown>;
+
+  const validDecisions: UiMockDecision[] = ['new-page', 'update-page', 'no-ui'];
+  const decision: UiMockDecision = validDecisions.includes(parsed.decision as UiMockDecision)
+    ? (parsed.decision as UiMockDecision)
+    : 'no-ui';
+
+  const validLayouts: UiLayoutPattern[] = ['table', 'calendar', 'dashboard', 'form', 'detail-page', 'wizard', 'modal', 'drawer', 'widget'];
+  const layoutPattern = validLayouts.includes(parsed.layoutPattern as UiLayoutPattern)
+    ? (parsed.layoutPattern as UiLayoutPattern)
+    : undefined;
+
+  const validContributions: PbiContributionType[] = ['new-section', 'new-tab', 'table-column', 'filter', 'action', 'state', 'modal', 'drawer', 'no-ui'];
+
+  const pbiContributions: PbiContribution[] = Array.isArray(parsed.pbiContributions)
+    ? (parsed.pbiContributions as any[]).map(c => ({
+        pbiId: typeof c.pbiId === 'string' ? c.pbiId : '',
+        pbiTitle: typeof c.pbiTitle === 'string' ? c.pbiTitle : '',
+        contributionType: validContributions.includes(c.contributionType) ? c.contributionType as PbiContributionType : 'new-section',
+        targetArea: typeof c.targetArea === 'string' ? c.targetArea : 'main content',
+        summary: typeof c.summary === 'string' ? c.summary : '',
+      }))
+    : [];
+
+  const now = new Date().toISOString();
+  return {
+    scope: parsed.scope === 'epic' ? 'epic' : 'feature',
+    decision,
+    targetPageRoute: typeof parsed.targetPageRoute === 'string' ? parsed.targetPageRoute : undefined,
+    targetPageTitle: typeof parsed.targetPageTitle === 'string' ? parsed.targetPageTitle : undefined,
+    subTabs: Array.isArray(parsed.subTabs) ? (parsed.subTabs as string[]) : [],
+    activeSubTab: typeof parsed.activeSubTab === 'string' ? parsed.activeSubTab : undefined,
+    layoutPattern,
+    primaryComponents: Array.isArray(parsed.primaryComponents) ? (parsed.primaryComponents as string[]) : [],
+    rationale: typeof parsed.rationale === 'string' ? parsed.rationale : '',
+    pbiContributions,
+    planVersion: 1,
+    status: 'draft',
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+export async function generateUiPlanFromBedrock(
+  input: GenerateUiPlanInput
+): Promise<UiSurfacePlan> {
+  const prompt = buildUiPlanPrompt(input);
+  const text = await invokeModel(prompt, undefined, UI_MOCK_MODEL_ID, UI_MOCK_MAX_TOKENS);
+  return parseUiPlanResult(text);
+}
+
+/**
+ * Synthesise a transient UiSurfacePlan from an existing feature.uiMock.
+ * Used for backward compatibility when a feature has mocks but no explicit plan.
+ * The result is NOT persisted — callers may persist it if the user chooses.
+ */
+export function synthesisePlanFromUiMock(
+  featureId: string,
+  featureTitle: string,
+  uiMock: {
+    decision: UiMockDecision;
+    targetPageRoute?: string;
+    targetPageTitle?: string;
+    targetPageSubTabs?: string[];
+    views?: Array<{ pbiId: string; pbiTitle: string }>;
+  }
+): UiSurfacePlan {
+  const now = new Date().toISOString();
+  return {
+    scope: 'feature',
+    decision: uiMock.decision,
+    targetPageRoute: uiMock.targetPageRoute,
+    targetPageTitle: uiMock.targetPageTitle,
+    subTabs: uiMock.targetPageSubTabs ?? [],
+    primaryComponents: [],
+    rationale: `Synthesised from existing UI mock for feature "${featureTitle}".`,
+    pbiContributions: (uiMock.views ?? []).map(v => ({
+      pbiId: v.pbiId,
+      pbiTitle: v.pbiTitle,
+      contributionType: 'new-section' as PbiContributionType,
+      targetArea: 'main content',
+      summary: `Renders the ${v.pbiTitle} section within ${uiMock.targetPageTitle ?? 'this page'}.`,
+    })),
+    planVersion: 1,
+    status: 'draft',
+    createdAt: now,
+    updatedAt: now,
+  };
 }

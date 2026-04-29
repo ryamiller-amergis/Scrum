@@ -2070,7 +2070,7 @@ router.post('/backlog/regenerate-ui-mock', async (req: Request, res: Response) =
 // that one user story rather than the whole feature.
 router.post('/backlog/generate-pbi-view', async (req: Request, res: Response) => {
   try {
-    const { featureId, pbiId, document, project, areaPath, additionalContext, featureOverviewHtml } = req.body as {
+    const { featureId, pbiId, document, project, areaPath, additionalContext, featureOverviewHtml, variantCount } = req.body as {
       featureId?: string;
       pbiId?: string;
       document?: any;
@@ -2078,6 +2078,7 @@ router.post('/backlog/generate-pbi-view', async (req: Request, res: Response) =>
       areaPath?: string;
       additionalContext?: string;
       featureOverviewHtml?: string;
+      variantCount?: number;
     };
 
     if (!featureId || !pbiId || !document) {
@@ -2093,14 +2094,22 @@ router.post('/backlog/generate-pbi-view', async (req: Request, res: Response) =>
     const parentEpic = (document.epics ?? []).find((e: any) => e.id === feature.parentId);
 
     const { getDesignSystemCatalog } = await import('../services/designSystemService');
-    const { generateUiMockFromBedrock } = await import('../services/bedrockService');
+    const { generateUiMockVariantsFromBedrock, synthesisePlanFromUiMock } = await import('../services/bedrockService');
     const { sanitizeMockHtml } = await import('../utils/htmlSanitizer');
 
-    // Build page context from the feature-level mock so this PBI view stays within
-    // the same page/tab structure as the overview and sibling views.
+    // Resolve the UI surface plan: prefer persisted feature plan, fall back to epic plan,
+    // fall back to synthesising a transient plan from feature.uiMock for backward compat.
     const featureMock = feature.uiMock as any | undefined;
     const siblingViews: any[] = featureMock?.views ?? [];
-    const featureContext = featureMock?.decision
+
+    let featurePlan = feature.uiSurfacePlan
+      ?? parentEpic?.uiSurfacePlan
+      ?? (featureMock?.decision
+          ? synthesisePlanFromUiMock(feature.id, feature.title, featureMock)
+          : undefined);
+
+    // Build legacy featureContext as fallback when no plan is available
+    const featureContext = !featurePlan && featureMock?.decision
       ? {
           decision: featureMock.decision,
           targetPageRoute: featureMock.targetPageRoute,
@@ -2113,25 +2122,32 @@ router.post('/backlog/generate-pbi-view', async (req: Request, res: Response) =>
       : undefined;
 
     const catalog = await getDesignSystemCatalog();
-    const result = await generateUiMockFromBedrock({
+    const baseInput = {
       featureTitle: `${feature.title} — ${pbi.title}`,
       featureDescription: pbi.description ?? feature.description,
       featureTags: feature.tags,
       acceptanceCriteria: pbi.acceptanceCriteria ?? [],
       epicTitle: parentEpic?.title,
+      pbiId: pbi.id,
       catalog,
+      featurePlan,
       featureContext,
       additionalContext: additionalContext?.trim() || undefined,
       featureOverviewHtml: featureOverviewHtml?.trim() || undefined,
-    });
+    };
 
-    if (result.mockHtml) {
-      result.mockHtml = sanitizeMockHtml(result.mockHtml);
+    // Clamp variant count: 1–4, default 1
+    const n = Math.max(1, Math.min(4, Math.floor(Number(variantCount) || 1)));
+    const variants = await generateUiMockVariantsFromBedrock(baseInput, n);
+
+    // Sanitize each variant's HTML
+    for (const v of variants) {
+      if (v.mockHtml) v.mockHtml = sanitizeMockHtml(v.mockHtml);
     }
 
     res
       .set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; img-src data:;")
-      .json({ ...result, pbiId, pbiTitle: pbi.title });
+      .json({ pbiId, pbiTitle: pbi.title, variants });
   } catch (error: any) {
     if (error.name === 'BedrockModelTruncatedError') {
       return res.status(422).json({
@@ -2176,13 +2192,21 @@ router.post('/backlog/regenerate-pbi-view', async (req: Request, res: Response) 
     if (!pbi) return res.status(404).json({ error: `PBI ${pbiId} not found` });
 
     const { getDesignSystemCatalog } = await import('../services/designSystemService');
-    const { regenerateUiMockFromBedrock } = await import('../services/bedrockService');
+    const { regenerateUiMockFromBedrock, synthesisePlanFromUiMock } = await import('../services/bedrockService');
     const { sanitizeMockHtml } = await import('../utils/htmlSanitizer');
 
-    // Pass the same feature page context so regeneration also stays within the established structure
+    const parentEpicForRegen = (document.epics ?? []).find((e: any) => e.id === feature.parentId);
     const featureMock = feature.uiMock as any | undefined;
     const siblingViews: any[] = featureMock?.views ?? [];
-    const featureContext = featureMock?.decision
+
+    // Resolve the UI surface plan (same priority as generate-pbi-view)
+    const featurePlan = feature.uiSurfacePlan
+      ?? parentEpicForRegen?.uiSurfacePlan
+      ?? (featureMock?.decision
+          ? synthesisePlanFromUiMock(feature.id, feature.title, featureMock)
+          : undefined);
+
+    const featureContext = !featurePlan && featureMock?.decision
       ? {
           decision: featureMock.decision,
           targetPageRoute: featureMock.targetPageRoute,
@@ -2194,10 +2218,10 @@ router.post('/backlog/regenerate-pbi-view', async (req: Request, res: Response) 
         }
       : undefined;
 
-    /* Fall back to feature-level subtabs/title if the client didn't send
+    /* Fall back to plan / feature-level subtabs/title if the client didn't send
        prior view-level state (PBI views inherit page structure from the feature). */
-    const effectiveSubTabs = priorSubTabs ?? featureMock?.targetPageSubTabs;
-    const effectivePageTitle = priorPageTitle ?? featureMock?.targetPageTitle;
+    const effectiveSubTabs = priorSubTabs ?? featurePlan?.subTabs ?? featureMock?.targetPageSubTabs;
+    const effectivePageTitle = priorPageTitle ?? featurePlan?.targetPageTitle ?? featureMock?.targetPageTitle;
 
     const catalog = await getDesignSystemCatalog();
     const result = await regenerateUiMockFromBedrock({
@@ -2205,7 +2229,9 @@ router.post('/backlog/regenerate-pbi-view', async (req: Request, res: Response) 
       featureDescription: pbi.description ?? feature.description,
       featureTags: feature.tags,
       acceptanceCriteria: pbi.acceptanceCriteria ?? [],
+      pbiId: pbi.id,
       catalog,
+      featurePlan,
       priorHtml: priorHtml ?? '',
       priorDecision: priorDecision as any,
       priorTargetRoute,
@@ -2234,6 +2260,301 @@ router.post('/backlog/regenerate-pbi-view', async (req: Request, res: Response) 
     }
     console.error('Error regenerating PBI view:', error);
     res.status(500).json({ error: 'Failed to regenerate PBI view', details: error.message });
+  }
+});
+
+// POST /api/backlog/generate-ui-plan
+// Generates (or regenerates) a UiSurfacePlan for an epic or feature via Bedrock AI.
+// Persists the plan to the backlog draft and returns it.
+router.post('/backlog/generate-ui-plan', async (req: Request, res: Response) => {
+  try {
+    const { scope, epicId, featureId, document, project, areaPath, additionalContext } = req.body as {
+      scope?: 'epic' | 'feature';
+      epicId?: string;
+      featureId?: string;
+      document?: any;
+      project?: string;
+      areaPath?: string;
+      additionalContext?: string;
+    };
+
+    if (!scope || !document || (scope === 'epic' && !epicId) || (scope === 'feature' && !featureId)) {
+      return res.status(400).json({ error: 'scope, document, and either epicId (epic) or featureId (feature) are required' });
+    }
+
+    const { generateUiPlanFromBedrock } = await import('../services/bedrockService');
+    const { getDesignSystemCatalog } = await import('../services/designSystemService');
+
+    const catalog = await getDesignSystemCatalog();
+
+    let plan;
+    if (scope === 'feature') {
+      const feature = (document.features ?? []).find((f: any) => f.id === featureId);
+      if (!feature) return res.status(404).json({ error: `Feature ${featureId} not found` });
+
+      const parentEpic = (document.epics ?? []).find((e: any) => e.id === feature.parentId);
+      const childPBIs = (document.pbis ?? []).filter((p: any) => p.parentId === featureId);
+
+      // Find sibling features in the same epic that already have a plan targeting
+      // the same route — pass them so the prompt locks the surface structure and
+      // only asks the model to describe this feature's delta contributions.
+      const siblingFeaturesWithPlans = ((document.features ?? []) as any[]).filter(
+        (f: any) =>
+          f.id !== featureId &&
+          f.parentId === feature.parentId &&
+          f.uiSurfacePlan?.targetPageRoute
+      );
+
+      // Determine which route this feature is likely targeting: prefer its
+      // existing plan (if regenerating), then its uiMock, then the epic plan.
+      const likelyRoute: string | undefined =
+        feature.uiSurfacePlan?.targetPageRoute ??
+        feature.uiMock?.targetPageRoute ??
+        parentEpic?.uiSurfacePlan?.targetPageRoute;
+
+      const existingSurfacePlans = likelyRoute
+        ? siblingFeaturesWithPlans
+            .filter((f: any) => f.uiSurfacePlan.targetPageRoute === likelyRoute)
+            .map((f: any) => ({ featureTitle: f.title as string, plan: f.uiSurfacePlan }))
+        : // No known route yet — look for siblings that share ANY route among themselves
+          // (most common one wins — don't pass when ambiguous)
+          (() => {
+            const routeCounts = new Map<string, number>();
+            for (const f of siblingFeaturesWithPlans) {
+              const r = f.uiSurfacePlan.targetPageRoute as string;
+              routeCounts.set(r, (routeCounts.get(r) ?? 0) + 1);
+            }
+            const dominantRoute = [...routeCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+            if (!dominantRoute) return [];
+            return siblingFeaturesWithPlans
+              .filter((f: any) => f.uiSurfacePlan.targetPageRoute === dominantRoute)
+              .map((f: any) => ({ featureTitle: f.title as string, plan: f.uiSurfacePlan }));
+          })();
+
+      plan = await generateUiPlanFromBedrock({
+        scope: 'feature',
+        title: feature.title,
+        description: feature.description,
+        epicTitle: parentEpic?.title,
+        childPbis: childPBIs.map((p: any) => ({
+          pbiId: p.id,
+          pbiTitle: p.title,
+          description: p.description,
+          acceptanceCriteria: p.acceptanceCriteria ?? [],
+        })),
+        catalog,
+        additionalContext: additionalContext?.trim() || undefined,
+        epicPlan: parentEpic?.uiSurfacePlan,
+        existingSurfacePlans: existingSurfacePlans.length > 0 ? existingSurfacePlans : undefined,
+      });
+
+      // Persist plan to the feature
+      const adoService = new AzureDevOpsService(project, areaPath);
+      const docs = await adoService.getDraftBacklogDocs() as any[];
+      // Find the doc that contains this feature
+      const pagePath = req.body.pagePath as string | undefined;
+      const targetDoc = pagePath
+        ? docs.find((d: any) => d.path === pagePath)
+        : docs.find((d: any) => ((d.document?.features ?? []) as any[]).some((f: any) => f.id === featureId));
+      if (targetDoc) {
+        const featureInDoc = ((targetDoc.document?.features ?? []) as any[]).find((f: any) => f.id === featureId);
+        if (featureInDoc) {
+          featureInDoc.uiSurfacePlan = plan;
+          await adoService.updateDraftBacklogDoc(targetDoc.path, targetDoc.document);
+        }
+      }
+
+    } else {
+      // scope === 'epic'
+      const epic = (document.epics ?? []).find((e: any) => e.id === epicId);
+      if (!epic) return res.status(404).json({ error: `Epic ${epicId} not found` });
+
+      const childFeatures = (document.features ?? []).filter((f: any) => f.parentId === epicId);
+      const allChildPBIs = (document.pbis ?? []).filter((p: any) =>
+        childFeatures.some((f: any) => f.id === p.parentId)
+      );
+
+      plan = await generateUiPlanFromBedrock({
+        scope: 'epic',
+        title: epic.title,
+        description: epic.description,
+        childPbis: allChildPBIs.map((p: any) => ({
+          pbiId: p.id,
+          pbiTitle: p.title,
+          description: p.description,
+          acceptanceCriteria: p.acceptanceCriteria ?? [],
+        })),
+        siblingFeatures: childFeatures.map((f: any) => ({ title: f.title, description: f.description })),
+        catalog,
+        additionalContext: additionalContext?.trim() || undefined,
+      });
+
+      // Persist plan to the epic
+      const adoService = new AzureDevOpsService(project, areaPath);
+      const docs = await adoService.getDraftBacklogDocs() as any[];
+      const pagePath = req.body.pagePath as string | undefined;
+      const targetDoc = pagePath
+        ? docs.find((d: any) => d.path === pagePath)
+        : docs.find((d: any) => ((d.document?.epics ?? []) as any[]).some((e: any) => e.id === epicId));
+      if (targetDoc) {
+        const epicInDoc = ((targetDoc.document?.epics ?? []) as any[]).find((e: any) => e.id === epicId);
+        if (epicInDoc) {
+          epicInDoc.uiSurfacePlan = plan;
+          await adoService.updateDraftBacklogDoc(targetDoc.path, targetDoc.document);
+        }
+      }
+    }
+
+    res.json(plan);
+  } catch (error: any) {
+    if (error.name === 'BedrockModelTruncatedError') {
+      return res.status(422).json({ error: `Model response truncated. Increase BEDROCK_UI_MOCK_MAX_TOKENS.` });
+    }
+    if (error.name === 'BedrockModelRefusalError') {
+      return res.status(422).json({ error: error.message });
+    }
+    console.error('Error generating UI plan:', error);
+    res.status(500).json({ error: 'Failed to generate UI plan', details: error.message });
+  }
+});
+
+// PUT /api/backlog/ui-plan
+// Saves a manually edited UiSurfacePlan to the backlog draft.
+// Bumps planVersion and updatedAt without calling Bedrock.
+router.put('/backlog/ui-plan', async (req: Request, res: Response) => {
+  try {
+    const { scope, epicId, featureId, plan, pagePath, project, areaPath } = req.body as {
+      scope?: 'epic' | 'feature';
+      epicId?: string;
+      featureId?: string;
+      plan?: any;
+      pagePath?: string;
+      project?: string;
+      areaPath?: string;
+    };
+
+    if (!scope || !plan || !pagePath || (scope === 'epic' && !epicId) || (scope === 'feature' && !featureId)) {
+      return res.status(400).json({ error: 'scope, plan, pagePath, and either epicId or featureId are required' });
+    }
+
+    const adoService = new AzureDevOpsService(project, areaPath);
+    const docs = await adoService.getDraftBacklogDocs() as any[];
+    const doc = docs.find((d: any) => d.path === pagePath);
+    if (!doc) return res.status(404).json({ error: `Page "${pagePath}" not found` });
+
+    const updatedPlan = {
+      ...plan,
+      planVersion: (plan.planVersion ?? 0) + 1,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (scope === 'feature') {
+      const feature = ((doc.document?.features ?? []) as any[]).find((f: any) => f.id === featureId);
+      if (!feature) return res.status(404).json({ error: `Feature ${featureId} not found` });
+      feature.uiSurfacePlan = updatedPlan;
+    } else {
+      const epic = ((doc.document?.epics ?? []) as any[]).find((e: any) => e.id === epicId);
+      if (!epic) return res.status(404).json({ error: `Epic ${epicId} not found` });
+      epic.uiSurfacePlan = updatedPlan;
+    }
+
+    await adoService.updateDraftBacklogDoc(pagePath, doc.document);
+    res.json(updatedPlan);
+  } catch (error: any) {
+    console.error('Error saving UI plan:', error);
+    res.status(500).json({ error: 'Failed to save UI plan', details: error.message });
+  }
+});
+
+// POST /api/backlog/derive-feature-plan-from-epic
+// Seeds a feature plan from its epic plan, then refines via Bedrock for feature-specific PBI contributions.
+router.post('/backlog/derive-feature-plan-from-epic', async (req: Request, res: Response) => {
+  try {
+    const { epicId, featureId, document, project, areaPath, additionalContext } = req.body as {
+      epicId?: string;
+      featureId?: string;
+      document?: any;
+      project?: string;
+      areaPath?: string;
+      additionalContext?: string;
+    };
+
+    if (!epicId || !featureId || !document) {
+      return res.status(400).json({ error: 'epicId, featureId, and document are required' });
+    }
+
+    const epic = (document.epics ?? []).find((e: any) => e.id === epicId);
+    if (!epic) return res.status(404).json({ error: `Epic ${epicId} not found` });
+    if (!epic.uiSurfacePlan) return res.status(400).json({ error: `Epic ${epicId} has no UI surface plan — generate one first` });
+
+    const feature = (document.features ?? []).find((f: any) => f.id === featureId);
+    if (!feature) return res.status(404).json({ error: `Feature ${featureId} not found` });
+
+    const childPBIs = (document.pbis ?? []).filter((p: any) => p.parentId === featureId);
+
+    const { generateUiPlanFromBedrock } = await import('../services/bedrockService');
+    const { getDesignSystemCatalog } = await import('../services/designSystemService');
+
+    const catalog = await getDesignSystemCatalog();
+
+    // Same sibling-plan lookup as /generate-ui-plan: find features in this epic
+    // that already have a plan for the same route the epic plan targets.
+    const epicRoute: string | undefined = epic.uiSurfacePlan?.targetPageRoute;
+    const siblingFeaturesWithPlans = ((document.features ?? []) as any[]).filter(
+      (f: any) =>
+        f.id !== featureId &&
+        f.parentId === epicId &&
+        f.uiSurfacePlan?.targetPageRoute
+    );
+    const existingSurfacePlans = epicRoute
+      ? siblingFeaturesWithPlans
+          .filter((f: any) => f.uiSurfacePlan.targetPageRoute === epicRoute)
+          .map((f: any) => ({ featureTitle: f.title as string, plan: f.uiSurfacePlan }))
+      : [];
+
+    const plan = await generateUiPlanFromBedrock({
+      scope: 'feature',
+      title: feature.title,
+      description: feature.description,
+      epicTitle: epic.title,
+      childPbis: childPBIs.map((p: any) => ({
+        pbiId: p.id,
+        pbiTitle: p.title,
+        description: p.description,
+        acceptanceCriteria: p.acceptanceCriteria ?? [],
+      })),
+      catalog,
+      additionalContext: additionalContext?.trim() || undefined,
+      epicPlan: epic.uiSurfacePlan,
+      existingSurfacePlans: existingSurfacePlans.length > 0 ? existingSurfacePlans : undefined,
+    });
+    // Mark as inherited
+    (plan as any).inheritedFromEpicId = epicId;
+
+    const adoService = new AzureDevOpsService(project, areaPath);
+    const docs = await adoService.getDraftBacklogDocs() as any[];
+    const pagePath = req.body.pagePath as string | undefined;
+    const targetDoc = pagePath
+      ? docs.find((d: any) => d.path === pagePath)
+      : docs.find((d: any) => ((d.document?.features ?? []) as any[]).some((f: any) => f.id === featureId));
+    if (targetDoc) {
+      const featureInDoc = ((targetDoc.document?.features ?? []) as any[]).find((f: any) => f.id === featureId);
+      if (featureInDoc) {
+        featureInDoc.uiSurfacePlan = plan;
+        await adoService.updateDraftBacklogDoc(targetDoc.path, targetDoc.document);
+      }
+    }
+
+    res.json(plan);
+  } catch (error: any) {
+    if (error.name === 'BedrockModelTruncatedError') {
+      return res.status(422).json({ error: `Model response truncated. Increase BEDROCK_UI_MOCK_MAX_TOKENS.` });
+    }
+    if (error.name === 'BedrockModelRefusalError') {
+      return res.status(422).json({ error: error.message });
+    }
+    console.error('Error deriving feature plan from epic:', error);
+    res.status(500).json({ error: 'Failed to derive feature plan', details: error.message });
   }
 });
 

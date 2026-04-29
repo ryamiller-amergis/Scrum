@@ -19,6 +19,56 @@ export interface ClarificationResponses {
   uiUxClarifications?: ClarificationAnswer[];
 }
 
+/* ── UI Surface Plan types ─────────────────────────────────── */
+
+/** The broad visual/layout category for a page or widget. */
+export type UiLayoutPattern =
+  | 'table' | 'calendar' | 'dashboard' | 'form' | 'detail-page'
+  | 'wizard' | 'modal' | 'drawer' | 'widget';
+
+/** How a single PBI contributes to the shared UI surface. */
+export type PbiContributionType =
+  | 'new-section' | 'new-tab' | 'table-column' | 'filter'
+  | 'action' | 'state' | 'modal' | 'drawer' | 'no-ui';
+
+/** The planned contribution of one PBI to its parent feature/epic UI surface. */
+export interface PbiContribution {
+  pbiId: string;
+  pbiTitle: string;
+  contributionType: PbiContributionType;
+  /** The area of the page this contribution targets, e.g. "toolbar", "Schedule tab", "row actions". */
+  targetArea: string;
+  /** One-line summary of the delta, e.g. "Add a date-range filter to the toolbar". */
+  summary: string;
+}
+
+/**
+ * A structured UI surface plan generated at the epic or feature level.
+ * Acts as the shared page-level contract that PBI mocks must stay within.
+ * Persisted alongside the backlog draft so it survives between sessions.
+ */
+export interface UiSurfacePlan {
+  scope: 'epic' | 'feature';
+  /** Mirrors UiMockDecision: whether this is a new page, update to existing, or no UI. */
+  decision: UiMockDecision;
+  targetPageRoute?: string;
+  targetPageTitle?: string;
+  subTabs: string[];
+  activeSubTab?: string;
+  layoutPattern?: UiLayoutPattern;
+  /** MWx Design System component names recommended for this surface, e.g. ['DataTable', 'StatusChip']. */
+  primaryComponents: string[];
+  rationale: string;
+  /** One entry per child PBI describing its planned contribution to this surface. */
+  pbiContributions: PbiContribution[];
+  /** Set when this feature plan was derived from a parent epic plan. */
+  inheritedFromEpicId?: string;
+  planVersion: number;
+  status: 'draft' | 'approved';
+  createdAt: string;
+  updatedAt: string;
+}
+
 /* ── UI Mock types ─────────────────────────────────────────── */
 
 export type UiMockDecision = 'new-page' | 'update-page' | 'no-ui';
@@ -62,6 +112,31 @@ export interface UiMock {
   views?: UiMockView[];
 }
 
+/**
+ * One of N parallel alternative mocks generated for a single PBI in a single Generate All run.
+ * Each variant has its own independent regenerate history so refining variant B doesn't affect A.
+ */
+export interface UiMockVariant {
+  variantId: string;
+  /** Short human-readable label, e.g. "Variant A", "Variant B". */
+  variantLabel: string;
+  /** The layout hint that was passed to the model to produce this variant (shown as a tooltip). */
+  variantHint: string;
+  decision: UiMockDecision;
+  rationale: string;
+  targetPageRoute?: string;
+  targetPageTitle?: string;
+  mockHtml?: string;
+  mockVersion: number;
+  history: UiMockHistoryEntry[];
+  approvedVersion?: number;
+  pendingFigmaExport?: boolean;
+  figmaUrl?: string;
+  figmaCreatedAt?: string;
+  designReady?: boolean;
+  designReadyAt?: string;
+}
+
 /** A UI mock scoped to a single PBI — independently generated, versioned, and approved. */
 export interface UiMockView {
   pbiId: string;
@@ -81,6 +156,14 @@ export interface UiMockView {
   figmaCreatedAt?: string;
   designReady?: boolean;
   designReadyAt?: string;
+  /**
+   * Parallel alternative mocks generated in one Generate All batch.
+   * The active variant's fields are mirrored onto the view's top-level fields
+   * so all existing readers (preview, version dropdown, Figma export) work unchanged.
+   */
+  variants?: UiMockVariant[];
+  /** Id of the currently selected variant (e.g. "A"). Undefined when variants is absent. */
+  activeVariantId?: string;
 }
 
 export interface BacklogEpic {
@@ -99,6 +182,8 @@ export interface BacklogEpic {
   uiUxClarifications?: ClarificationQuestion[];
   adoWorkItemId?: number;
   adoWorkItemUrl?: string;
+  /** Optional UI surface plan covering all features/PBIs under this epic. */
+  uiSurfacePlan?: UiSurfacePlan;
 }
 
 export interface FeatureFlag {
@@ -125,6 +210,8 @@ export interface BacklogFeature {
   adoWorkItemId?: number;
   adoWorkItemUrl?: string;
   uiMock?: UiMock;
+  /** UI surface plan that governs all PBI mocks under this feature. */
+  uiSurfacePlan?: UiSurfacePlan;
 }
 
 export interface BacklogPBI {

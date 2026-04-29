@@ -3,6 +3,8 @@
  *   - Page routes (React Router routes scraped from App.tsx / routes file)
  *   - CSS design tokens (custom properties from App.css / variables)
  *   - Component index (names + descriptions from src/components)
+ *   - Component descriptions (leading JSDoc from each .tsx file, max 200 chars)
+ *   - Route layout hints (heuristic layout pattern per route, e.g. "table", "calendar")
  *
  * Results are cached for CATALOG_TTL_MS (10 minutes) so repeated backlog-mock
  * requests don't hammer ADO.
@@ -51,6 +53,10 @@ export interface DesignSystemCatalog {
   componentNames: string[]; // e.g. ["ScrumCalendar", "BacklogView", …]
   /** Raw markdown from /.cursor/skills/figma-ui-knowledge-base/SKILL.md describing each existing screen */
   uiKnowledgeBase: string;
+  /** Short descriptions extracted from each component's leading JSDoc comment (≤ 200 chars each). */
+  componentDescriptions: Record<string, string>;
+  /** Heuristic layout pattern per route, e.g. { "/shift-scheduler": "calendar", "/timecards": "table" } */
+  routeLayoutHints: Record<string, string>;
   fetchedAt: number;
 }
 
@@ -277,6 +283,98 @@ function pathsToComponentNames(paths: string[]): string[] {
     .filter(n => n.length > 0 && /^[A-Z]/.test(n)); // exported components start with uppercase
 }
 
+/**
+ * Extract the first JSDoc-style comment from a TypeScript source file.
+ * Returns the comment text stripped of leading `* ` markers, truncated to 200 chars.
+ */
+function extractLeadingJsDoc(src: string): string {
+  const m = src.match(/\/\*\*([\s\S]*?)\*\//);
+  if (!m) return '';
+  const text = m[1]
+    .split('\n')
+    .map(l => l.replace(/^\s*\*\s?/, '').trim())
+    .filter(Boolean)
+    .join(' ');
+  return text.length > 200 ? text.slice(0, 200) + '…' : text;
+}
+
+/**
+ * Infer a rough layout pattern from a component file's source.
+ * Returns one of the UiLayoutPattern string literals, or empty string when unknown.
+ */
+function inferLayoutPattern(src: string): string {
+  if (/react-big-calendar|BigCalendar|FullCalendar|CalendarView/i.test(src)) return 'calendar';
+  if (/<table|mwx-table-wrap|DataTable/i.test(src)) return 'table';
+  if (/Dashboard|stat-value|grid-3|KpiCard/i.test(src)) return 'dashboard';
+  if (/<form|useForm|FormField|\.form-row/i.test(src)) return 'form';
+  if (/detail-layout|detail-main|detail-side/i.test(src)) return 'detail-page';
+  if (/wizard|step-by-step|WizardStep/i.test(src)) return 'wizard';
+  return '';
+}
+
+/**
+ * Fetch component source files in parallel and extract descriptions + layout hints.
+ * At most 20 files are fetched to stay within the ADO rate limit.
+ */
+async function fetchComponentDetails(
+  orgUrl: string,
+  pat: string,
+  componentPaths: string[]
+): Promise<{ descriptions: Record<string, string>; layoutHints: Record<string, string> }> {
+  const descriptions: Record<string, string> = {};
+  const layoutHints: Record<string, string> = {};
+
+  // Filter to component .tsx files only and cap at 20
+  const targets = componentPaths
+    .filter(p => p.endsWith('.tsx') && !p.includes('__tests__') && !p.includes('.module.'))
+    .slice(0, 20);
+
+  const results = await Promise.allSettled(
+    targets.map(p => fetchAdoFile(orgUrl, pat, p).then(src => ({ path: p, src })))
+  );
+
+  for (const result of results) {
+    if (result.status !== 'fulfilled') continue;
+    const { path, src } = result.value;
+    const base = path.split('/').pop() ?? path;
+    const name = base.replace(/\.tsx?$/, '');
+    if (!name || !/^[A-Z]/.test(name)) continue;
+
+    const desc = extractLeadingJsDoc(src);
+    if (desc) descriptions[name] = desc;
+
+    const layout = inferLayoutPattern(src);
+    if (layout) layoutHints[name] = layout;
+  }
+
+  return { descriptions, layoutHints };
+}
+
+/**
+ * Build route → layout hints by matching route paths to component names.
+ * e.g. "/shift-scheduler" → component ScrumCalendar → "calendar"
+ */
+function buildRouteLayoutHints(
+  routes: PageRoute[],
+  componentLayoutHints: Record<string, string>
+): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const route of routes) {
+    // Normalise the route path to a camelCase or PascalCase component name guess
+    const slug = route.path.replace(/^\//, '').replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+    const pascalSlug = slug.charAt(0).toUpperCase() + slug.slice(1);
+
+    // Find a component whose name contains the slug (partial match)
+    const matchingEntry = Object.entries(componentLayoutHints).find(([name]) =>
+      name.toLowerCase().includes(slug.toLowerCase()) || name.toLowerCase().includes(pascalSlug.toLowerCase())
+    );
+    if (matchingEntry) {
+      result[route.path] = matchingEntry[1];
+    }
+  }
+  return result;
+}
+
 /* ── Main export ──────────────────────────────────────────── */
 
 export async function getDesignSystemCatalog(): Promise<DesignSystemCatalog> {
@@ -290,7 +388,7 @@ export async function getDesignSystemCatalog(): Promise<DesignSystemCatalog> {
 
   if (!orgUrl || !pat) {
     console.warn('[designSystemService] ADO_ORG or ADO_PAT not set — returning empty catalog');
-    return { routes: [], tokensCss: '', componentNames: [], uiKnowledgeBase: '', fetchedAt: now };
+    return { routes: [], tokensCss: '', componentNames: [], uiKnowledgeBase: '', componentDescriptions: {}, routeLayoutHints: {}, fetchedAt: now };
   }
 
   /* ── Routes ── */
@@ -315,26 +413,55 @@ export async function getDesignSystemCatalog(): Promise<DesignSystemCatalog> {
     }
   }
 
-  /* ── Component names ── */
+  /* ── Component names + descriptions + layout hints ── */
   let componentNames: string[] = [];
+  let componentDescriptions: Record<string, string> = {};
+  let componentLayoutHints: Record<string, string> = {};
+
   for (const folder of COMPONENT_INDEX_PATHS) {
     try {
       const paths = await fetchAdoTree(orgUrl, pat, folder);
       componentNames = pathsToComponentNames(paths);
-      if (componentNames.length > 0) break;
+      if (componentNames.length > 0) {
+        // Fetch source for component details (non-fatal)
+        try {
+          const componentFilePaths = paths.filter(
+            p => p.endsWith('.tsx') && !p.includes('__tests__') && !p.includes('.module.')
+          );
+          const details = await fetchComponentDetails(orgUrl, pat, componentFilePaths);
+          componentDescriptions = details.descriptions;
+          componentLayoutHints = details.layoutHints;
+        } catch (e: any) {
+          console.warn(`[designSystemService] component details: skipping — ${e.message}`);
+        }
+        break;
+      }
     } catch (e: any) {
       console.warn(`[designSystemService] components: skipping ${folder} — ${e.message}`);
     }
   }
 
+  /* ── Route layout hints (derived from component layout hints) ── */
+  const routeLayoutHints = buildRouteLayoutHints(routes, componentLayoutHints);
+
   /* ── UI Knowledge Base (SKILL.md + any referenced .md files) ── */
   const uiKnowledgeBase = await fetchUiKnowledgeBase(orgUrl, pat);
 
-  const catalog: DesignSystemCatalog = { routes, tokensCss, componentNames, uiKnowledgeBase, fetchedAt: now };
+  const catalog: DesignSystemCatalog = {
+    routes,
+    tokensCss,
+    componentNames,
+    uiKnowledgeBase,
+    componentDescriptions,
+    routeLayoutHints,
+    fetchedAt: now,
+  };
   catalogCache = catalog;
 
   console.log(
-    `[designSystemService] Catalog loaded — ${routes.length} routes, ${componentNames.length} components, ${tokensCss.length} chars of tokens, ui-kb: ${uiKnowledgeBase.length} chars`
+    `[designSystemService] Catalog loaded — ${routes.length} routes, ${componentNames.length} components, ` +
+    `${Object.keys(componentDescriptions).length} descriptions, ${Object.keys(routeLayoutHints).length} layout hints, ` +
+    `${tokensCss.length} chars of tokens, ui-kb: ${uiKnowledgeBase.length} chars`
   );
 
   return catalog;

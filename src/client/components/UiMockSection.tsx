@@ -6,11 +6,16 @@ import type {
   BacklogDocumentPayload,
   UiMock,
   UiMockView,
+  UiMockVariant,
   UiMockDecision,
   UiMockHistoryEntry,
+  UiSurfacePlan,
 } from '../../shared/types/backlog';
 import { UiMockPreview } from './UiMockPreview';
 import BeginFigmaImportModal from './BeginFigmaImportModal';
+import { UiSurfacePlanPanel } from './UiSurfacePlanPanel';
+import ClarificationBlockerModal from './ClarificationBlockerModal';
+import { getFeatureClarificationBlockers, getPbiClarificationBlockers } from '../utils/clarificationGuard';
 import type { FigmaImportPromptArgs } from '../utils/cursorDeeplink';
 import './UiMockSection.css';
 
@@ -25,7 +30,13 @@ interface UiMockApiResult {
   mockHtml?: string;
 }
 
-interface PbiViewApiResult extends UiMockApiResult {
+interface PbiViewGenerateResult {
+  pbiId: string;
+  pbiTitle: string;
+  variants: UiMockApiResult[];
+}
+
+interface PbiViewRegenerateResult extends UiMockApiResult {
   pbiId: string;
   pbiTitle: string;
 }
@@ -85,13 +96,14 @@ async function apiGeneratePbiView(
   project: string,
   areaPath: string,
   additionalContext?: string,
-  featureOverviewHtml?: string
-): Promise<PbiViewApiResult> {
+  featureOverviewHtml?: string,
+  variantCount?: number
+): Promise<PbiViewGenerateResult> {
   const res = await fetch('/api/backlog/generate-pbi-view', {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ featureId, pbiId, document, project, areaPath, additionalContext, featureOverviewHtml }),
+    body: JSON.stringify({ featureId, pbiId, document, project, areaPath, additionalContext, featureOverviewHtml, variantCount }),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }));
@@ -111,7 +123,7 @@ async function apiRegeneratePbiView(
   priorPageTitle: string | undefined,
   priorSubTabs: string[] | undefined,
   priorActiveSubTab: string | undefined
-): Promise<PbiViewApiResult> {
+): Promise<PbiViewRegenerateResult> {
   const res = await fetch('/api/backlog/regenerate-pbi-view', {
     method: 'POST',
     credentials: 'include',
@@ -248,6 +260,47 @@ function buildHistoryEntry(
   };
 }
 
+/* ── Variant helpers ─────────────────────────────────────────── */
+
+const VARIANT_LABELS = ['Variant A', 'Variant B', 'Variant C', 'Variant D'] as const;
+
+/** Tooltip text matching the VARIANT_HINTS on the server (same order A–D). */
+const VARIANT_HINTS_TOOLTIP = [
+  'Minimal and clean layout — focused whitespace, card-based',
+  'Data-dense, table-first — rich toolbar, sortable columns',
+  'Card-grid visual — responsive grid, stat row, colour-coded status',
+  'Step-by-step wizard or detail panel — guided input / split layout',
+] as const;
+
+const GENERATE_ALL_VARIANT_COUNT_KEY = 'ui-mock-generate-all-variant-count';
+
+/**
+ * Returns a copy of `view` with top-level fields mirrored from the chosen variant.
+ * All existing readers (preview iframe, version dropdown, Figma export) see the
+ * active variant's data via the standard `mockHtml`, `history`, etc. fields.
+ */
+function applyActiveVariant(view: UiMockView, variantId: string): UiMockView {
+  const variant = (view.variants ?? []).find(v => v.variantId === variantId);
+  if (!variant) return { ...view, activeVariantId: variantId };
+  return {
+    ...view,
+    activeVariantId: variantId,
+    decision: variant.decision,
+    rationale: variant.rationale,
+    targetPageRoute: variant.targetPageRoute,
+    targetPageTitle: variant.targetPageTitle,
+    mockHtml: variant.mockHtml,
+    mockVersion: variant.mockVersion,
+    history: variant.history,
+    approvedVersion: variant.approvedVersion,
+    pendingFigmaExport: variant.pendingFigmaExport,
+    figmaUrl: variant.figmaUrl,
+    figmaCreatedAt: variant.figmaCreatedAt,
+    designReady: variant.designReady,
+    designReadyAt: variant.designReadyAt,
+  };
+}
+
 /* ── MockViewPanel ───────────────────────────────────────────
    Renders the body of a single mock (feature-level OR pbi-level).
    Keeps all per-view state (feedback, selectedVersion, mutations)
@@ -292,11 +345,26 @@ const MockViewPanel: React.FC<MockViewPanelProps> = ({
   const [localError, setLocalError] = useState<string | null>(null);
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
   const [showFigmaModal, setShowFigmaModal] = useState(false);
+  const [blockerAction, setBlockerAction] = useState<string | null>(null);
   /* Tokens minted just before showing the import modal. Tied to the agent's
      fetch URLs in production where the server's localhost bypass doesn't
      apply. Cleared whenever the modal closes so a fresh, unexpired pair is
      minted on the next open. */
   const [agentTokens, setAgentTokens] = useState<AgentTokenPair | null>(null);
+
+  /* Clarification blockers for this panel's scope */
+  const panelBlockers = kind === 'pbi' && pbi
+    ? getPbiClarificationBlockers(pbi, feature)
+    : getFeatureClarificationBlockers(feature, []);
+  const hasPanelBlockers = panelBlockers.length > 0;
+
+  const guardedAction = (action: string, fn: () => void) => {
+    if (hasPanelBlockers) {
+      setBlockerAction(action);
+    } else {
+      fn();
+    }
+  };
 
   /* Build the args needed by the Figma import modal. The mockHtmlUrl uses
      window.location.origin so it works behind the Vite dev proxy and in
@@ -379,8 +447,12 @@ const MockViewPanel: React.FC<MockViewPanelProps> = ({
 
   /* ── Generate ── */
   const generateMutation = useMutation({
-    mutationFn: () => kind === 'pbi' && pbi
-      ? apiGeneratePbiView(feature.id, pbi.id, document, project, areaPath)
+    mutationFn: (): Promise<UiMockApiResult> => kind === 'pbi' && pbi
+      ? apiGeneratePbiView(feature.id, pbi.id, document, project, areaPath).then(r => {
+          const first = r.variants[0];
+          if (!first) throw new Error('No variants returned from generate');
+          return first;
+        })
       : apiGenerateUiMock(feature.id, document, project, areaPath),
     onSuccess: (result) => {
       setLocalError(null);
@@ -424,6 +496,28 @@ const MockViewPanel: React.FC<MockViewPanelProps> = ({
       setSelectedVersion(null);
       const version = (mock?.mockVersion ?? 0) + 1;
       const entry = buildHistoryEntry(result, version, feedback.trim());
+
+      // When the PBI view has variants, also update the active variant's history
+      const pbiView = mock as UiMockView;
+      const hasVariants = kind === 'pbi' && pbiView.variants && pbiView.variants.length > 0;
+      const activeVarId = pbiView.activeVariantId;
+      const updatedVariants: UiMockVariant[] | undefined = hasVariants
+        ? pbiView.variants!.map(v =>
+            v.variantId === activeVarId
+              ? {
+                  ...v,
+                  decision: result.decision,
+                  rationale: result.rationale,
+                  targetPageRoute: result.targetPageRoute,
+                  targetPageTitle: result.targetPageTitle,
+                  mockHtml: result.mockHtml,
+                  mockVersion: version,
+                  history: [...v.history, entry],
+                }
+              : v
+          )
+        : undefined;
+
       const updated: UiMock | UiMockView = {
         ...mock!,
         decision: result.decision,
@@ -435,6 +529,7 @@ const MockViewPanel: React.FC<MockViewPanelProps> = ({
         mockVersion: version,
         status: 'draft',
         history: [...(mock!.history ?? []), entry],
+        ...(updatedVariants && { variants: updatedVariants }),
       };
       onMockChange(updated);
       queryClient.invalidateQueries({ queryKey: ['backlog-drafts'] });
@@ -523,6 +618,14 @@ const MockViewPanel: React.FC<MockViewPanelProps> = ({
 
   /* ── Render ── */
   return (
+    <>
+      {blockerAction && (
+        <ClarificationBlockerModal
+          action={blockerAction}
+          blockers={panelBlockers}
+          onClose={() => setBlockerAction(null)}
+        />
+      )}
     <div className="mock-view-panel">
       {/* Panel header: decision badge + status badges */}
       <div className="mock-view-panel__header">
@@ -554,7 +657,11 @@ const MockViewPanel: React.FC<MockViewPanelProps> = ({
               ? 'Generate a focused UI mock for this PBI only.'
               : 'Ask AI to determine if this feature needs a new page, updates an existing page, or requires no UI — and generate a mid-fidelity mock.'}
           </p>
-          <button className="ui-mock-section__btn-generate" onClick={() => { setLocalError(null); generateMutation.mutate(); }} disabled={isBusy}>
+          <button
+            className="ui-mock-section__btn-generate"
+            onClick={() => guardedAction('Generate UI Mock', () => { setLocalError(null); generateMutation.mutate(); })}
+            disabled={isBusy}
+          >
             {generateMutation.isPending ? 'Generating…' : 'Generate UI Mock'}
           </button>
         </div>
@@ -564,6 +671,24 @@ const MockViewPanel: React.FC<MockViewPanelProps> = ({
       {mock && (
         <>
           <div className="ui-mock-section__rationale">{mock.rationale}</div>
+
+          {/* Variant picker — shown when this view has parallel variants */}
+          {(mock as UiMockView).variants && (mock as UiMockView).variants!.length > 1 && (
+            <div className="ui-mock-variant-picker" role="group" aria-label="Layout variants">
+              <span className="ui-mock-variant-picker__label">Variant:</span>
+              {(mock as UiMockView).variants!.map(v => (
+                <button
+                  key={v.variantId}
+                  className={`ui-mock-variant-picker__btn${v.variantId === (mock as UiMockView).activeVariantId ? ' is-active' : ''}`}
+                  onClick={() => onMockChange(applyActiveVariant(mock as UiMockView, v.variantId))}
+                  title={v.variantHint}
+                  disabled={isBusy}
+                >
+                  {v.variantLabel}
+                </button>
+              ))}
+            </div>
+          )}
 
           {(mock.mockHtml || mock.history.some(h => h.mockHtml)) && (
             <UiMockPreview
@@ -603,7 +728,7 @@ const MockViewPanel: React.FC<MockViewPanelProps> = ({
           <div className="ui-mock-section__action-row">
             <button
               className="ui-mock-section__btn-regenerate"
-              onClick={() => { setLocalError(null); regenerateMutation.mutate(); }}
+              onClick={() => guardedAction('Regenerate UI Mock', () => { setLocalError(null); regenerateMutation.mutate(); })}
               disabled={isBusy || !feedback.trim()}
               title={!feedback.trim() ? 'Enter a comment above to regenerate' : undefined}
             >
@@ -691,6 +816,7 @@ const MockViewPanel: React.FC<MockViewPanelProps> = ({
         );
       })()}
     </div>
+    </>
   );
 };
 
@@ -728,6 +854,15 @@ export const UiMockSection: React.FC<UiMockSectionProps> = ({
   const [generateAllProgress, setGenerateAllProgress] = useState<string | null>(null);
   // Additional context the BA/UX types before clicking "Generate All"
   const [generateAllContext, setGenerateAllContext] = useState('');
+  // Number of parallel layout variants to generate per PBI (1–4), persisted in localStorage
+  const [generateAllVariantCount, setGenerateAllVariantCount] = useState<number>(() => {
+    const stored = localStorage.getItem(GENERATE_ALL_VARIANT_COUNT_KEY);
+    const parsed = Number(stored);
+    return Number.isFinite(parsed) && parsed >= 1 && parsed <= 4 ? parsed : 1;
+  });
+  // Clarification blocker modal state for Generate All
+  const [generateAllBlockerOpen, setGenerateAllBlockerOpen] = useState(false);
+  const generateAllClarificationBlockers = getFeatureClarificationBlockers(feature, childPBIs);
 
   /* ── Save updated feature to wiki ── */
   const saveFeature = async (updated: BacklogFeature) => {
@@ -745,37 +880,69 @@ export const UiMockSection: React.FC<UiMockSectionProps> = ({
     mutationFn: async () => {
       if (childPBIs.length === 0) return;
       const ctx = generateAllContext.trim() || undefined;
+      const n = generateAllVariantCount;
 
-      setGenerateAllProgress(`Generating ${childPBIs.length} PBI mock${childPBIs.length > 1 ? 's' : ''}…`);
+      setGenerateAllProgress(
+        `Generating ${childPBIs.length} PBI mock${childPBIs.length > 1 ? 's' : ''}${n > 1 ? ` × ${n} variants` : ''}…`
+      );
 
       const existingViews: UiMockView[] = feature.uiMock?.views ?? [];
       const pbiResults = await Promise.allSettled(
         childPBIs.map(pbi =>
-          apiGeneratePbiView(feature.id, pbi.id, document, project, areaPath, ctx)
+          apiGeneratePbiView(feature.id, pbi.id, document, project, areaPath, ctx, undefined, n)
         )
       );
 
       const updatedViews: UiMockView[] = [...existingViews];
       pbiResults.forEach((r, i) => {
         if (r.status !== 'fulfilled') return;
-        const result = r.value;
+        const { variants: apiVariants } = r.value;
         const pbi = childPBIs[i];
         const existingViewIdx = updatedViews.findIndex(v => v.pbiId === pbi.id);
         const existingView = existingViewIdx >= 0 ? updatedViews[existingViewIdx] : undefined;
-        const viewVersion = (existingView?.mockVersion ?? 0) + 1;
-        const entry = buildHistoryEntry(result, viewVersion);
+
+        // Build UiMockVariant[] from the API results
+        const builtVariants: UiMockVariant[] = apiVariants.map((v, idx) => {
+          const variantId = String.fromCharCode(65 + idx); // 'A', 'B', 'C', 'D'
+          const variantLabel = VARIANT_LABELS[idx] ?? `Variant ${variantId}`;
+          const variantHint = VARIANT_HINTS_TOOLTIP[idx] ?? '';
+          // Variant A continues the version chain from any prior existing view so history is preserved
+          const isVariantA = idx === 0;
+          const priorHistory: UiMockHistoryEntry[] = isVariantA ? (existingView?.history ?? []) : [];
+          const startVersion = isVariantA ? (existingView?.mockVersion ?? 0) + 1 : 1;
+          const entry = buildHistoryEntry(v, startVersion);
+          return {
+            variantId,
+            variantLabel,
+            variantHint,
+            decision: v.decision,
+            rationale: v.rationale,
+            targetPageRoute: v.targetPageRoute,
+            targetPageTitle: v.targetPageTitle,
+            mockHtml: v.mockHtml,
+            mockVersion: startVersion,
+            history: [...priorHistory, entry],
+          };
+        });
+
+        // Always switch to Variant A after a Generate All batch
+        const activeVariantId = builtVariants[0]?.variantId ?? 'A';
+        const activeVariant = builtVariants[0];
+
         const view: UiMockView = {
           ...(existingView ?? {}),
           pbiId: pbi.id,
           pbiTitle: pbi.title,
-          decision: result.decision,
-          rationale: result.rationale,
-          targetPageRoute: result.targetPageRoute,
-          targetPageTitle: result.targetPageTitle,
-          mockHtml: result.mockHtml,
-          mockVersion: viewVersion,
+          decision: activeVariant?.decision ?? 'no-ui',
+          rationale: activeVariant?.rationale ?? '',
+          targetPageRoute: activeVariant?.targetPageRoute,
+          targetPageTitle: activeVariant?.targetPageTitle,
+          mockHtml: activeVariant?.mockHtml,
+          mockVersion: activeVariant?.mockVersion ?? 1,
           status: 'draft',
-          history: [...(existingView?.history ?? []), entry],
+          history: activeVariant?.history ?? [],
+          variants: builtVariants.length > 1 ? builtVariants : undefined,
+          activeVariantId: builtVariants.length > 1 ? activeVariantId : undefined,
         };
         if (existingViewIdx >= 0) updatedViews[existingViewIdx] = view;
         else updatedViews.push(view);
@@ -830,7 +997,20 @@ export const UiMockSection: React.FC<UiMockSectionProps> = ({
     ? (feature.uiMock?.views ?? []).find(v => v.pbiId === activePbi.id) ?? null
     : null;
 
+  const hasPlan = !!feature.uiSurfacePlan;
+  const generateAllDisabledReason = !hasPlan && childPBIs.length > 1
+    ? 'Plan the UI surface first so all PBI mocks share the same page structure'
+    : undefined;
+
   return (
+    <>
+      {generateAllBlockerOpen && (
+        <ClarificationBlockerModal
+          action="Generate All Mocks"
+          blockers={generateAllClarificationBlockers}
+          onClose={() => setGenerateAllBlockerOpen(false)}
+        />
+      )}
     <div className="ui-mock-section">
       {/* Section title */}
       <div className="ui-mock-section__header">
@@ -843,6 +1023,19 @@ export const UiMockSection: React.FC<UiMockSectionProps> = ({
         )}
       </div>
 
+      {/* UI Surface Plan panel */}
+      <UiSurfacePlanPanel
+        feature={feature}
+        document={document}
+        pagePath={pagePath}
+        project={project}
+        areaPath={areaPath}
+        externalBusy={isGeneratingAll}
+        onPlanChange={(plan: UiSurfacePlan) => {
+          onFeatureUpdated({ ...feature, uiSurfacePlan: plan });
+        }}
+      />
+
       {/* Generate All panel — shown when there are multiple PBIs */}
       {childPBIs.length > 1 && !isGeneratingAll && (
         <div className="ui-mock-generate-all-panel">
@@ -854,18 +1047,51 @@ export const UiMockSection: React.FC<UiMockSectionProps> = ({
             rows={2}
             disabled={isGeneratingAll}
           />
-          <button
-            className="ui-mock-section__btn-generate-all"
-            onClick={() => generateAllMutation.mutate()}
-            disabled={isGeneratingAll}
-            title={(feature.uiMock?.views ?? []).length > 0
-              ? `Regenerate all ${childPBIs.length} PBI mocks — each will get a new version on top of its existing history`
-              : `Generate mocks for all ${childPBIs.length} PBIs at once`}
-          >
-            {(feature.uiMock?.views ?? []).length > 0
-              ? `↻ Regenerate All (${childPBIs.length})`
-              : `⚡ Generate All (${childPBIs.length})`}
-          </button>
+          <div className="ui-mock-generate-all-panel__controls">
+            <div className="ui-mock-generate-all-panel__variations">
+              <label htmlFor="generate-all-variant-count" className="ui-mock-generate-all-panel__variations-label">
+                Variations
+              </label>
+              <select
+                id="generate-all-variant-count"
+                value={generateAllVariantCount}
+                onChange={e => {
+                  const v = Math.max(1, Math.min(4, Number(e.target.value)));
+                  setGenerateAllVariantCount(v);
+                  localStorage.setItem(GENERATE_ALL_VARIANT_COUNT_KEY, String(v));
+                }}
+                disabled={isGeneratingAll}
+                className="ui-mock-generate-all-panel__variations-select"
+                title="Number of alternative layout variants to generate per PBI"
+              >
+                <option value={1}>1 — Single</option>
+                <option value={2}>2 — A / B</option>
+                <option value={3}>3 — A / B / C</option>
+                <option value={4}>4 — A / B / C / D</option>
+              </select>
+            </div>
+            <button
+              className="ui-mock-section__btn-generate-all"
+              onClick={() => {
+                if (generateAllClarificationBlockers.length > 0) {
+                  setGenerateAllBlockerOpen(true);
+                } else {
+                  generateAllMutation.mutate();
+                }
+              }}
+              disabled={isGeneratingAll || !!generateAllDisabledReason}
+              title={generateAllDisabledReason ?? ((feature.uiMock?.views ?? []).length > 0
+                ? `Regenerate all ${childPBIs.length} PBI mocks — each will get a new version on top of its existing history`
+                : `Generate mocks for all ${childPBIs.length} PBIs at once`)}
+            >
+              {(feature.uiMock?.views ?? []).length > 0
+                ? `↻ Regenerate All (${childPBIs.length}${generateAllVariantCount > 1 ? ` × ${generateAllVariantCount}` : ''})`
+                : `⚡ Generate All (${childPBIs.length}${generateAllVariantCount > 1 ? ` × ${generateAllVariantCount}` : ''})`}
+            </button>
+          </div>
+          {generateAllDisabledReason && (
+            <p className="ui-mock-generate-all-panel__hint">{generateAllDisabledReason}</p>
+          )}
         </div>
       )}
 
@@ -914,5 +1140,6 @@ export const UiMockSection: React.FC<UiMockSectionProps> = ({
         </div>
       )}
     </div>
+    </>
   );
 };
