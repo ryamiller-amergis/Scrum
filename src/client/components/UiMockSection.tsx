@@ -366,6 +366,15 @@ const MockViewPanel: React.FC<MockViewPanelProps> = ({
     }
   };
 
+  /** Figma import is only allowed after the Feature or PBI exists in ADO (merged). */
+  const figmaImportMergedToAdo =
+    kind === 'pbi' && pbi
+      ? pbi.status === 'Merged' && typeof pbi.adoWorkItemId === 'number'
+      : feature.status === 'Merged' && typeof feature.adoWorkItemId === 'number';
+  const figmaImportBlockedHint = figmaImportMergedToAdo
+    ? null
+    : 'Merge this work item to Azure DevOps before importing to Figma.';
+
   /* Build the args needed by the Figma import modal. The mockHtmlUrl uses
      window.location.origin so it works behind the Vite dev proxy and in
      any future deployment without hard-coding localhost:3001.
@@ -392,6 +401,16 @@ const MockViewPanel: React.FC<MockViewPanelProps> = ({
        still works via the localhost bypass — the token is just ignored. */
     if (agentTokens?.readToken) params.set('token', agentTokens.readToken);
 
+    const adoWorkItemId =
+      kind === 'pbi' && pbi && typeof pbi.adoWorkItemId === 'number'
+        ? pbi.adoWorkItemId
+        : typeof feature.adoWorkItemId === 'number'
+          ? feature.adoWorkItemId
+          : undefined;
+    const adoWorkItemUrl =
+      kind === 'pbi' && pbi ? pbi.adoWorkItemUrl : feature.adoWorkItemUrl;
+    const adoWorkItemType: 'Feature' | 'PBI' = kind === 'pbi' && pbi ? 'PBI' : 'Feature';
+
     return {
       featureId: feature.id,
       featureTitle: feature.title,
@@ -403,6 +422,9 @@ const MockViewPanel: React.FC<MockViewPanelProps> = ({
       writeToken: agentTokens?.writeToken,
       pbiId: kind === 'pbi' && pbi ? pbi.id : undefined,
       pbiTitle: kind === 'pbi' && pbi ? pbi.title : undefined,
+      adoWorkItemId,
+      adoWorkItemUrl,
+      adoWorkItemType,
       featureDescription: feature.description,
       pbiDescription: kind === 'pbi' && pbi ? pbi.description : undefined,
       acceptanceCriteria: kind === 'pbi' && pbi ? pbi.acceptanceCriteria : undefined,
@@ -778,17 +800,31 @@ const MockViewPanel: React.FC<MockViewPanelProps> = ({
                   </>
                 )}
                 {mock.mockHtml && (
-                  <button
-                    className="ui-mock-section__btn-send-figma"
-                    onClick={() => { setLocalError(null); importToFigmaMutation.mutate(); }}
-                    disabled={isBusy}
-                    title="Open Cursor Desktop with the Figma import prompt prefilled"
-                  >
-                    <FigmaIcon muted />
-                    {importToFigmaMutation.isPending
-                      ? 'Preparing…'
-                      : mock.figmaUrl ? 'Re-import to Figma' : 'Import to Figma'}
-                  </button>
+                  <>
+                    <button
+                      className="ui-mock-section__btn-send-figma"
+                      onClick={() => {
+                        setLocalError(null);
+                        guardedAction('Import to Figma', () => importToFigmaMutation.mutate());
+                      }}
+                      disabled={isBusy || !figmaImportMergedToAdo}
+                      title={
+                        figmaImportBlockedHint
+                          ? figmaImportBlockedHint
+                          : 'Open Cursor Desktop with the Figma import prompt prefilled'
+                      }
+                    >
+                      <FigmaIcon muted />
+                      {importToFigmaMutation.isPending
+                        ? 'Preparing…'
+                        : mock.figmaUrl ? 'Re-import to Figma' : 'Import to Figma'}
+                    </button>
+                    {figmaImportBlockedHint && (
+                      <span className="ui-mock-section__figma-import-hint" role="note">
+                        {figmaImportBlockedHint}
+                      </span>
+                    )}
+                  </>
                 )}
               </>
             )}

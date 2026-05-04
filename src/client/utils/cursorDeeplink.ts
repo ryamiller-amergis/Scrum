@@ -57,6 +57,12 @@ export interface FigmaImportPromptArgs {
   pbiId?: string;
   /** PBI title — combined with featureTitle for the Figma page name */
   pbiTitle?: string;
+  /** Azure DevOps work item id when the backlog node is merged to ADO */
+  adoWorkItemId?: number;
+  /** Link to edit the work item in Azure DevOps */
+  adoWorkItemUrl?: string;
+  /** Whether the ADO item is the Feature or a PBI */
+  adoWorkItemType?: 'Feature' | 'PBI';
 
   /* ── Semantic context — gives the agent enough information to pick the
         right design-system components when running use_figma + search_design_system,
@@ -148,13 +154,22 @@ When you run \`use_figma + search_design_system\` in Step 1, use this context to
 
 `;
 
+  const adoSection =
+    args.adoWorkItemId != null && args.adoWorkItemType
+      ? `## Azure DevOps target
+
+This mock is linked to **${args.adoWorkItemType}** work item **#${args.adoWorkItemId}** in Azure DevOps${args.adoWorkItemUrl ? ` (${args.adoWorkItemUrl})` : ''}. Step 2 persists the Figma URL to the backlog wiki and appends the same link to that ADO work item description.
+
+`
+      : '';
+
   return `Create a Figma design for an approved UI mock and save the URL back to the backlog.
 
 Before you start, read and follow the figma-generate-design skill AND the figma-use skill.
 
 GOAL: Create a screen using the MWx Design System (fileKey: ${MWX_DESIGN_SYSTEM_FILE_KEY}) placed as a new page in the "${MAXVIEW_UX_MOCKS_FILE_NAME}" Figma file (fileKey: ${MAXVIEW_UX_MOCKS_FILE_KEY}). The new page name should be "${pageName}".
 
-${mockContextSection}## Step 1 — Build the Figma design
+${adoSection}${mockContextSection}## Step 1 — Build the Figma design
 
 Run BOTH of these IN PARALLEL:
 1. generate_figma_design — capture this URL with outputMode='existingFile', fileKey='${MAXVIEW_UX_MOCKS_FILE_KEY}' ("${MAXVIEW_UX_MOCKS_FILE_NAME}"):
@@ -166,12 +181,14 @@ Once both complete: refine the use_figma output to match the layout from generat
 
 Get the Figma page URL of the final use_figma design.
 
-## Step 2 — Save the URL back
+## Step 2 — Save the URL back (backlog wiki + Azure DevOps)
 
 POST ${args.apiOrigin}/api/backlog/update-figma-url${args.writeToken ? `?token=${args.writeToken}` : ''}
 Content-Type: application/json
 
 ${callbackBody}
+
+This endpoint updates the backlog draft (for the web app) and appends the Figma link to the linked Azure DevOps work item description.
 
 If Step 1 fails for any reason, POST to the same URL with figmaUrl set to null and include an "error" field describing what went wrong.`;
 }

@@ -2963,8 +2963,10 @@ router.post('/backlog/mint-agent-token', async (req: Request, res: Response) => 
 });
 
 // POST /api/backlog/update-figma-url
-// Called by the Cursor agent after generate_figma_design succeeds.
-// Saves the Figma URL and clears pendingFigmaExport. Pass pbiId to target a PBI view.
+// Called by the Cursor agent after the Figma design is created.
+// Saves the Figma URL on the wiki draft, clears pendingFigmaExport, and when the
+// Feature or PBI is merged to ADO appends the link to that work item's description.
+// Agent-token requests require a resolved adoWorkItemId (merged backlog node).
 router.post('/backlog/update-figma-url', async (req: Request, res: Response) => {
   try {
     const { featureId, pbiId, pagePath, figmaUrl, project, areaPath } = req.body as {
@@ -3005,6 +3007,24 @@ router.post('/backlog/update-figma-url', async (req: Request, res: Response) => 
       return res.status(404).json({ error: `Feature ${featureId} or its uiMock not found` });
     }
 
+    /* Resolve ADO id from the draft document only (never from the request body). */
+    let adoWorkItemId: number | undefined;
+    if (pbiId) {
+      const pbiRow = ((doc.document?.pbis ?? []) as any[]).find((p: any) => p.id === pbiId);
+      if (pbiRow && typeof pbiRow.adoWorkItemId === 'number') {
+        adoWorkItemId = pbiRow.adoWorkItemId;
+      }
+    } else if (typeof feature.adoWorkItemId === 'number') {
+      adoWorkItemId = feature.adoWorkItemId;
+    }
+
+    if (claims && (adoWorkItemId == null || typeof adoWorkItemId !== 'number')) {
+      return res.status(409).json({
+        error:
+          'Target work item is not merged to Azure DevOps (missing adoWorkItemId). Import to Figma requires a merged Feature or PBI.',
+      });
+    }
+
     if (pbiId) {
       // Update a PBI-scoped view
       const view = (feature.uiMock.views ?? []).find((v: any) => v.pbiId === pbiId);
@@ -3021,7 +3041,29 @@ router.post('/backlog/update-figma-url', async (req: Request, res: Response) => 
 
     await adoService.updateDraftBacklogDoc(pagePath, doc.document);
 
-    res.json({ success: true, figmaUrl, featureId, pbiId: pbiId ?? null });
+    if (typeof adoWorkItemId === 'number') {
+      try {
+        await adoService.appendFigmaLinkToDescription(adoWorkItemId, figmaUrl);
+      } catch (adoErr: any) {
+        console.error('[update-figma-url] Azure DevOps appendFigmaLinkToDescription failed:', adoErr);
+        return res.status(502).json({
+          error: 'Figma URL saved to the backlog draft but updating Azure DevOps failed',
+          details: adoErr?.message ?? String(adoErr),
+          wikiUpdated: true,
+          figmaUrl,
+          featureId,
+          pbiId: pbiId ?? null,
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      figmaUrl,
+      featureId,
+      pbiId: pbiId ?? null,
+      adoUpdated: typeof adoWorkItemId === 'number',
+    });
   } catch (error: any) {
     console.error('Error updating Figma URL:', error);
     res.status(500).json({ error: 'Failed to update Figma URL', details: error.message });
