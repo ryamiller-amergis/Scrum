@@ -12,7 +12,7 @@ interface AIAnalysisProps {
 }
 
 const SESSION_INIT_KEY = 'aiAnalysisSessionInitialized';
-const DATA_KEY = 'aiAnalysisHealthData';
+const DATA_KEY = 'aiAnalysisHealthDataV2';
 const LOADING_KEY = 'aiAnalysisLoadingState';
 const FILTER_KEY = 'aiAnalysisFilters';
 
@@ -20,6 +20,7 @@ function checkAndClearOnRefresh(): boolean {
   const initialized = sessionStorage.getItem(SESSION_INIT_KEY);
   if (!initialized) {
     sessionStorage.removeItem(DATA_KEY);
+    sessionStorage.removeItem('aiAnalysisHealthData');
     sessionStorage.removeItem(LOADING_KEY);
     sessionStorage.removeItem(FILTER_KEY);
     sessionStorage.setItem(SESSION_INIT_KEY, 'true');
@@ -254,15 +255,15 @@ export const AIAnalysis: React.FC<AIAnalysisProps> = ({
               <strong>Metrics tracked:</strong><br />
               • <strong>Dev Time:</strong> Average days from In Progress → In Pull Request<br />
               • <strong>Bugs to UAT:</strong> Average linked bugs before UAT Ready for Test<br />
-              • <strong>PR Modifications:</strong> Average re-submission rounds after initial PR<br />
               • <strong>Full Cycle Time:</strong> Average days from In Progress → UAT Ready for Test<br />
-              • <strong>Rework Rate:</strong> Percentage of items with backward state regressions<br />
-              • <strong>First-Pass Success:</strong> Items reaching UAT with zero bugs and no regressions
+              • <strong>Rework Rate:</strong> Items that reached In Test or UAT, then regressed back to In Pull Request or earlier<br />
+              • <strong>First-Pass Success:</strong> Among items in <strong>Done</strong>, <strong>Ready For Release</strong>,{' '}
+              <strong>Closed</strong>, or <strong>Resolved</strong> (typical for bugs): zero non-deferred linked bugs and no regressions from In Test or UAT back to PR or earlier
             </p>
             <p>
               <strong>Aggregate Score:</strong><br />
-              A weighted composite of the six dimensions above (Dev Time 20%, Bug Count 25%,
-              PR Mods 15%, Cycle Time 15%, Rework 10%, First-Pass 15%).
+              A weighted composite of the five dimensions above (Dev Time 20%, Bug Count 25%,
+              Cycle Time 20%, Rework 15%, First-Pass 20%).
             </p>
           </div>
         )}

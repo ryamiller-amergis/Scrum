@@ -1,6 +1,47 @@
-import { WorkItem, DeveloperDueDateStats, DueDateHitRateStats, PullRequestTimeStats, QABugStats, InProgressTimeStats, DesignDocKickoffStats, PullRequestFeedbackStats } from '../types/workitem';
+import { WorkItem, DeveloperDueDateStats, DueDateHitRateStats, PullRequestTimeStats, QABugStats, InProgressTimeStats, DesignDocKickoffStats, PullRequestFeedbackStats, PrResolutionMetricsStats } from '../types/workitem';
 import './DevStats.css';
 import { useState, useMemo, useEffect } from 'react';
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+} from 'recharts';
+
+/** First 10 chars YYYY-MM-DD from commit / review date strings */
+function parseStatDay(s: string): Date | null {
+  const base = typeof s === 'string' && s.length >= 10 ? s.slice(0, 10) : '';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(base)) return null;
+  const [y, m, d] = base.split('-').map(Number) as [number, number, number];
+  const dt = new Date(y, m - 1, d);
+  if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) return null;
+  return dt;
+}
+
+/** Monday-start week bucket id (YYYY-MM-DD of that Monday) */
+function weekStartMondayKey(d: Date): string {
+  const copy = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const dow = copy.getDay();
+  const diff = dow === 0 ? -6 : 1 - dow;
+  copy.setDate(copy.getDate() + diff);
+  const ys = copy.getFullYear();
+  const ms = String(copy.getMonth() + 1).padStart(2, '0');
+  const ds = String(copy.getDate()).padStart(2, '0');
+  return `${ys}-${ms}-${ds}`;
+}
+
+function formatWeekLabel(weekMonday: string): string {
+  const parts = weekMonday.split('-').map(Number);
+  const y = parts[0]!;
+  const m = parts[1]!;
+  const d = parts[2]!;
+  const dt = new Date(y, m - 1, d);
+  return dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
 
 interface DevStatsProps {
   workItems: WorkItem[];
@@ -24,6 +65,8 @@ const KICKOFF_DATA_KEY = 'devStatsKickoffData';
 const KICKOFF_LOADING_STATE_KEY = 'devStatsKickoffLoadingState';
 const PR_FEEDBACK_DATA_KEY = 'devStatsPRFeedbackData';
 const PR_FEEDBACK_LOADING_STATE_KEY = 'devStatsPRFeedbackLoadingState';
+const PR_RESOLUTION_DATA_KEY = 'devStatsPrResolutionData';
+const PR_RESOLUTION_LOADING_STATE_KEY = 'devStatsPrResolutionLoadingState';
 const SESSION_INITIALIZED_KEY = 'devStatsSessionInitialized';
 
 // Check for page refresh once - this runs before component render
@@ -47,6 +90,8 @@ const checkAndClearOnRefresh = () => {
     sessionStorage.removeItem(KICKOFF_LOADING_STATE_KEY);
     sessionStorage.removeItem(PR_FEEDBACK_DATA_KEY);
     sessionStorage.removeItem(PR_FEEDBACK_LOADING_STATE_KEY);
+    sessionStorage.removeItem(PR_RESOLUTION_DATA_KEY);
+    sessionStorage.removeItem(PR_RESOLUTION_LOADING_STATE_KEY);
     sessionStorage.setItem(SESSION_INITIALIZED_KEY, 'true');
     return true;
   }
@@ -254,6 +299,33 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, onSelectItem }) =
     return savedLoading ? 'Loading pull request feedback stats in background...' : '';
   });
 
+  const [prResolutionStats, setPrResolutionStats] = useState<PrResolutionMetricsStats[]>(() => {
+    if (isPageRefresh) return [];
+    const savedData = sessionStorage.getItem(PR_RESOLUTION_DATA_KEY);
+    return savedData ? JSON.parse(savedData).stats : [];
+  });
+  const [prResolutionLoading, setPrResolutionLoading] = useState(() => {
+    if (isPageRefresh) return false;
+    const savedLoading = sessionStorage.getItem(PR_RESOLUTION_LOADING_STATE_KEY);
+    return savedLoading ? JSON.parse(savedLoading).loading : false;
+  });
+  const [prResolutionHasLoaded, setPrResolutionHasLoaded] = useState(() => {
+    if (isPageRefresh) return false;
+    const savedData = sessionStorage.getItem(PR_RESOLUTION_DATA_KEY);
+    return savedData ? JSON.parse(savedData).hasLoaded : false;
+  });
+  const [prResolutionError, setPrResolutionError] = useState<string | null>(null);
+  const [showPrResolutionNotification, setShowPrResolutionNotification] = useState(() => {
+    if (isPageRefresh) return false;
+    const savedLoading = sessionStorage.getItem(PR_RESOLUTION_LOADING_STATE_KEY);
+    return savedLoading ? JSON.parse(savedLoading).loading : false;
+  });
+  const [prResolutionNotificationMessage, setPrResolutionNotificationMessage] = useState(() => {
+    if (isPageRefresh) return '';
+    const savedLoading = sessionStorage.getItem(PR_RESOLUTION_LOADING_STATE_KEY);
+    return savedLoading ? 'Loading PR resolution metrics in background...' : '';
+  });
+
   // Info tooltip state
   const [showChangesInfo, setShowChangesInfo] = useState(false);
   const [showHitRateInfo, setShowHitRateInfo] = useState(false);
@@ -262,8 +334,11 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, onSelectItem }) =
   const [showInProgressInfo, setShowInProgressInfo] = useState(false);
   const [showKickoffInfo, setShowKickoffInfo] = useState(false);
   const [showPrFeedbackInfo, setShowPrFeedbackInfo] = useState(false);
+  const [showPrResolutionInfo, setShowPrResolutionInfo] = useState(false);
+  const [showAiAdoptionInfo, setShowAiAdoptionInfo] = useState(false);
 
   // Collapse state for sections — all default to collapsed for better visibility
+  const [isAiAdoptionCollapsed, setIsAiAdoptionCollapsed] = useState(true);
   const [isChangesCollapsed, setIsChangesCollapsed] = useState(true);
   const [isHitRateCollapsed, setIsHitRateCollapsed] = useState(true);
   const [isPrTimeCollapsed, setIsPrTimeCollapsed] = useState(true);
@@ -271,8 +346,10 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, onSelectItem }) =
   const [isInProgressCollapsed, setIsInProgressCollapsed] = useState(true);
   const [isKickoffCollapsed, setIsKickoffCollapsed] = useState(true);
   const [isPrFeedbackCollapsed, setIsPrFeedbackCollapsed] = useState(true);
+  const [isPrResolutionCollapsed, setIsPrResolutionCollapsed] = useState(true);
   const [collapsedReasons, setCollapsedReasons] = useState<Set<string>>(new Set());
   const [collapsedQaBug, setCollapsedQaBug] = useState<Set<string>>(new Set());
+  const [activeStatsTab, setActiveStatsTab] = useState<'ai' | 'other'>('ai');
   
   // Filter states - restore from sessionStorage
   const [selectedDeveloper, setSelectedDeveloper] = useState<string>(() => {
@@ -315,11 +392,15 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, onSelectItem }) =
     prTimeStats.forEach(stat => {
       devSet.add(stat.developer);
     });
+
+    prResolutionStats.forEach(stat => {
+      devSet.add(stat.developer);
+    });
     
     const devList = Array.from(devSet).sort();
     console.log('DevStats - Developers from all stats:', devList);
     return devList;
-  }, [dueDateStats, hitRateStats, prTimeStats]);
+  }, [dueDateStats, hitRateStats, prTimeStats, prResolutionStats]);
 
   // Team selection state
   const [selectedTeam, setSelectedTeam] = useState<string>('all');
@@ -592,6 +673,10 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, onSelectItem }) =
   useEffect(() => {
     sessionStorage.setItem(PR_FEEDBACK_DATA_KEY, JSON.stringify({ stats: prFeedbackStats, hasLoaded: prFeedbackHasLoaded }));
   }, [prFeedbackStats, prFeedbackHasLoaded]);
+
+  useEffect(() => {
+    sessionStorage.setItem(PR_RESOLUTION_DATA_KEY, JSON.stringify({ stats: prResolutionStats, hasLoaded: prResolutionHasLoaded }));
+  }, [prResolutionStats, prResolutionHasLoaded]);
 
   const fetchDueDateStats = async () => {
     setLoading(true);
@@ -1072,6 +1157,59 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, onSelectItem }) =
     }
   };
 
+  const fetchPrResolutionMetricsStats = async () => {
+    setPrResolutionLoading(true);
+    setPrResolutionError(null);
+    setShowPrResolutionNotification(true);
+    setPrResolutionNotificationMessage('Loading PR resolution metrics in background...');
+    sessionStorage.setItem(PR_RESOLUTION_LOADING_STATE_KEY, JSON.stringify({ loading: true, timestamp: Date.now() }));
+
+    try {
+      let fromDate = '';
+      let toDate = new Date().toISOString().split('T')[0];
+      if (timeFrame === 'custom') {
+        fromDate = customFromDate;
+        toDate = customToDate;
+      } else {
+        const daysBack = parseInt(timeFrame);
+        const from = new Date();
+        from.setDate(from.getDate() - daysBack);
+        fromDate = from.toISOString().split('T')[0];
+      }
+
+      const params = new URLSearchParams();
+      if (fromDate) params.append('from', fromDate);
+      if (toDate) params.append('to', toDate);
+      if (selectedDeveloper !== 'all') params.append('developer', selectedDeveloper);
+      const selectedTeamDef = teams.find(t => t.id === selectedTeam);
+      if (selectedTeamDef?.areaPath) params.append('areaPath', selectedTeamDef.areaPath);
+
+      const response = await fetch(`/api/pr-resolution-metrics-stats?${params.toString()}`, { credentials: 'include' });
+      if (!response.ok) throw new Error('Failed to fetch PR resolution metrics');
+
+      const data: PrResolutionMetricsStats[] = await response.json();
+      sessionStorage.setItem(PR_RESOLUTION_DATA_KEY, JSON.stringify({ stats: data, hasLoaded: true }));
+      setPrResolutionStats(data);
+      setPrResolutionHasLoaded(true);
+      setPrResolutionNotificationMessage('PR resolution metrics loaded successfully!');
+      setTimeout(() => setShowPrResolutionNotification(false), 3000);
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+      setPrResolutionError(errorMsg);
+      setPrResolutionNotificationMessage(`Error: ${errorMsg}`);
+    } finally {
+      setPrResolutionLoading(false);
+      sessionStorage.setItem(PR_RESOLUTION_LOADING_STATE_KEY, JSON.stringify({ loading: false, timestamp: Date.now() }));
+    }
+  };
+
+  const refreshAiAdoptionTrends = async () => {
+    await Promise.all([
+      fetchDesignDocKickoffStats(),
+      fetchPrResolutionMetricsStats(),
+    ]);
+  };
+
   // Active member allow-list: allTeamMembers for "all", teamMembers for a specific team.
   // null means the list is still loading — don't filter yet.
   const activeMemberSet = useMemo((): Set<string> | null => {
@@ -1137,6 +1275,49 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, onSelectItem }) =
     if (selectedDeveloper !== 'all') stats = stats.filter(s => s.developer === selectedDeveloper);
     return stats;
   }, [prFeedbackStats, selectedDeveloper, activeMemberSet]);
+
+  const filteredPrResolutionStats = useMemo(() => {
+    let stats = activeMemberSet
+      ? prResolutionStats.filter(s => activeMemberSet.has(s.developer))
+      : prResolutionStats;
+    if (selectedDeveloper !== 'all') stats = stats.filter(s => s.developer === selectedDeveloper);
+    return stats;
+  }, [prResolutionStats, selectedDeveloper, activeMemberSet]);
+
+  /** Weekly counts from kickoff commits and PR resolution rows (respects team / developer filters). */
+  const aiAdoptionChartData = useMemo(() => {
+    const bucket = new Map<string, { weekKey: string; designDocCount: number; prResolutionCount: number }>();
+
+    const bump = (weekKey: string, field: 'designDocCount' | 'prResolutionCount') => {
+      const cur = bucket.get(weekKey) ?? { weekKey, designDocCount: 0, prResolutionCount: 0 };
+      cur[field] += 1;
+      bucket.set(weekKey, cur);
+    };
+
+    for (const dev of filteredKickoffStats) {
+      for (const k of dev.kickoffDetails) {
+        const day = parseStatDay(k.commitDate);
+        if (!day) continue;
+        bump(weekStartMondayKey(day), 'designDocCount');
+      }
+    }
+    for (const dev of filteredPrResolutionStats) {
+      for (const pr of dev.prDetails) {
+        const day = parseStatDay(pr.date);
+        if (!day) continue;
+        bump(weekStartMondayKey(day), 'prResolutionCount');
+      }
+    }
+
+    return Array.from(bucket.values())
+      .sort((a, b) => a.weekKey.localeCompare(b.weekKey))
+      .map(row => ({
+        weekKey: row.weekKey,
+        period: formatWeekLabel(row.weekKey),
+        designDocCount: row.designDocCount,
+        prResolutionCount: row.prResolutionCount,
+      }));
+  }, [filteredKickoffStats, filteredPrResolutionStats]);
 
   // Build a minimal WorkItem stub from stats data when the item isn't in the
   // currently loaded workItems array (e.g. different date range / area path).
@@ -1258,7 +1439,145 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, onSelectItem }) =
           </div>
         )}
       </div>
+
+      <div className="stats-tabs" role="tablist" aria-label="Developer statistics metric groups">
+        <button
+          type="button"
+          className={`stats-tab ${activeStatsTab === 'ai' ? 'active' : ''}`}
+          onClick={() => setActiveStatsTab('ai')}
+          role="tab"
+          aria-selected={activeStatsTab === 'ai'}
+        >
+          AI Metrics
+        </button>
+        <button
+          type="button"
+          className={`stats-tab ${activeStatsTab === 'other' ? 'active' : ''}`}
+          onClick={() => setActiveStatsTab('other')}
+          role="tab"
+          aria-selected={activeStatsTab === 'other'}
+        >
+          Other Metrics
+        </button>
+      </div>
+
+      {activeStatsTab === 'ai' && (
+      <div className="stats-section ai-adoption-section">
+        <h3>
+          <button
+            type="button"
+            className="collapse-button"
+            onClick={() => setIsAiAdoptionCollapsed(!isAiAdoptionCollapsed)}
+            aria-label={isAiAdoptionCollapsed ? 'Expand section' : 'Collapse section'}
+          >
+            {isAiAdoptionCollapsed ? '▶' : '▼'}
+          </button>
+          AI Adoption Trends
+          <div
+            className="info-icon"
+            onClick={() => setShowAiAdoptionInfo(!showAiAdoptionInfo)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setShowAiAdoptionInfo(!showAiAdoptionInfo);
+              }
+            }}
+            role="button"
+            tabIndex={0}
+            aria-label="Show information about this section"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z" />
+              <path d="m8.93 6.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.194.897.105 1.319.808 1.319.545 0 1.178-.252 1.465-.598l.088-.416c-.2.176-.492.246-.686.246-.275 0-.375-.193-.304-.533L8.93 6.588zM9 4.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0z" />
+            </svg>
+          </div>
+        </h3>
+
+        {showAiAdoptionInfo && (
+          <div className="info-tooltip">
+            <button type="button" className="info-close" onClick={() => setShowAiAdoptionInfo(false)} aria-label="Close information">
+              ×
+            </button>
+            <p>
+              <strong>What this section shows:</strong>
+              <br />
+              High-level weekly usage of <strong>Design Doc Kickoff</strong> (design-doc commits linked to work items) and{' '}
+              <strong>PR comment resolutions</strong> (agent-evals metrics per PR), using the same team, developer, and date filters as the rest of this page.
+            </p>
+            <p>
+              <strong>How to interpret:</strong>
+              <br />
+              Each point is a calendar week (Monday–Sunday). Lines show event counts in that week after filters are applied — not adoption %.
+            </p>
+            <p>
+              <strong>Note:</strong> Load <em>Design Doc Kickoff</em> and <em>PR comment resolutions</em> below first; this chart reads from that loaded data.
+            </p>
+          </div>
+        )}
+
+        {!isAiAdoptionCollapsed && (
+          <div className="filter-actions">
+            <button
+              type="button"
+              onClick={refreshAiAdoptionTrends}
+              disabled={kickoffLoading || prResolutionLoading || (timeFrame === 'custom' && (!customFromDate || !customToDate))}
+              className="load-stats-button"
+            >
+              {kickoffLoading || prResolutionLoading
+                ? 'Loading...'
+                : kickoffHasLoaded || prResolutionHasLoaded
+                  ? 'Refresh AI Trends'
+                  : 'Load AI Trends'}
+            </button>
+          </div>
+        )}
+
+        {!isAiAdoptionCollapsed && (!kickoffHasLoaded || !prResolutionHasLoaded) && (
+          <p className="placeholder-text">
+            Click <strong>Load AI Trends</strong> to load both <strong>Design Doc Kickoff</strong> and <strong>PR comment resolutions</strong> data. Current: Design Doc Kickoff{' '}
+            {kickoffHasLoaded ? 'loaded' : 'not loaded'}, PR resolutions {prResolutionHasLoaded ? 'loaded' : 'not loaded'}.
+          </p>
+        )}
+
+        {!isAiAdoptionCollapsed && kickoffHasLoaded && prResolutionHasLoaded && aiAdoptionChartData.length === 0 && (
+          <p className="placeholder-text">No kickoff or PR resolution events in the selected range for the current filters.</p>
+        )}
+
+        {!isAiAdoptionCollapsed && kickoffHasLoaded && prResolutionHasLoaded && aiAdoptionChartData.length > 0 && (
+          <div className="ai-adoption-chart-container" aria-label="AI adoption weekly line chart">
+            <ResponsiveContainer width="100%" height={320}>
+              <LineChart data={aiAdoptionChartData} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
+                <CartesianGrid stroke="var(--border-color)" strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="weekKey"
+                  tickFormatter={wk => formatWeekLabel(wk)}
+                  tick={{ fill: 'var(--text-secondary)', fontSize: 11 }}
+                  interval="preserveStartEnd"
+                  angle={-30}
+                  textAnchor="end"
+                  height={56}
+                />
+                <YAxis allowDecimals={false} tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} width={36} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'var(--card-bg)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: 8,
+                    color: 'var(--text-primary)',
+                  }}
+                  labelFormatter={wk => `Week of ${formatWeekLabel(String(wk))}`}
+                />
+                <Legend wrapperStyle={{ color: 'var(--text-primary)' }} />
+                <Line type="monotone" dataKey="designDocCount" name="Design doc kickoffs" stroke="var(--accent-color)" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                <Line type="monotone" dataKey="prResolutionCount" name="PR resolutions" stroke="var(--success-color)" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </div>
+      )}
       
+      {activeStatsTab === 'other' && (
       <div className="stats-section">
         <h3>          <button 
             className="collapse-button"
@@ -1418,7 +1737,9 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, onSelectItem }) =
           );
         })()}
       </div>
+      )}
 
+      {activeStatsTab === 'other' && (
       <div className="stats-section">
         <h3>
           <button 
@@ -1593,7 +1914,9 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, onSelectItem }) =
           </div>
         )}
       </div>
+      )}
 
+      {activeStatsTab === 'other' && (
       <div className="stats-section">
         <h3>
           <button 
@@ -1801,7 +2124,9 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, onSelectItem }) =
           </div>
         )}
       </div>
+      )}
 
+      {activeStatsTab === 'other' && (
       <div className="stats-section">
         <h3>
           <button 
@@ -1990,8 +2315,10 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, onSelectItem }) =
           </div>
         )}
       </div>
+      )}
 
       {/* Design Doc Kickoff Usage Section */}
+      {activeStatsTab === 'ai' && (
       <div className="stats-section">
         <h3>
           <button
@@ -2134,8 +2461,10 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, onSelectItem }) =
           </div>
         )}
       </div>
+      )}
 
       {/* In Progress Time Section */}
+      {activeStatsTab === 'other' && (
       <div className="stats-section">
         <h3>
           <button
@@ -2283,8 +2612,10 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, onSelectItem }) =
           </div>
         )}
       </div>
+      )}
 
       {/* Pull Request Feedback Section */}
+      {activeStatsTab === 'other' && (
       <div className="stats-section">
         <h3>
           <button
@@ -2435,6 +2766,179 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, onSelectItem }) =
           );
         })()}
       </div>
+      )}
+
+      {/* PR resolution metrics (agent-evals) */}
+      {activeStatsTab === 'ai' && (
+      <div className="stats-section">
+        <h3>
+          <button
+            className="collapse-button"
+            onClick={() => setIsPrResolutionCollapsed(!isPrResolutionCollapsed)}
+            aria-label={isPrResolutionCollapsed ? 'Expand section' : 'Collapse section'}
+          >
+            {isPrResolutionCollapsed ? '▶' : '▼'}
+          </button>
+          PR comment resolutions (eval runs)
+          <div
+            className="info-icon"
+            onClick={() => setShowPrResolutionInfo(!showPrResolutionInfo)}
+            role="button"
+            aria-label="Show information about this section"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+              <path d="m8.93 6.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.194.897.105 1.319.808 1.319.545 0 1.178-.252 1.465-.598l.088-.416c-.2.176-.492.246-.686.246-.275 0-.375-.193-.304-.533L8.93 6.588zM9 4.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/>
+            </svg>
+          </div>
+        </h3>
+
+        {showPrResolutionInfo && (
+          <div className="info-tooltip">
+            <button className="info-close" onClick={() => setShowPrResolutionInfo(false)} aria-label="Close information">×</button>
+            <p>
+              <strong>What this section shows:</strong><br />
+              Aggregated PR comment resolution data from <code>pr-resolution-metrics.json</code> files under the MaxView repo{' '}
+              <code>agent-evals/runs</code>, for the selected date range. Each row in those files is tied to a PR; developers are the{' '}
+              <strong>PR author</strong> (ADO <code>createdBy.displayName</code>), not the eval run folder name.
+            </p>
+            <p>
+              <strong>How to interpret:</strong><br />
+              • <strong>Comments (total):</strong> Sum of <code>total</code> review comments in the metrics snapshots<br />
+              • <strong>Accepted / Won{"'"}t fix / Snoozed:</strong> Counts from the same snapshots<br />
+              • <strong>Acceptance rate:</strong> <code>accepted / total</code> across loaded snapshots
+            </p>
+          </div>
+        )}
+
+        {!isPrResolutionCollapsed && (
+          <div className="filter-actions">
+            <button
+              onClick={fetchPrResolutionMetricsStats}
+              disabled={prResolutionLoading || (timeFrame === 'custom' && (!customFromDate || !customToDate))}
+              className="load-stats-button"
+            >
+              {prResolutionLoading ? 'Loading...' : prResolutionHasLoaded ? 'Refresh PR resolutions' : 'Load PR resolutions'}
+            </button>
+          </div>
+        )}
+
+        {!isPrResolutionCollapsed && (showPrResolutionNotification || prResolutionLoading) && (
+          <div className={`background-notification ${prResolutionLoading ? 'loading' : prResolutionError ? 'error' : 'success'}`}>
+            {prResolutionLoading && <div className="notification-spinner"></div>}
+            <span className="notification-text">
+              {prResolutionLoading ? 'Loading PR resolution metrics in background...' : prResolutionNotificationMessage}
+            </span>
+            {!prResolutionLoading && (
+              <button className="notification-close" onClick={() => setShowPrResolutionNotification(false)} aria-label="Close notification">×</button>
+            )}
+          </div>
+        )}
+
+        {!isPrResolutionCollapsed && !prResolutionHasLoaded && !prResolutionLoading && (
+          <p className="placeholder-text">{`Click "Load PR resolutions" to aggregate apply-pr-fix style metrics from agent-evals JSON.`}</p>
+        )}
+
+        {!isPrResolutionCollapsed && prResolutionHasLoaded && !prResolutionLoading && filteredPrResolutionStats.length === 0 && (
+          <p className="placeholder-text">No PR resolution metrics found for the selected filters.</p>
+        )}
+
+        {!isPrResolutionCollapsed && prResolutionHasLoaded && !prResolutionLoading && filteredPrResolutionStats.length > 0 && (() => {
+          const maxTotal = Math.max(...filteredPrResolutionStats.map(s => s.totalComments), 1);
+          return (
+            <div className="developer-stats-list">
+              {filteredPrResolutionStats.map((stats, index) => (
+                <div key={index} className="developer-stat-card">
+                  <div className="developer-header">
+                    <span className="developer-name">{stats.developer}</span>
+                    <span className="total-changes">{stats.prCount} PR{stats.prCount !== 1 ? 's' : ''}</span>
+                  </div>
+
+                  <div className="changes-bar-container" style={{ marginBottom: 12 }}>
+                    <div
+                      className="changes-bar"
+                      style={{ width: `${(stats.totalComments / maxTotal) * 100}%` }}
+                      title={`${stats.totalComments} comments`}
+                    >
+                      {(stats.totalComments / maxTotal) * 100 > 20 && (
+                        <span className="changes-bar-label">{stats.totalComments}</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="pr-resolution-summary">
+                    <div className="pr-resolution-stat">
+                      <span className="stat-label">Comments (total):</span>
+                      <span className="stat-value">{stats.totalComments}</span>
+                    </div>
+                    <div className="pr-resolution-stat">
+                      <span className="stat-label">Accepted:</span>
+                      <span className="stat-value">{stats.accepted}</span>
+                    </div>
+                    <div className="pr-resolution-stat">
+                      <span className="stat-label">Won{"'"}t fix:</span>
+                      <span className="stat-value">{stats.wontfix}</span>
+                    </div>
+                    <div className="pr-resolution-stat">
+                      <span className="stat-label">Snoozed:</span>
+                      <span className="stat-value">{stats.snoozed}</span>
+                    </div>
+                    <div className="pr-resolution-stat">
+                      <span className="stat-label">Acceptance rate:</span>
+                      <span className="stat-value">{(stats.acceptanceRate * 100).toFixed(1)}%</span>
+                    </div>
+                  </div>
+
+                  {Object.keys(stats.byCategory).length > 0 && (
+                    <details className="work-item-details" style={{ marginTop: 8 }}>
+                      <summary>By category</summary>
+                      <ul className="work-item-list">
+                        {Object.entries(stats.byCategory).map(([cat, b]) => (
+                          <li key={cat} className="work-item">
+                            <span className="work-item-title">{cat}</span>
+                            <span className="work-item-dates">
+                              total {b.total} · accepted {b.accepted} · won{"'"}t fix {b.wontfix}
+                              {b.snoozed > 0 ? ` · snoozed ${b.snoozed}` : ''}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
+
+                  {stats.prDetails.length > 0 && (
+                    <details className="work-item-details">
+                      <summary>View PR snapshots ({stats.prDetails.length})</summary>
+                      <ul className="work-item-list">
+                        {stats.prDetails.map((row, idx) => (
+                          <li key={idx} className="work-item pr-resolution-row">
+                            <span className="work-item-id">
+                              {row.prUrl ? (
+                                <a href={row.prUrl} target="_blank" rel="noreferrer" className="pr-link" onClick={e => e.stopPropagation()}>
+                                  PR #{row.prId}
+                                </a>
+                              ) : (
+                                <span>PR #{row.prId}</span>
+                              )}
+                            </span>
+                            <span className="work-item-title">{row.prTitle}</span>
+                            <span className="work-item-dates">{row.date}{row.repositoryName ? ` · ${row.repositoryName}` : ''}</span>
+                            <span className="pr-resolution-row-metrics">
+                              total {row.total} · ✓ {row.accepted} · ✗ {row.wontfix}
+                              {row.snoozed > 0 ? ` · snoozed ${row.snoozed}` : ''}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
+                </div>
+              ))}
+            </div>
+          );
+        })()}
+      </div>
+      )}
     </div>
   );
 };

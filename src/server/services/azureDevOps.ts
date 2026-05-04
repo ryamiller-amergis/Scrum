@@ -2891,6 +2891,34 @@ export class AzureDevOpsService {
     }
   }
 
+  /** PR author + link for correlating agent-evals metrics (project-scoped PR id). */
+  async getPullRequestAuthorSnapshot(prId: number): Promise<{
+    displayName: string;
+    title: string;
+    prUrl: string;
+    repositoryName: string;
+  } | null> {
+    try {
+      const gitApi = await this.connection.getGitApi();
+      const pr = await gitApi.getPullRequestById(prId, this.project);
+      if (!pr?.pullRequestId) return null;
+      const displayName = pr.createdBy?.displayName;
+      if (!displayName) return null;
+      const repoName = pr.repository?.name;
+      if (!repoName) return null;
+      const orgUrl = this.organization.replace(/\/$/, '');
+      const prUrl = `${orgUrl}/${encodeURIComponent(this.project)}/_git/${encodeURIComponent(repoName)}/pullrequest/${pr.pullRequestId}`;
+      return {
+        displayName,
+        title: pr.title ?? `PR #${pr.pullRequestId}`,
+        prUrl,
+        repositoryName: repoName,
+      };
+    } catch {
+      return null;
+    }
+  }
+
   async getQABugStats(from?: string, to?: string, developerFilter?: string): Promise<any[]> {
     try {
       console.log('=== AzureDevOpsService.getQABugStats START ===');
@@ -3620,12 +3648,10 @@ export class AzureDevOpsService {
       avgDevTimeDays: 0,
       medianDevTimeDays: 0,
       avgBugCount: 0,
-      avgPRModifications: 0,
       avgFullCycleTimeDays: 0,
       reworkRate: 0,
       firstPassRate: 0,
       itemsWithZeroBugs: 0,
-      itemsWithCleanPRMerge: 0,
       items: [],
     };
 
@@ -3635,7 +3661,7 @@ export class AzureDevOpsService {
       const witApi = await this.connection.getWorkItemTrackingApi();
 
       let wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${this.project}'`;
-      wiql += ` AND ([System.WorkItemType] = 'Product Backlog Item' OR [System.WorkItemType] = 'Technical Backlog Item')`;
+      wiql += ` AND ([System.WorkItemType] = 'Product Backlog Item' OR [System.WorkItemType] = 'Technical Backlog Item' OR [System.WorkItemType] = 'Bug')`;
       wiql += ` AND [System.Tags] CONTAINS 'ai-code'`;
       wiql += ` AND [System.State] <> 'Removed'`;
 
@@ -3679,6 +3705,14 @@ export class AzureDevOpsService {
         'Resolved': 8,
       };
 
+      /** First-pass % is only computed once an item is shipped / terminal (not still in dev or test). */
+      const FIRST_PASS_ELIGIBLE_STATES = new Set<string>([
+        'Ready For Release',
+        'Done',
+        'Closed',
+        'Resolved', // common terminal state for Bugs
+      ]);
+
       const items: AIWorkItemMetric[] = [];
 
       for (const workItemId of ids) {
@@ -3699,7 +3733,6 @@ export class AzureDevOpsService {
           let inProgressDate: Date | null = null;
           let inPullRequestDate: Date | null = null;
           let uatReadyDate: Date | null = null;
-          let inPullRequestCount = 0;
           let highestRankSeen = -1;
           let hasRework = false;
           let previousState = '';
@@ -3714,8 +3747,9 @@ export class AzureDevOpsService {
 
             const rank = STATE_RANK[state] ?? -1;
 
-            // Detect rework: any backward movement through development states
-            if (rank >= 0 && highestRankSeen >= 1 && rank < highestRankSeen && rank <= 2) {
+            // Detect rework: item reached In Test (rank 4) or later, then regressed back
+            // to In Pull Request (rank 2) or earlier — meaning it failed testing and went back
+            if (highestRankSeen >= 4 && rank >= 0 && rank <= 2) {
               hasRework = true;
             }
             if (rank > highestRankSeen) highestRankSeen = rank;
@@ -3724,11 +3758,8 @@ export class AzureDevOpsService {
               inProgressDate = changedDate;
             }
 
-            if (state === 'In Pull Request' && previousState !== 'In Pull Request') {
-              inPullRequestCount++;
-              if (inPullRequestCount === 1) {
-                inPullRequestDate = changedDate;
-              }
+            if (state === 'In Pull Request' && previousState !== 'In Pull Request' && !inPullRequestDate) {
+              inPullRequestDate = changedDate;
             }
 
             if (
@@ -3757,10 +3788,6 @@ export class AzureDevOpsService {
                 ) / 10
               : null;
 
-          // PR modification rounds = number of times entered "In Pull Request" minus 1
-          // (0 = clean single PR pass, 1+ = item went back and re-submitted)
-          const prModificationRounds = Math.max(0, inPullRequestCount - 1);
-
           // Fetch linked bugs via relations
           let bugCount = 0;
           const bugList: Array<{ id: number; title: string; state: string }> = [];
@@ -3769,10 +3796,7 @@ export class AzureDevOpsService {
             const relations = fullItem?.relations || [];
             const candidateIds: number[] = [];
             for (const rel of relations) {
-              if (
-                rel.rel === 'System.LinkTypes.Hierarchy-Forward' ||
-                rel.rel === 'System.LinkTypes.Related'
-              ) {
+              if (rel.rel === 'System.LinkTypes.Hierarchy-Forward') {
                 const match = rel.url?.match(/\/workItems\/(\d+)$/);
                 if (match) candidateIds.push(parseInt(match[1], 10));
               }
@@ -3780,14 +3804,20 @@ export class AzureDevOpsService {
             if (candidateIds.length > 0) {
               const linked = await witApi.getWorkItems(
                 candidateIds,
-                ['System.WorkItemType', 'System.Title', 'System.State']
+                ['System.WorkItemType', 'System.Title', 'System.State', 'System.Tags']
               );
               for (const li of linked) {
                 if (li.fields?.['System.WorkItemType'] === 'Bug') {
+                  const bugState: string = li.fields?.['System.State'] || '';
+                  const bugTags: string = li.fields?.['System.Tags'] || '';
+                  const isDeferred =
+                    bugState.toLowerCase() === 'deferred' ||
+                    bugTags.toLowerCase().includes('deferred');
+                  if (isDeferred) continue;
                   bugList.push({
                     id: li.id!,
                     title: li.fields?.['System.Title'] || '',
-                    state: li.fields?.['System.State'] || '',
+                    state: bugState,
                   });
                 }
               }
@@ -3797,18 +3827,21 @@ export class AzureDevOpsService {
             console.error(`Error fetching relations for work item ${workItemId}:`, relErr);
           }
 
-          const isFirstPassSuccess = bugCount === 0 && !hasRework;
+          const currentState: string = (lastRev.fields?.['System.State'] as string) || '';
+          const isFirstPassEvaluated = FIRST_PASS_ELIGIBLE_STATES.has(currentState);
+          const isFirstPassSuccess = isFirstPassEvaluated && bugCount === 0 && !hasRework;
 
           items.push({
             id: workItemId,
             title,
             workItemType,
             assignedTo,
+            state: currentState,
             devTimeDays,
             bugCount,
-            prModificationRounds,
             fullCycleTimeDays,
             hasRework,
+            isFirstPassEvaluated,
             isFirstPassSuccess,
             inProgressDate: inProgressDate ? inProgressDate.toISOString().split('T')[0] : null,
             inPullRequestDate: inPullRequestDate ? inPullRequestDate.toISOString().split('T')[0] : null,
@@ -3837,33 +3870,36 @@ export class AzureDevOpsService {
       const avgDevTimeDays = Math.round(avg(devTimes) * 10) / 10;
       const medianDevTimeDays = Math.round(median(devTimes) * 10) / 10;
       const avgBugCount = Math.round(avg(items.map(i => i.bugCount)) * 10) / 10;
-      const avgPRModifications = Math.round(avg(items.map(i => i.prModificationRounds)) * 10) / 10;
       const avgFullCycleTimeDays = Math.round(avg(cycleTimes) * 10) / 10;
       const reworkRate = Math.round((items.filter(i => i.hasRework).length / items.length) * 100) / 100;
-      const firstPassRate = Math.round((items.filter(i => i.isFirstPassSuccess).length / items.length) * 100) / 100;
+      const firstPassEligible = items.filter(i => i.isFirstPassEvaluated);
+      const firstPassRate =
+        firstPassEligible.length > 0
+          ? Math.round(
+              (firstPassEligible.filter(i => i.isFirstPassSuccess).length / firstPassEligible.length) * 100
+            ) / 100
+          : 0;
       const itemsWithZeroBugs = items.filter(i => i.bugCount === 0).length;
-      const itemsWithCleanPRMerge = items.filter(i => i.prModificationRounds === 0).length;
 
       // --- Aggregate health score (0-100) ---
-      // Each sub-score normalized 0-100 with defined thresholds
+      // Weights: Dev Time 20%, Bugs 25%, Cycle Time 20%, Rework 15%, First-Pass 20%
       const scoreDevTime = devTimes.length
         ? Math.max(0, Math.min(100, 100 - Math.max(0, avgDevTimeDays - 2) * (100 / 13)))
         : 50; // neutral when no data
       const scoreBugs = Math.max(0, 100 - avgBugCount * 20);
-      const scorePRMods = Math.max(0, 100 - avgPRModifications * 33);
       const scoreCycleTime = cycleTimes.length
         ? Math.max(0, Math.min(100, 100 - Math.max(0, avgFullCycleTimeDays - 5) * (100 / 25)))
         : 50;
       const scoreRework = Math.round((1 - reworkRate) * 100);
-      const scoreFirstPass = Math.round(firstPassRate * 100);
+      const scoreFirstPass =
+        firstPassEligible.length > 0 ? Math.round(firstPassRate * 100) : 50; // neutral until items ship
 
       const aggregateScore = Math.round(
         scoreDevTime * 0.20 +
         scoreBugs * 0.25 +
-        scorePRMods * 0.15 +
-        scoreCycleTime * 0.15 +
-        scoreRework * 0.10 +
-        scoreFirstPass * 0.15
+        scoreCycleTime * 0.20 +
+        scoreRework * 0.15 +
+        scoreFirstPass * 0.20
       );
 
       const summary: AIWorkItemHealthSummary = {
@@ -3872,12 +3908,10 @@ export class AzureDevOpsService {
         avgDevTimeDays,
         medianDevTimeDays,
         avgBugCount,
-        avgPRModifications,
         avgFullCycleTimeDays,
         reworkRate,
         firstPassRate,
         itemsWithZeroBugs,
-        itemsWithCleanPRMerge,
         items,
       };
 

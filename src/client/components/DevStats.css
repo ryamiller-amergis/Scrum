@@ -208,6 +208,40 @@
   cursor: text;
 }
 
+.stats-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.stats-tab {
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 600;
+  padding: 12px 16px;
+  transition: color 0.2s, border-color 0.2s, background 0.2s;
+}
+
+.stats-tab:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.stats-tab.active {
+  border-bottom-color: #3498db;
+  color: var(--text-primary);
+}
+
+.stats-tab:focus-visible {
+  outline: 2px solid #3498db;
+  outline-offset: 2px;
+}
+
 .filter-actions {
   display: flex;
   gap: 12px;
@@ -1139,6 +1173,44 @@
   white-space: nowrap;
 }
 
+/* PR resolution metrics (agent-evals) */
+.pr-resolution-summary {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+  margin-bottom: 4px;
+  flex-wrap: wrap;
+}
+
+.pr-resolution-stat {
+  flex: 1;
+  min-width: 100px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  border-radius: 4px;
+}
+
+.pr-resolution-stat .stat-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.pr-resolution-row {
+  grid-template-columns: auto 1fr auto !important;
+}
+
+.pr-resolution-row-metrics {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 .pr-vote-badge {
   padding: 3px 8px;
   border-radius: 10px;
@@ -1259,4 +1331,24 @@
   background: #4e2600;
   color: #ffb74d;
   border-color: #f57c00;
+}
+
+/* AI Adoption Trends (Recharts) */
+.ai-adoption-section .ai-adoption-chart-container {
+  width: 100%;
+  min-height: 320px;
+  margin-top: 8px;
+  padding: 4px 0 12px;
+}
+
+.ai-adoption-chart-container .recharts-default-legend {
+  color: var(--text-primary);
+}
+
+.ai-adoption-chart-container .recharts-legend-item-text {
+  color: var(--text-primary);
+}
+
+.ai-adoption-chart-container .recharts-tooltip-label {
+  color: var(--text-primary);
 }

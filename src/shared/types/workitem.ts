@@ -147,11 +147,14 @@ export interface AIWorkItemMetric {
   title: string;
   workItemType: string;
   assignedTo: string;
+  /** Latest revision state */
+  state: string;
   devTimeDays: number | null;
   bugCount: number;
-  prModificationRounds: number;
   fullCycleTimeDays: number | null;
   hasRework: boolean;
+  /** True when `state` is a terminal / shipped state; first-pass is only defined then */
+  isFirstPassEvaluated: boolean;
   isFirstPassSuccess: boolean;
   inProgressDate: string | null;
   inPullRequestDate: string | null;
@@ -165,11 +168,9 @@ export interface AIWorkItemHealthSummary {
   avgDevTimeDays: number;
   medianDevTimeDays: number;
   avgBugCount: number;
-  avgPRModifications: number;
   avgFullCycleTimeDays: number;
   reworkRate: number;
   firstPassRate: number;
   itemsWithZeroBugs: number;
-  itemsWithCleanPRMerge: number;
   items: AIWorkItemMetric[];
 }

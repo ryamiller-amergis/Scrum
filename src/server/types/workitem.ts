@@ -163,6 +163,51 @@ export interface PullRequestFeedbackStats {
   }>;
 }
 
+/** Single row from agent-evals `pr-resolution-metrics.json` files */
+export interface PrResolutionMetricFileRow {
+  prId: number;
+  date: string;
+  timestamp?: string;
+  total: number;
+  accepted: number;
+  wontfix: number;
+  snoozed: number;
+  acceptanceRate?: number;
+  byCategory?: Record<string, { total?: number; accepted?: number; wontfix?: number; snoozed?: number }>;
+}
+
+export interface PrResolutionMetricsCategoryBucket {
+  total: number;
+  accepted: number;
+  wontfix: number;
+  snoozed: number;
+}
+
+/** Aggregated PR comment resolution metrics per PR author (from eval JSON + ADO PR metadata) */
+export interface PrResolutionMetricsStats {
+  developer: string;
+  prCount: number;
+  snapshotCount: number;
+  totalComments: number;
+  accepted: number;
+  wontfix: number;
+  snoozed: number;
+  acceptanceRate: number;
+  byCategory: Record<string, PrResolutionMetricsCategoryBucket>;
+  prDetails: Array<{
+    prId: number;
+    date: string;
+    prTitle: string;
+    prUrl: string;
+    repositoryName: string;
+    total: number;
+    accepted: number;
+    wontfix: number;
+    snoozed: number;
+    acceptanceRate: number;
+  }>;
+}
+
 export interface QACycleTimeStats {
   qaAssignee: string;
   totalItems: number;
@@ -250,11 +295,12 @@ export interface AIWorkItemMetric {
   title: string;
   workItemType: string;
   assignedTo: string;
+  state: string;
   devTimeDays: number | null;
   bugCount: number;
-  prModificationRounds: number;
   fullCycleTimeDays: number | null;
   hasRework: boolean;
+  isFirstPassEvaluated: boolean;
   isFirstPassSuccess: boolean;
   inProgressDate: string | null;
   inPullRequestDate: string | null;
@@ -268,12 +314,10 @@ export interface AIWorkItemHealthSummary {
   avgDevTimeDays: number;
   medianDevTimeDays: number;
   avgBugCount: number;
-  avgPRModifications: number;
   avgFullCycleTimeDays: number;
   reworkRate: number;
   firstPassRate: number;
   itemsWithZeroBugs: number;
-  itemsWithCleanPRMerge: number;
   items: AIWorkItemMetric[];
 }
 

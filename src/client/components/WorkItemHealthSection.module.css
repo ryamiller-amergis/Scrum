@@ -488,6 +488,16 @@
   color: #c62828;
 }
 
+.drillPassBadge.pending {
+  background: rgba(158, 158, 158, 0.15);
+  color: var(--text-secondary);
+}
+
+[data-theme='dark'] .drillPassBadge.pending {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+}
+
 [data-theme='dark'] .drillPassBadge.pass {
   background: rgba(76, 175, 80, 0.2);
   color: #a5d6a7;

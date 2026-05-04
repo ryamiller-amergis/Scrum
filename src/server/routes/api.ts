@@ -8,6 +8,7 @@ import { WorkItemsQuery, UpdateDueDateRequest, DeveloperDueDateStats, DueDateHit
 // DesignDocKickoffStats is returned directly by the service - no import needed here
 import { getFeatureAutoCompleteService } from '../services/featureAutoComplete';
 import { DeploymentTrackingService } from '../services/deploymentTracking';
+import { getPrResolutionMetricsStats } from '../services/agentEvalsPrResolutionService';
 
 const router = express.Router();
 
@@ -319,6 +320,28 @@ router.get('/pull-request-feedback-stats', async (req: Request, res: Response) =
   } catch (error: any) {
     console.error('Error fetching pull request feedback stats:', error);
     res.status(500).json({ error: 'Failed to fetch pull request feedback statistics' });
+  }
+});
+
+// GET /api/pr-resolution-metrics-stats — PR comment resolution metrics from agent-evals JSON, grouped by PR author
+router.get('/pr-resolution-metrics-stats', async (req: Request, res: Response) => {
+  try {
+    const { from, to, developer, areaPath: areaPathParam } = req.query as {
+      from?: string;
+      to?: string;
+      developer?: string;
+      areaPath?: string;
+    };
+    console.log('=== API: /pr-resolution-metrics-stats called ===', { from, to, developer, areaPath: areaPathParam });
+
+    const adoService = new AzureDevOpsService('MaxView', areaPathParam || '');
+    const stats = await getPrResolutionMetricsStats(adoService, from, to, developer);
+
+    console.log(`=== API: Returning ${stats.length} PR resolution metric stat rows ===`);
+    res.json(stats);
+  } catch (error: any) {
+    console.error('Error fetching PR resolution metrics stats:', error);
+    res.status(500).json({ error: 'Failed to fetch PR resolution metrics statistics' });
   }
 });
 

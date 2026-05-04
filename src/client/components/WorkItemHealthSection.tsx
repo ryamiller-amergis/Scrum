@@ -38,18 +38,20 @@ function rateRating(rate: number, thresholds: [number, number]): 'good' | 'warn'
 }
 
 // Computes individual sub-scores used to build the aggregate (mirrors server logic)
+// Weights: Dev Time 20%, Bugs 25%, Cycle Time 20%, Rework 15%, First-Pass 20%
 function computeSubScores(s: AIWorkItemHealthSummary) {
   const scoreDevTime = s.avgDevTimeDays > 0
     ? Math.max(0, Math.min(100, 100 - Math.max(0, s.avgDevTimeDays - 2) * (100 / 13)))
     : 50;
   const scoreBugs = Math.max(0, 100 - s.avgBugCount * 20);
-  const scorePRMods = Math.max(0, 100 - s.avgPRModifications * 33);
   const scoreCycleTime = s.avgFullCycleTimeDays > 0
     ? Math.max(0, Math.min(100, 100 - Math.max(0, s.avgFullCycleTimeDays - 5) * (100 / 25)))
     : 50;
   const scoreRework = Math.round((1 - s.reworkRate) * 100);
-  const scoreFirstPass = Math.round(s.firstPassRate * 100);
-  return { scoreDevTime, scoreBugs, scorePRMods, scoreCycleTime, scoreRework, scoreFirstPass };
+  const firstPassEligible = s.items.filter(i => i.isFirstPassEvaluated).length;
+  const scoreFirstPass =
+    firstPassEligible > 0 ? Math.round(s.firstPassRate * 100) : 50; // neutral until items reach Done / Ready For Release
+  return { scoreDevTime, scoreBugs, scoreCycleTime, scoreRework, scoreFirstPass };
 }
 
 // ── Aggregate score ring ──────────────────────────────────────────────────────
@@ -166,10 +168,9 @@ const DrillDownPanel: React.FC<DrillDownProps> = ({ summary, onClose, onSelectIt
   const subScoreRows: Array<{ label: string; score: number; weight: string }> = [
     { label: 'Dev Time', score: Math.round(sub.scoreDevTime), weight: '20%' },
     { label: 'Bug Count', score: Math.round(sub.scoreBugs), weight: '25%' },
-    { label: 'PR Mods', score: Math.round(sub.scorePRMods), weight: '15%' },
-    { label: 'Cycle Time', score: Math.round(sub.scoreCycleTime), weight: '15%' },
-    { label: 'Rework', score: sub.scoreRework, weight: '10%' },
-    { label: 'First-Pass', score: sub.scoreFirstPass, weight: '15%' },
+    { label: 'Cycle Time', score: Math.round(sub.scoreCycleTime), weight: '20%' },
+    { label: 'Rework', score: sub.scoreRework, weight: '15%' },
+    { label: 'First-Pass', score: sub.scoreFirstPass, weight: '20%' },
   ];
 
   return (
@@ -220,8 +221,8 @@ const DrillDownPanel: React.FC<DrillDownProps> = ({ summary, onClose, onSelectIt
                   <th>Assigned To</th>
                   <th>Dev Time</th>
                   <th>Bugs</th>
-                  <th>PR Mods</th>
                   <th>Cycle Time</th>
+                  <th>Rework</th>
                   <th>First Pass</th>
                 </tr>
               </thead>
@@ -244,18 +245,27 @@ const DrillDownPanel: React.FC<DrillDownProps> = ({ summary, onClose, onSelectIt
                       {item.devTimeDays !== null ? `${item.devTimeDays}d` : '—'}
                     </td>
                     <td>{item.bugCount}</td>
-                    <td>{item.prModificationRounds}</td>
                     <td>
                       {item.fullCycleTimeDays !== null ? `${item.fullCycleTimeDays}d` : '—'}
                     </td>
+                    <td>{item.hasRework ? 'Yes' : 'No'}</td>
                     <td>
-                      <span
-                        className={`${styles['drillPassBadge']} ${
-                          item.isFirstPassSuccess ? styles['pass'] : styles['fail']
-                        }`}
-                      >
-                        {item.isFirstPassSuccess ? 'Yes' : 'No'}
-                      </span>
+                      {!item.isFirstPassEvaluated ? (
+                        <span
+                          className={`${styles['drillPassBadge']} ${styles['pending']}`}
+                          title="First-pass is counted only in Done, Ready For Release, Closed, or Resolved"
+                        >
+                          Pending
+                        </span>
+                      ) : (
+                        <span
+                          className={`${styles['drillPassBadge']} ${
+                            item.isFirstPassSuccess ? styles['pass'] : styles['fail']
+                          }`}
+                        >
+                          {item.isFirstPassSuccess ? 'Yes' : 'No'}
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -287,15 +297,25 @@ export const WorkItemHealthSection: React.FC<WorkItemHealthSectionProps> = ({
     );
   }
 
-  const firstPassPct = Math.round(summary.firstPassRate * 100);
+  const firstPassEligibleCount = summary.items.filter(i => i.isFirstPassEvaluated).length;
+  const firstPassPct =
+    firstPassEligibleCount > 0 ? Math.round(summary.firstPassRate * 100) : null;
   const reworkPct = Math.round(summary.reworkRate * 100);
 
   const devTimeRating = metricRating(summary.avgDevTimeDays, [5, 10]);
   const bugRating = metricRating(summary.avgBugCount, [0.5, 2]);
-  const prModRating = metricRating(summary.avgPRModifications, [0.5, 1.5]);
   const cycleTimeRating = metricRating(summary.avgFullCycleTimeDays, [10, 20]);
   const reworkRating = rateRating(summary.reworkRate, [0.3, 0.1]);
-  const firstPassRating = rateRating(summary.firstPassRate, [0.5, 0.75]);
+  const firstPassRating =
+    firstPassEligibleCount > 0 ? rateRating(summary.firstPassRate, [0.5, 0.75]) : 'good';
+  const firstPassRatingLabel =
+    firstPassEligibleCount > 0
+      ? firstPassRating === 'good'
+        ? 'Strong'
+        : firstPassRating === 'warn'
+          ? 'Average'
+          : 'Low'
+      : 'Not measurable';
 
   const metricCards: MetricCardProps[] = [
     {
@@ -329,19 +349,6 @@ export const WorkItemHealthSection: React.FC<WorkItemHealthSectionProps> = ({
       barPercent: Math.max(0, 100 - summary.avgBugCount * 20),
     },
     {
-      icon: '🔄',
-      title: 'PR Modifications',
-      description: 'Avg re-submissions after initial PR',
-      primaryValue: String(summary.avgPRModifications),
-      primaryUnit: ' rounds avg',
-      rating: prModRating,
-      ratingLabel: prModRating === 'good' ? 'Clean Merge' : prModRating === 'warn' ? 'Some Rework' : 'High Churn',
-      secondaries: [
-        { label: 'Clean merges', value: `${summary.itemsWithCleanPRMerge}/${summary.totalItems}` },
-      ],
-      barPercent: Math.max(0, 100 - summary.avgPRModifications * 33),
-    },
-    {
       icon: '⏱️',
       title: 'Full Cycle Time',
       description: 'Avg days from In Progress → UAT Ready for Test',
@@ -359,7 +366,7 @@ export const WorkItemHealthSection: React.FC<WorkItemHealthSectionProps> = ({
     {
       icon: '↩️',
       title: 'Rework Rate',
-      description: 'Percentage of items with backward state regression',
+      description: 'Items that reached In Test or UAT, then regressed back to PR',
       primaryValue: `${reworkPct}%`,
       primaryUnit: ' of items',
       rating: reworkRating,
@@ -374,17 +381,23 @@ export const WorkItemHealthSection: React.FC<WorkItemHealthSectionProps> = ({
     {
       icon: '✅',
       title: 'First-Pass Success',
-      description: 'Items reaching UAT with zero bugs and no state regressions',
-      primaryValue: `${firstPassPct}%`,
-      primaryUnit: ' of items',
+      description: 'Shipped items with zero bugs and no test regressions',
+      primaryValue: firstPassPct !== null ? `${firstPassPct}%` : '—',
+      primaryUnit: firstPassPct !== null ? ' of shipped items' : '',
       rating: firstPassRating,
-      ratingLabel: firstPassRating === 'good' ? 'Strong' : firstPassRating === 'warn' ? 'Average' : 'Low',
+      ratingLabel: firstPassRatingLabel,
       secondaries: [
-        { label: 'Clean passes', value: String(summary.items.filter(i => i.isFirstPassSuccess).length) },
-        { label: 'Total items', value: String(summary.totalItems) },
+        {
+          label: 'Clean passes (shipped)',
+          value: String(summary.items.filter(i => i.isFirstPassEvaluated && i.isFirstPassSuccess).length),
+        },
+        {
+          label: 'Shipped (in scope)',
+          value: String(firstPassEligibleCount),
+        },
       ],
-      barPercent: firstPassPct,
-      barColor: scoreColor(firstPassPct),
+      barPercent: firstPassPct === null ? undefined : firstPassPct,
+      barColor: firstPassPct === null ? undefined : scoreColor(firstPassPct),
     },
   ];
 
@@ -402,7 +415,9 @@ export const WorkItemHealthSection: React.FC<WorkItemHealthSectionProps> = ({
           </p>
           <div className={styles['aggregateKpis']}>
             <div className={styles['aggregateKpi']}>
-              <span className={styles['aggregateKpiValue']}>{firstPassPct}%</span>
+              <span className={styles['aggregateKpiValue']}>
+                {firstPassPct !== null ? `${firstPassPct}%` : '—'}
+              </span>
               <span className={styles['aggregateKpiLabel']}>First-Pass</span>
             </div>
             <div className={styles['aggregateKpi']}>
