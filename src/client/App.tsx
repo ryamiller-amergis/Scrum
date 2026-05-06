@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ErrorBoundary } from 'react-error-boundary';
 import { DndProvider } from 'react-dnd';
@@ -10,7 +10,10 @@ import { ViewErrorFallback } from './components/ViewErrorFallback';
 import { ViewSkeleton } from './components/ViewSkeleton';
 import { AppHeader } from './components/AppHeader';
 import { PlanningTabs } from './components/PlanningTabs';
+import { ChatAgentPanel } from './components/ChatAgentPanel';
+import { StartChatModal } from './components/StartChatModal';
 import { useAppShell } from './hooks/useAppShell';
+import { useChatThread } from './hooks/useChatThreads';
 import './App.css';
 
 // Lazy-loaded views for code splitting
@@ -31,6 +34,11 @@ type PlanningTab = 'cycle-time' | 'dev-stats' | 'qa' | 'ai-analysis' | 'roadmap'
 function App() {
   const navigate = useNavigate();
   const location = useLocation();
+
+  const [chatOpen, setChatOpen] = useState(false);
+  const [showStartChat, setShowStartChat] = useState(false);
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  const { data: activeThread = null } = useChatThread(activeThreadId);
 
   const currentView: 'calendar' | 'planning' | 'cloudcost' | 'backlog' = location.pathname.startsWith('/planning')
     ? 'planning'
@@ -114,6 +122,7 @@ function App() {
             onOpenChangelog={() => setShowChangelog(true)}
             onToggleTheme={toggleTheme}
             onLogout={handleLogout}
+            onOpenAgentChat={() => setChatOpen(true)}
           />
           {error && <div className="error-banner">{error}</div>}
 
@@ -251,6 +260,24 @@ function App() {
           onClose={() => setShowChangelog(false)}
           onMarkAsRead={handleMarkChangelogAsRead}
         />
+
+        <ChatAgentPanel
+          thread={activeThread}
+          isOpen={chatOpen}
+          onClose={() => setChatOpen(false)}
+          onNewChat={() => setShowStartChat(true)}
+        />
+
+        {showStartChat && (
+          <StartChatModal
+            onClose={() => setShowStartChat(false)}
+            onStarted={(threadId) => {
+              setActiveThreadId(threadId);
+              setShowStartChat(false);
+              setChatOpen(true);
+            }}
+          />
+        )}
       </DndProvider>
     </ErrorBoundary>
   );

@@ -43,3 +43,9 @@ coverage/
 tmp/
 temp/
 *.tmp
+
+# Local AI Pilot runtime/scratch artifacts
+.ai-pilot/
+data/chat-threads/
+wiki-*.json
+wiki-page.json

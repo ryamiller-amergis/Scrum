@@ -1,0 +1,617 @@
+{
+  "prdSlug": "rto-requirements",
+  "prdTitle": "Call-Out Management, Timecard Locking & External Availability",
+  "generatedAt": "2026-05-06",
+  "epics": [
+    {
+      "title": "Call-Out Management, Timecard Locking & External Availability",
+      "priority": "Must Have",
+      "description": "Extend MaxView's existing RTO capability into a broader call-out and attendance management system. This initiative adds structured call-out classification, automatic timecard-day locking for approved absences, paid-sick-time payout logic with accrual visibility, contract-position backfill shift creation, and self-service availability management for External Users.",
+      "successMetrics": [
+        "≥ 90% of call-outs entered through structured flow within 60 days of launch",
+        "Reduce timecard corrections filed post-absence by ≥ 80%",
+        "100% of paid-time-off selections made with visible accrual balance",
+        "≥ 75% of eligible contract-position call-outs auto-create backfill shifts",
+        "≥ 50% of active External Users with a saved general schedule within 90 days"
+      ],
+      "outOfScope": [
+        "Negative sick-time accommodation (explicitly rejected per stakeholder direction)",
+        "Changes to existing RTO cancellation/replacement-shift logic already live",
+        "Credential or onboarding workflows",
+        "Mobile-app surfaces (future phase)",
+        "Payroll integration beyond surfacing accrual and marking paid/unpaid"
+      ],
+      "adoId": 47878,
+      "features": [
+        {
+          "title": "Wave 1 — Call-Out & Timecard Foundation",
+          "executionWave": 1,
+          "blockedByWaves": [],
+          "priority": "Must Have",
+          "description": "Establishes all foundational infrastructure that Waves 2–4 depend on: RtoRequest entity extensions for call-out classification, WorksiteCallOutSetting for configurable lead-time thresholds, timecard day-level lock mechanism, and feature flag registration. No user-visible behavior is delivered in this wave.",
+          "affectedPersonas": ["Internal User"],
+          "outOfScope": [
+            "Any user-facing route, UI component, or notification",
+            "Accrual, backfill, or availability features"
+          ],
+          "featureFlag": {
+            "name": "FF_CallOutManagement"
+          },
+          "adoId": 47879,
+          "slices": [
+            {
+              "type": "TBI",
+              "id": "WI-001",
+              "title": "Call-out & classification schema foundation — RtoRequest extensions, WorksiteCallOutSetting, feature flag",
+              "priority": "Must Have",
+              "sliceType": "AFK",
+              "sliceRationale": "Foundational TBI enabling all Wave 2–4 call-out slices. Extends the RtoRequest entity with call-out type classification, creates the worksite-level threshold configuration table, and registers the feature flag. No user-visible path — kept as standalone TBI because it enables multiple downstream PBI slices across three waves.",
+              "blockedBy": [],
+              "parallelWith": ["WI-002"],
+              "recomposedFrom": ["TBI-001", "TBI-002", "TBI-009"],
+              "adoId": 47883,
+              "description": "DB migration extending RtoRequest with CallOutType enum (Late, LeaveEarly, FullDay), IsCallOut boolean flag, and classification metadata. Creates WorksiteCallOutSetting table (WorksiteId, ThresholdHours) for worksite-level lead-time thresholds. Registers FF_CallOutManagement feature flag in FeatureFlag table. All new columns are nullable to preserve backward compatibility with existing RTO requests.",
+              "technicalDependencies": ["None"],
+              "nonFunctionalRequirements": [
+                "Migration must be idempotent and roll back cleanly",
+                "New nullable columns must not break existing RTO queries or consumers"
+              ],
+              "definitionOfDone": [
+                "EF migration applies cleanly to dev database and rolls back cleanly in a test",
+                "CallOutType enum is defined in RtoRequest entity model with values Late, LeaveEarly, FullDay",
+                "WorksiteCallOutSetting entity is registered in EF DbContext with WorksiteId + ThresholdHours columns",
+                "FF_CallOutManagement feature flag is seeded via migration data",
+                "Existing RTO unit and integration tests pass without modification"
+              ],
+              "adoFields": {
+                "System.Title": "Call-out & classification schema foundation — RtoRequest extensions, WorksiteCallOutSetting, feature flag",
+                "System.WorkItemType": "Technical Backlog Item",
+                "System.Description": "DB migration extending RtoRequest with CallOutType enum (Late, LeaveEarly, FullDay), IsCallOut boolean flag, and classification metadata. Creates WorksiteCallOutSetting table (WorksiteId, ThresholdHours) for worksite-level lead-time thresholds. Registers FF_CallOutManagement feature flag in FeatureFlag table. All new columns are nullable to preserve backward compatibility with existing RTO requests.\n\n**Slice rationale:** Foundational infrastructure enabling all Wave 2–4 call-out slices. No user-visible path — kept as standalone TBI because it enables multiple downstream PBI slices.\n\n**Recomposed from:** TBI-001, TBI-002, TBI-009\n\n**Definition of Done:**\n- [ ] EF migration applies cleanly to dev database and rolls back cleanly in a test\n- [ ] CallOutType enum defined in RtoRequest entity model with values Late, LeaveEarly, FullDay\n- [ ] WorksiteCallOutSetting entity registered in EF DbContext with WorksiteId + ThresholdHours\n- [ ] FF_CallOutManagement feature flag seeded via migration data\n- [ ] Existing RTO unit and integration tests pass without modification",
+                "Microsoft.VSTS.Common.Priority": 1,
+                "System.Tags": "needs-triage; afk"
+              }
+            },
+            {
+              "type": "TBI",
+              "id": "WI-002",
+              "title": "Timecard day-level lock infrastructure — per-entry-date lock with reason",
+              "priority": "Must Have",
+              "sliceType": "AFK",
+              "sliceRationale": "Foundational TBI enabling the Wave 2 timecard-day locking PBI. The current Timecard system only locks entire timecards by status (InProgress → Submitted → Approved). This TBI adds a new day-level lock mechanism so individual entry dates can be disabled independently. No user-visible path on its own.",
+              "blockedBy": [],
+              "parallelWith": ["WI-001"],
+              "recomposedFrom": ["TBI-004"],
+              "adoId": 47885,
+              "description": "Build day-level locking mechanism for Timecards. The current system only supports locking entire Timecards by status — there is no per-day lock concept. This TBI adds a structure (table or per-entry flag) that stores lock status + reason per day per Timecard. TimecardOperation and TimeCardOperations expose a lock-check method returning isLocked + reason for a given HCP + date combination.",
+              "technicalDependencies": ["None"],
+              "nonFunctionalRequirements": [
+                "Lock-check query must not add measurable latency to Timecard page load (< 5 ms additional)",
+                "Must not break existing Timecard status-based locking or approval flow"
+              ],
+              "definitionOfDone": [
+                "Day-level lock structure created (table or per-entry flag) and migration applies cleanly",
+                "TimecardOperation exposes a method to check lock status for a given HCP + date",
+                "Lock check returns reason string when locked (e.g., 'Approved RTO: Full Day') and false when unlocked",
+                "Existing Timecard unit and integration tests pass without modification",
+                "Unit test covers: locked day returns true + reason, unlocked day returns false"
+              ],
+              "adoFields": {
+                "System.Title": "Timecard day-level lock infrastructure — per-entry-date lock with reason",
+                "System.WorkItemType": "Technical Backlog Item",
+                "System.Description": "Build day-level locking mechanism for Timecards. The current system only supports locking entire Timecards by status (InProgress → Submitted → Approved) — there is no per-day lock concept. This TBI adds a structure that stores lock status + reason per day per Timecard. TimecardOperation and TimeCardOperations expose a lock-check method returning isLocked + reason for a given HCP + date.\n\n**Slice rationale:** Foundational infrastructure enabling Wave 2 timecard-day locking PBI. No user-visible path — the current system has no day-level concept.\n\n**Recomposed from:** TBI-004\n\n**Definition of Done:**\n- [ ] Day-level lock structure created and migration applies cleanly\n- [ ] TimecardOperation exposes lock-check method for HCP + date\n- [ ] Lock check returns reason string when locked, false when unlocked\n- [ ] Existing Timecard tests pass without modification\n- [ ] Unit test covers locked and unlocked scenarios",
+                "Microsoft.VSTS.Common.Priority": 1,
+                "System.Tags": "needs-triage; afk"
+              }
+            }
+          ],
+          "adoFields": {
+            "System.Title": "Wave 1 — Call-Out & Timecard Foundation",
+            "System.WorkItemType": "Feature",
+            "System.Description": "Establishes all foundational infrastructure for call-out classification and timecard day locking. No user-visible behavior is delivered — this wave is a prerequisite for Waves 2–4.\n\n**PRD user stories advanced:** Enables #1 (call-out recording), #2 (auto-classification), #3 (timecard locking)\n\n**Slices in this wave (all parallel):**\n- WI-001 (TBI, AFK): Call-out & classification schema foundation — RtoRequest extensions, WorksiteCallOutSetting, feature flag\n- WI-002 (TBI, AFK): Timecard day-level lock infrastructure — per-entry-date lock with reason\n\n**No blockers — can start immediately.**",
+            "Microsoft.VSTS.Common.Priority": 1,
+            "System.Tags": "FF_CallOutManagement; wave-1"
+          }
+        },
+        {
+          "title": "Wave 2 — Core Call-Out Recording & Timecard Locking",
+          "executionWave": 2,
+          "blockedByWaves": [1],
+          "priority": "Must Have",
+          "description": "Delivers two independently demoable user-facing flows: structured call-out recording with auto-classification, and automatic timecard-day locking for approved absences. Both cover the full vertical path from database through API to UI. These are the core operational improvements addressing the primary pain points identified in the PRD.",
+          "affectedPersonas": ["Internal User", "External User"],
+          "outOfScope": [
+            "Paid/unpaid time-off selection or accrual display",
+            "Contract-position backfill shift creation",
+            "External availability management"
+          ],
+          "featureFlag": {
+            "name": "FF_CallOutManagement"
+          },
+          "adoId": 47880,
+          "slices": [
+            {
+              "type": "PBI",
+              "id": "WI-003",
+              "title": "End-to-end structured call-out recording with auto-classification",
+              "priority": "Must Have",
+              "sliceType": "AFK",
+              "sliceRationale": "Vertical tracer bullet covering the full call-out recording path: Internal User selects call-out type on both TimeClock Web and MaxHub Mobile RTO forms → lead-time classification engine evaluates WorksiteCallOutSetting → RtoRequest stored with CallOutType + IsCallOut → call-out-specific email notification sent to owners. Recomposed from PBI-001 (type selection), PBI-002 (auto-classification), TBI-003 (engine), and TBI-008 (notification template) into a single demoable unit.",
+              "blockedBy": [],
+              "parallelWith": ["WI-004"],
+              "recomposedFrom": ["PBI-001", "PBI-002", "TBI-003", "TBI-008"],
+              "adoId": 47886,
+              "userStory": {
+                "persona": "Internal User",
+                "iWant": "record a call-out with a structured type (Late, Leave Early, Full Day) and have the system auto-classify it as a call-out vs planned absence based on the worksite's lead-time threshold",
+                "soThat": "call-outs are tracked with consistent categories for reporting and downstream processing without relying on free-text descriptions"
+              },
+              "businessRules": [
+                "BR-001: Call-out type classification",
+                "BR-002: Lead-time classification threshold",
+                "BR-010: Partial vs full day classification",
+                "BR-012: Call-out notifications"
+              ],
+              "acceptanceCriteria": [
+                {
+                  "scenario": "happy-path",
+                  "given": "an Internal User is on the RTO/call-out submission form and the HCP's worksite has a ThresholdHours of 24",
+                  "when": "the Internal User selects 'Full Day' as the call-out type and submits the request 4 hours before the shift",
+                  "then": "the RtoRequest is saved with CallOutType = FullDay and IsCallOut = true, a call-out-specific email notification is sent to the CandidateOwner and PositionOwner, and the call-out appears in the RTO list with a call-out indicator"
+                },
+                {
+                  "scenario": "happy-path",
+                  "given": "an Internal User is on the RTO submission form and the HCP's worksite has a ThresholdHours of 24",
+                  "when": "the Internal User submits a time-off request 48 hours before the shift",
+                  "then": "the RtoRequest is saved with IsCallOut = false (classified as planned absence), no call-out-specific notification is sent, and the request appears in the RTO list without a call-out indicator"
+                },
+                {
+                  "scenario": "error-failure",
+                  "given": "an Internal User is on the call-out submission form",
+                  "when": "the Internal User attempts to submit without selecting a call-out type",
+                  "then": "the form displays a validation error requiring call-out type selection and the request is not saved"
+                },
+                {
+                  "scenario": "edge-case",
+                  "given": "an Internal User submits a call-out exactly at the ThresholdHours boundary (e.g., exactly 24 hours before the shift when threshold is 24)",
+                  "when": "the lead-time classification engine evaluates the submission",
+                  "then": "the request is classified as a planned absence (>= threshold) — the boundary is inclusive for planned absence"
+                },
+                {
+                  "scenario": "negative",
+                  "given": "an External User is logged into MaxView",
+                  "when": "the External User attempts to submit a call-out on behalf of a different HCP",
+                  "then": "the system rejects the request — External Users can only submit RTO for their own Match"
+                }
+              ],
+              "nonFunctionalRequirements": {
+                "performance": "Call-out submission (including classification engine evaluation) must complete within 2 seconds under normal load",
+                "accessibility": "Call-out type dropdown must be keyboard-navigable and carry ARIA labels describing each option",
+                "security": "Only authenticated Internal Users and the HCP themselves may submit call-outs; authorization enforced at API layer",
+                "compliance": "N/A"
+              },
+              "outOfScope": [
+                "Paid/unpaid time-off selection (Wave 3)",
+                "Backfill shift creation triggered by the call-out (Wave 3)",
+                "Admin UI for managing WorksiteCallOutSetting threshold values (seeded via migration)"
+              ],
+              "adoFields": {
+                "System.Title": "End-to-end structured call-out recording with auto-classification",
+                "System.WorkItemType": "Product Backlog Item",
+                "System.Description": "As an Internal User, I want to record a call-out with a structured type (Late, Leave Early, Full Day) and have the system auto-classify it as a call-out vs planned absence based on the worksite's lead-time threshold, so that call-outs are tracked with consistent categories for reporting and downstream processing without relying on free-text descriptions.\n\n**Slice rationale:** Vertical tracer bullet covering call-out recording through both TimeClock Web (RtoOrchestrationService → RtoRequestService) and MaxHub Mobile (AbsenceManagementOperation) paths. Classification engine, email notification, and UI indicator are all included in this single demoable unit.\n\n**Business Rules:** BR-001: Call-out type classification, BR-002: Lead-time classification threshold, BR-010: Partial vs full day classification, BR-012: Call-out notifications\n\n**Acceptance Criteria:**\n\nGiven an Internal User is on the RTO/call-out submission form and the HCP's worksite has a ThresholdHours of 24\nWhen the Internal User selects 'Full Day' as the call-out type and submits the request 4 hours before the shift\nThen the RtoRequest is saved with CallOutType = FullDay and IsCallOut = true, a call-out-specific email notification is sent, and the call-out appears with an indicator\n\nGiven an Internal User submits a time-off request 48 hours before the shift\nWhen the lead-time engine evaluates the submission\nThen IsCallOut = false (planned absence), no call-out notification sent\n\nGiven an Internal User attempts to submit without selecting a call-out type\nWhen the form is submitted\nThen a validation error is displayed and the request is not saved\n\nGiven a submission exactly at the ThresholdHours boundary\nWhen the classification engine evaluates\nThen the request is classified as planned absence (>= threshold is inclusive)\n\nGiven an External User attempts to submit a call-out for a different HCP\nWhen the API processes the request\nThen the system rejects it — External Users can only submit for their own Match",
+                "Microsoft.VSTS.Common.AcceptanceCriteria": "Given an Internal User is on the RTO/call-out submission form and the HCP's worksite has a ThresholdHours of 24\nWhen the Internal User selects 'Full Day' and submits 4 hours before the shift\nThen RtoRequest saved with CallOutType = FullDay, IsCallOut = true, call-out notification sent, indicator shown in list\n\nGiven an Internal User submits a time-off request 48 hours before the shift\nWhen the lead-time engine evaluates\nThen IsCallOut = false, no call-out notification sent\n\nGiven an Internal User attempts to submit without selecting a call-out type\nWhen the form is submitted\nThen validation error displayed, request not saved\n\nGiven a submission exactly at the ThresholdHours boundary (24 hours, threshold 24)\nWhen classification engine evaluates\nThen classified as planned absence (>= threshold is inclusive)\n\nGiven an External User attempts to submit a call-out for a different HCP\nWhen the API processes the request\nThen the system rejects it — External Users can only submit for their own Match",
+                "Microsoft.VSTS.Common.Priority": 1,
+                "System.Tags": "needs-triage; afk"
+              }
+            },
+            {
+              "type": "PBI",
+              "id": "WI-004",
+              "title": "End-to-end timecard-day locking for approved absences",
+              "priority": "Must Have",
+              "sliceType": "AFK",
+              "sliceRationale": "Vertical tracer bullet from RtoRequest status check through TimeCardController/TimeCardOperations API response to the Timecard UI rendering a grayed-out day. Covers the full path: query RtoRequest per entry date → return isLocked + reason via API → UI renders disabled day with auto-populated absence note → manual entry blocked → unlocked on rescind. Recomposed from PBI-003 (UI locking) and TBI-004 (lock mechanism infrastructure provided by WI-002).",
+              "blockedBy": [],
+              "parallelWith": ["WI-003"],
+              "recomposedFrom": ["PBI-003", "TBI-004"],
+              "adoId": 47887,
+              "userStory": {
+                "persona": "External User",
+                "iWant": "my Timecard day to be automatically locked and grayed out when I have an approved RTO or call-out covering that day",
+                "soThat": "I cannot accidentally enter time for a day I am absent, eliminating post-absence timecard corrections"
+              },
+              "businessRules": [
+                "BR-003: Timecard-day locking on approved absence"
+              ],
+              "acceptanceCriteria": [
+                {
+                  "scenario": "happy-path",
+                  "given": "an External User has an approved full-day RTO for Wednesday",
+                  "when": "the External User opens their Timecard for the week containing that Wednesday",
+                  "then": "Wednesday is grayed out with an auto-populated note 'Approved RTO: Full Day', the time-entry fields for that day are disabled, and the user cannot submit time for Wednesday"
+                },
+                {
+                  "scenario": "error-failure",
+                  "given": "an External User's Timecard day is locked due to an approved RTO",
+                  "when": "an API request attempts to submit a Timesheet line entry for that locked day (bypassing the UI)",
+                  "then": "the API returns a 400 Bad Request with an explanation that the day is locked due to an approved absence"
+                },
+                {
+                  "scenario": "edge-case",
+                  "given": "an External User has an approved partial-day absence (Late — arriving 2 hours late)",
+                  "when": "the External User opens their Timecard for that day",
+                  "then": "the entire day is locked with an auto-populated note 'Approved Call-Out: Late' — partial-day absences lock the full day"
+                },
+                {
+                  "scenario": "negative",
+                  "given": "an External User had an approved RTO for Thursday but the absence was rescinded",
+                  "when": "the External User opens their Timecard for the week containing that Thursday",
+                  "then": "Thursday is fully editable with no lock indicator — rescinding the absence removes the day-level lock"
+                }
+              ],
+              "nonFunctionalRequirements": {
+                "performance": "Day-level lock check must not add more than 50 ms to Timecard page load time",
+                "accessibility": "Locked days must have an aria-disabled attribute and a tooltip or aria-label explaining why the day is locked",
+                "security": "Lock enforcement must occur at the API layer — UI-only disabling is insufficient",
+                "compliance": "N/A"
+              },
+              "outOfScope": [
+                "Partial-day locking (locking only the affected time window rather than the full day)",
+                "Timecard approval workflow changes",
+                "Contact-initiated time entry for locked days"
+              ],
+              "adoFields": {
+                "System.Title": "End-to-end timecard-day locking for approved absences",
+                "System.WorkItemType": "Product Backlog Item",
+                "System.Description": "As an External User, I want my Timecard day to be automatically locked and grayed out when I have an approved RTO or call-out covering that day, so that I cannot accidentally enter time for a day I am absent, eliminating post-absence timecard corrections.\n\n**Slice rationale:** Vertical tracer bullet from RtoRequest status check through TimeCardController API to Timecard UI gray-out. Covers lock check, API enforcement, UI rendering, and rescind-unlock. Uses the day-level lock infrastructure from WI-002.\n\n**Business Rules:** BR-003: Timecard-day locking on approved absence\n\n**Acceptance Criteria:**\n\nGiven an External User has an approved full-day RTO for Wednesday\nWhen the External User opens their Timecard for that week\nThen Wednesday is grayed out with note 'Approved RTO: Full Day', time entry disabled\n\nGiven a Timecard day is locked due to approved RTO\nWhen an API request attempts to submit a Timesheet line entry for that day\nThen the API returns 400 with explanation that the day is locked\n\nGiven an External User has an approved partial-day absence (Late)\nWhen the External User opens their Timecard\nThen the entire day is locked with note 'Approved Call-Out: Late'\n\nGiven an approved RTO for Thursday was rescinded\nWhen the External User opens their Timecard\nThen Thursday is fully editable with no lock indicator",
+                "Microsoft.VSTS.Common.AcceptanceCriteria": "Given an External User has an approved full-day RTO for Wednesday\nWhen the External User opens their Timecard\nThen Wednesday is grayed out with note 'Approved RTO: Full Day', time entry disabled\n\nGiven a Timecard day is locked due to approved RTO\nWhen an API request submits a Timesheet line entry for that day\nThen API returns 400 with locked-day explanation\n\nGiven an approved partial-day absence (Late)\nWhen the External User opens their Timecard\nThen the entire day is locked with note 'Approved Call-Out: Late'\n\nGiven an RTO for Thursday was rescinded\nWhen the External User opens their Timecard\nThen Thursday is fully editable, no lock indicator",
+                "Microsoft.VSTS.Common.Priority": 1,
+                "System.Tags": "needs-triage; afk"
+              }
+            }
+          ],
+          "adoFields": {
+            "System.Title": "Wave 2 — Core Call-Out Recording & Timecard Locking",
+            "System.WorkItemType": "Feature",
+            "System.Description": "Delivers two core user-facing flows: structured call-out recording with auto-classification, and automatic timecard-day locking for approved absences. Both are full vertical slices from database through API to UI. Blocked by Wave 1 (foundation).\n\n**PRD user stories advanced:** #1 (call-out recording), #2 (auto-classification), #3 (timecard locking)\n\n**Slices in this wave (all parallel):**\n- WI-003 (PBI, AFK): End-to-end structured call-out recording with auto-classification\n- WI-004 (PBI, AFK): End-to-end timecard-day locking for approved absences\n\n**Blocked by:** Wave 1 — Call-Out & Timecard Foundation must be fully merged.",
+            "Microsoft.VSTS.Common.Priority": 1,
+            "System.Tags": "FF_CallOutManagement; wave-2"
+          }
+        },
+        {
+          "title": "Wave 3 — Paid Time Off & Contract Backfill",
+          "executionWave": 3,
+          "blockedByWaves": [2],
+          "priority": "Should Have",
+          "description": "Delivers two independently demoable flows: paid/unpaid time-off selection with real-time accrual balance display, and automatic backfill shift creation for contract-position HCPs. Both extend the call-out submission flow from Wave 2. The accrual slice requires human architectural review (HITL) due to open questions about the RC accrual table structure.",
+          "affectedPersonas": ["Internal User", "External User"],
+          "outOfScope": [
+            "Admin UI for worksite call-out threshold management",
+            "Accrual balance write-back to RC payroll",
+            "External availability management"
+          ],
+          "featureFlag": {
+            "name": "FF_CallOutManagement"
+          },
+          "adoId": 47881,
+          "slices": [
+            {
+              "type": "PBI",
+              "id": "WI-005",
+              "title": "End-to-end paid/unpaid time-off selection with accrual balance display",
+              "priority": "Should Have",
+              "sliceType": "HITL",
+              "sliceRationale": "Vertical tracer bullet from RC accrual tables through a new MaxHub API endpoint, MaxView caching layer, RtoRequestService validation, to the UI balance display and paid/unpaid selector. Marked HITL because the RC accrual table structure is an open question (PRD Open Question #2) requiring architectural review before implementation. Recomposed from PBI-004 (display), PBI-005 (selection + guard), and TBI-005 (MaxHub endpoint + cache).",
+              "blockedBy": [],
+              "parallelWith": ["WI-006"],
+              "recomposedFrom": ["PBI-004", "PBI-005", "TBI-005"],
+              "adoId": 47888,
+              "userStory": {
+                "persona": "Internal User",
+                "iWant": "see the HCP's current PTO/sick-time accrual balance at RTO submission and select paid or unpaid time off with a guard preventing negative accrual",
+                "soThat": "I can make an informed decision without checking an external system and the organization never pays out more sick time than accrued"
+              },
+              "businessRules": [
+                "BR-004: Accrual balance visibility at submission",
+                "BR-005: No negative accrual — block if zero balance and paid selected"
+              ],
+              "acceptanceCriteria": [
+                {
+                  "scenario": "happy-path",
+                  "given": "an Internal User is submitting an RTO and the HCP has 24 hours of accrued sick time",
+                  "when": "the Internal User opens the RTO submission form",
+                  "then": "the current accrual balance (24 hours) is displayed, the Internal User can select 'Paid Time Off', and upon submission the balance is deducted appropriately"
+                },
+                {
+                  "scenario": "error-failure",
+                  "given": "an Internal User is submitting an RTO and the HCP has 0 hours of accrued sick time",
+                  "when": "the Internal User selects 'Paid Time Off' and attempts to submit",
+                  "then": "submission is blocked with a clear message: 'Insufficient accrual balance. Current balance: 0 hours. Select Unpaid Time Off to proceed.'"
+                },
+                {
+                  "scenario": "edge-case",
+                  "given": "an HCP has exactly 8 hours of accrued sick time and is requesting a full-day (8-hour) absence",
+                  "when": "the Internal User selects 'Paid Time Off' and submits",
+                  "then": "submission succeeds — the balance becomes exactly 0 hours, which is permitted"
+                },
+                {
+                  "scenario": "negative",
+                  "given": "two concurrent RTO submissions for the same HCP with 8 hours of accrual, each requesting 8 hours paid",
+                  "when": "both submissions are processed",
+                  "then": "only the first submission succeeds as paid; the second is blocked with an insufficient balance message — the system never allows negative accrual regardless of race conditions"
+                }
+              ],
+              "nonFunctionalRequirements": {
+                "performance": "Accrual balance fetch (including MaxHub API call and cache check) must complete within 2 seconds",
+                "accessibility": "Accrual balance display and paid/unpaid selector must be keyboard-navigable with ARIA labels",
+                "security": "Accrual balance is sensitive PII — only the HCP themselves and Internal Users with appropriate permissions may view it",
+                "compliance": "No accrual data may be cached beyond the user's session lifetime"
+              },
+              "outOfScope": [
+                "Writing back accrual deductions to RC payroll system",
+                "Accrual balance history or audit trail UI",
+                "Configuring accrual rates or policies"
+              ],
+              "adoFields": {
+                "System.Title": "End-to-end paid/unpaid time-off selection with accrual balance display",
+                "System.WorkItemType": "Product Backlog Item",
+                "System.Description": "As an Internal User, I want to see the HCP's current PTO/sick-time accrual balance at RTO submission and select paid or unpaid time off with a guard preventing negative accrual, so that I can make an informed decision without checking an external system and the organization never pays out more sick time than accrued.\n\n**Slice rationale:** Vertical tracer bullet from RC accrual tables → MaxHub API endpoint → MaxView cache → RtoRequestService validation → UI balance display + paid/unpaid selector. HITL: RC accrual table structure is an open question requiring architectural review.\n\n**Business Rules:** BR-004: Accrual balance visibility at submission, BR-005: No negative accrual\n\n**Acceptance Criteria:**\n\nGiven an HCP has 24 hours of accrued sick time\nWhen the Internal User opens the RTO submission form\nThen the balance is displayed and paid selection succeeds with deduction\n\nGiven an HCP has 0 hours accrued and Internal User selects Paid\nWhen the form is submitted\nThen submission is blocked with insufficient balance message\n\nGiven an HCP has exactly 8 hours and requests 8-hour absence as Paid\nWhen the form is submitted\nThen submission succeeds — balance becomes exactly 0\n\nGiven two concurrent paid submissions for the same HCP with 8 hours\nWhen both are processed\nThen only the first succeeds; the second is blocked — no negative accrual",
+                "Microsoft.VSTS.Common.AcceptanceCriteria": "Given an HCP has 24 hours of accrued sick time\nWhen the Internal User opens the RTO submission form\nThen balance is displayed, paid selection succeeds with deduction\n\nGiven an HCP has 0 hours and Internal User selects Paid\nWhen submitted\nThen blocked with insufficient balance message\n\nGiven exactly 8 hours accrued, requesting 8-hour paid absence\nWhen submitted\nThen succeeds — balance becomes 0\n\nGiven two concurrent paid submissions, 8 hours available\nWhen both processed\nThen only first succeeds; second blocked — no negative accrual",
+                "Microsoft.VSTS.Common.Priority": 2,
+                "System.Tags": "needs-triage; hitl"
+              }
+            },
+            {
+              "type": "PBI",
+              "id": "WI-006",
+              "title": "End-to-end contract-position backfill shift creation on call-out",
+              "priority": "Should Have",
+              "sliceType": "AFK",
+              "sliceRationale": "Vertical tracer bullet from position-type detection in RtoRequestService through MaxHub shift creation to the MassTransit consumer mapping the shift back to the RTO request. Today, only substitute HCPs with existing RC per-diem shifts are backfilled; this slice adds the 'create then backfill' path for contract-position HCPs who have no pre-existing shift. Recomposed from PBI-006 (user-visible backfill status) and TBI-006 (contract branching logic).",
+              "blockedBy": [],
+              "parallelWith": ["WI-005"],
+              "recomposedFrom": ["PBI-006", "TBI-006"],
+              "adoId": 47889,
+              "userStory": {
+                "persona": "Internal User",
+                "iWant": "the system to automatically create a backfill shift when a contract-position HCP calls out so that the open shift is available for reassignment",
+                "soThat": "I do not have to manually create shifts in RC before initiating backfill for contract HCPs, reducing operational overhead for the majority of call-outs"
+              },
+              "businessRules": [
+                "BR-006: Contract-position backfill shift auto-creation",
+                "BR-007: Substitute backfill unchanged (existing behavior)",
+                "BR-011: Backfill gated by facility setting"
+              ],
+              "acceptanceCriteria": [
+                {
+                  "scenario": "happy-path",
+                  "given": "a contract-position HCP calls out, the facility setting 'Upon RTO Request Open Shift' is 'yes', and the HCP has no pre-existing RC per-diem shift for that day",
+                  "when": "the call-out is processed by RtoRequestService",
+                  "then": "a new per-diem shift is created in RC via MaxHub with attributes sourced from the Match/Position, the shift is available for backfill assignment, and SavePerDiemShiftMapRcShiftConsumer maps it back to the RTO request"
+                },
+                {
+                  "scenario": "error-failure",
+                  "given": "a contract-position HCP calls out and the MaxHub shift creation API call fails",
+                  "when": "the call-out is processed",
+                  "then": "the RTO request is still processed successfully, no backfill shift is created, the failure is logged, and the Internal User is notified that manual backfill is required"
+                },
+                {
+                  "scenario": "edge-case",
+                  "given": "the facility setting 'Upon RTO Request Open Shift' is 'no'",
+                  "when": "a contract-position HCP calls out",
+                  "then": "no backfill shift is created regardless of position type — the facility setting gates all backfill behavior"
+                },
+                {
+                  "scenario": "negative",
+                  "given": "a substitute HCP with an existing RC per-diem shift calls out",
+                  "when": "the call-out is processed",
+                  "then": "the existing RC shift is reopened/reassigned using the current substitute backfill flow — no new shift is created (existing behavior preserved)"
+                }
+              ],
+              "nonFunctionalRequirements": {
+                "performance": "Shift creation via MaxHub must complete within 5 seconds; call-out processing must not block on shift creation failure",
+                "accessibility": "N/A — backfill is a server-side process",
+                "security": "Shift creation must use the existing authenticated MaxHub API service channel",
+                "compliance": "N/A"
+              },
+              "outOfScope": [
+                "Modifying the existing substitute backfill flow",
+                "Admin UI for managing the 'Upon RTO Request Open Shift' facility setting",
+                "Backfill assignment or scheduling beyond shift creation"
+              ],
+              "adoFields": {
+                "System.Title": "End-to-end contract-position backfill shift creation on call-out",
+                "System.WorkItemType": "Product Backlog Item",
+                "System.Description": "As an Internal User, I want the system to automatically create a backfill shift when a contract-position HCP calls out so that the open shift is available for reassignment, so that I do not have to manually create shifts in RC before initiating backfill for contract HCPs, reducing operational overhead for the majority of call-outs.\n\n**Slice rationale:** Vertical tracer bullet from position-type detection through MaxHub shift creation to MassTransit consumer. Adds contract-position branching to the existing per-diem-only backfill path.\n\n**Business Rules:** BR-006: Contract-position backfill, BR-007: Substitute backfill unchanged, BR-011: Facility setting gate\n\n**Acceptance Criteria:**\n\nGiven a contract-position HCP calls out, facility setting is 'yes', no pre-existing shift\nWhen the call-out is processed\nThen a new per-diem shift is created in RC, available for backfill, mapped to the RTO request\n\nGiven a contract-position HCP calls out and MaxHub shift creation fails\nWhen the call-out is processed\nThen RTO succeeds, no backfill shift, failure logged, Internal User notified\n\nGiven the facility setting 'Upon RTO Request Open Shift' is 'no'\nWhen a contract-position HCP calls out\nThen no backfill shift created regardless of position type\n\nGiven a substitute HCP with existing RC shift calls out\nWhen the call-out is processed\nThen existing shift is reopened/reassigned — no new shift created",
+                "Microsoft.VSTS.Common.AcceptanceCriteria": "Given a contract-position HCP calls out, facility setting 'yes', no pre-existing shift\nWhen processed\nThen new per-diem shift created in RC, available for backfill, mapped to RTO\n\nGiven MaxHub shift creation fails\nWhen processed\nThen RTO succeeds, no backfill, failure logged, Internal User notified\n\nGiven facility setting is 'no'\nWhen contract HCP calls out\nThen no backfill shift created\n\nGiven substitute HCP with existing RC shift\nWhen processed\nThen existing shift reopened — no new shift created",
+                "Microsoft.VSTS.Common.Priority": 2,
+                "System.Tags": "needs-triage; afk"
+              }
+            }
+          ],
+          "adoFields": {
+            "System.Title": "Wave 3 — Paid Time Off & Contract Backfill",
+            "System.WorkItemType": "Feature",
+            "System.Description": "Delivers paid/unpaid time-off selection with real-time accrual balance display, and automatic backfill shift creation for contract-position HCPs. Both extend the call-out submission flow from Wave 2. Blocked by Wave 2.\n\n**PRD user stories advanced:** #4 (accrual display), #5 (paid/unpaid selection), #6 (contract backfill)\n\n**Slices in this wave (all parallel):**\n- WI-005 (PBI, HITL): End-to-end paid/unpaid time-off selection with accrual balance display\n- WI-006 (PBI, AFK): End-to-end contract-position backfill shift creation on call-out\n\n**Blocked by:** Wave 2 — Core Call-Out Recording & Timecard Locking must be fully merged.",
+            "Microsoft.VSTS.Common.Priority": 2,
+            "System.Tags": "FF_CallOutManagement; wave-3; needs-hitl"
+          }
+        },
+        {
+          "title": "Wave 4 — External Availability",
+          "executionWave": 4,
+          "blockedByWaves": [1],
+          "priority": "Could Have",
+          "description": "Delivers self-service availability management for External Users: a recurring general schedule and one-time date-range overrides. This is a net-new capability with no dependency on the call-out or timecard features from Waves 2–3 — it depends only on Wave 1 for the feature flag infrastructure pattern. Gated behind a separate feature flag (FF_CallOutManagement_Availability) for independent rollout.",
+          "affectedPersonas": ["External User", "Internal User"],
+          "outOfScope": [
+            "Internal User self-service schedule (External Users only)",
+            "Integration with shift scheduling or per-diem shift matching",
+            "Mobile-app availability surfaces"
+          ],
+          "featureFlag": {
+            "name": "FF_CallOutManagement_Availability"
+          },
+          "adoId": 47882,
+          "slices": [
+            {
+              "type": "PBI",
+              "id": "WI-007",
+              "title": "End-to-end general schedule availability management for External Users",
+              "priority": "Could Have",
+              "sliceType": "AFK",
+              "sliceRationale": "Vertical tracer bullet from HcpAvailability table creation through a new AvailabilityController with CRUD endpoints to a self-service UI form. Entirely greenfield — no existing availability code exists in the codebase. This slice owns the schema, API, and UI for recurring weekly availability. WI-008 (overrides) depends on this slice's schema.",
+              "blockedBy": [],
+              "parallelWith": [],
+              "recomposedFrom": ["PBI-007", "TBI-007"],
+              "adoId": 47890,
+              "userStory": {
+                "persona": "External User",
+                "iWant": "set my recurring weekly availability (days of week and time-of-day preference) in MaxView",
+                "soThat": "my internal team knows when I am generally available for shifts without needing to call or email me"
+              },
+              "businessRules": [
+                "BR-008: General schedule availability — days of week + time-of-day preference, editable at any time"
+              ],
+              "acceptanceCriteria": [
+                {
+                  "scenario": "happy-path",
+                  "given": "an External User navigates to the availability section in MaxView",
+                  "when": "the External User selects Mon, Wed, Fri with 'Daytime' preference and saves",
+                  "then": "the general schedule is persisted in HcpAvailability, the UI confirms the save, and Internal Users can view the External User's availability"
+                },
+                {
+                  "scenario": "error-failure",
+                  "given": "an External User is on the availability form",
+                  "when": "the External User attempts to save without selecting any days",
+                  "then": "a validation error is displayed requiring at least one day to be selected"
+                },
+                {
+                  "scenario": "edge-case",
+                  "given": "an External User already has a saved general schedule (Mon/Wed/Fri Daytime)",
+                  "when": "the External User updates it to Tue/Thu Evening and saves",
+                  "then": "the previous schedule is fully replaced by the new schedule — no merge, no history"
+                },
+                {
+                  "scenario": "negative",
+                  "given": "an Internal User views an External User's general schedule",
+                  "when": "the Internal User attempts to edit the External User's self-service schedule",
+                  "then": "the edit controls are not available — Internal Users can view but not modify External User self-service availability"
+                }
+              ],
+              "nonFunctionalRequirements": {
+                "performance": "Availability CRUD operations must complete within 1 second",
+                "accessibility": "Day-of-week checkboxes and time preference selector must be keyboard-navigable with ARIA labels",
+                "security": "External Users can only view and edit their own availability; Internal Users have read-only access",
+                "compliance": "N/A"
+              },
+              "outOfScope": [
+                "One-time availability overrides (WI-008)",
+                "Integration with shift scheduling or auto-matching",
+                "Availability history or audit trail"
+              ],
+              "adoFields": {
+                "System.Title": "End-to-end general schedule availability management for External Users",
+                "System.WorkItemType": "Product Backlog Item",
+                "System.Description": "As an External User, I want to set my recurring weekly availability (days of week and time-of-day preference) in MaxView, so that my internal team knows when I am generally available for shifts without needing to call or email me.\n\n**Slice rationale:** Vertical tracer bullet from HcpAvailability table through AvailabilityController CRUD to self-service UI. Entirely greenfield — no existing availability code in the codebase.\n\n**Business Rules:** BR-008: General schedule availability\n\n**Acceptance Criteria:**\n\nGiven an External User navigates to the availability section\nWhen Mon/Wed/Fri Daytime is selected and saved\nThen schedule is persisted, UI confirms, Internal Users can view it\n\nGiven an External User attempts to save without selecting any days\nWhen the form is submitted\nThen validation error requiring at least one day\n\nGiven an existing schedule Mon/Wed/Fri Daytime\nWhen updated to Tue/Thu Evening\nThen previous schedule is fully replaced\n\nGiven an Internal User views an External User's schedule\nWhen the Internal User attempts to edit\nThen edit controls are not available — read-only access",
+                "Microsoft.VSTS.Common.AcceptanceCriteria": "Given an External User navigates to availability section\nWhen Mon/Wed/Fri Daytime selected and saved\nThen persisted, confirmed, viewable by Internal Users\n\nGiven no days selected\nWhen submitted\nThen validation error\n\nGiven existing schedule Mon/Wed/Fri Daytime\nWhen updated to Tue/Thu Evening\nThen fully replaced\n\nGiven Internal User views External User's schedule\nWhen attempts to edit\nThen read-only — no edit controls",
+                "Microsoft.VSTS.Common.Priority": 3,
+                "System.Tags": "needs-triage; afk"
+              }
+            },
+            {
+              "type": "PBI",
+              "id": "WI-008",
+              "title": "End-to-end one-time availability overrides for External Users",
+              "priority": "Could Have",
+              "sliceType": "AFK",
+              "sliceRationale": "Vertical tracer bullet from HcpAvailabilityOverride table through AvailabilityController override endpoints to a date-range picker UI plus a background auto-expire job. Depends on WI-007's HcpAvailability schema (intra-wave dependency) because overrides supersede the general schedule. Recomposed from PBI-008 (override UI) and the override portion of TBI-007 (table + API).",
+              "blockedBy": ["WI-007"],
+              "parallelWith": [],
+              "recomposedFrom": ["PBI-008", "TBI-007"],
+              "adoId": 47891,
+              "userStory": {
+                "persona": "External User",
+                "iWant": "set one-time availability changes for specific date ranges that override my general schedule",
+                "soThat": "I can communicate temporary schedule changes without altering my recurring availability"
+              },
+              "businessRules": [
+                "BR-009: One-time overrides supersede general schedule and auto-expire after dates pass"
+              ],
+              "acceptanceCriteria": [
+                {
+                  "scenario": "happy-path",
+                  "given": "an External User has a general schedule of Mon/Wed/Fri and navigates to the override section",
+                  "when": "the External User adds an override for next Tuesday and Thursday as 'Available, Daytime' and saves",
+                  "then": "the overrides are persisted in HcpAvailabilityOverride, displayed alongside the general schedule, and Internal Users see the combined availability including the overrides"
+                },
+                {
+                  "scenario": "error-failure",
+                  "given": "an External User is creating an availability override",
+                  "when": "the External User sets an end date before the start date",
+                  "then": "a validation error is displayed and the override is not saved"
+                },
+                {
+                  "scenario": "edge-case",
+                  "given": "an External User has an override marking Wednesday as 'Unavailable' and their general schedule includes Wednesday",
+                  "when": "Internal Users view the External User's availability for that week",
+                  "then": "the override takes precedence — Wednesday shows as unavailable despite the general schedule"
+                },
+                {
+                  "scenario": "negative",
+                  "given": "an External User created overrides for last week that have passed",
+                  "when": "the auto-expire background job runs",
+                  "then": "the expired overrides are removed from the active list and are no longer visible to Internal Users or the External User"
+                }
+              ],
+              "nonFunctionalRequirements": {
+                "performance": "Override CRUD operations must complete within 1 second; auto-expire job must process all expired overrides within 60 seconds",
+                "accessibility": "Date-range picker must be keyboard-navigable and announce selected dates via screen reader",
+                "security": "External Users can only manage their own overrides",
+                "compliance": "N/A"
+              },
+              "outOfScope": [
+                "Bulk override creation for multiple HCPs",
+                "Override approval workflow",
+                "Integration with shift scheduling"
+              ],
+              "adoFields": {
+                "System.Title": "End-to-end one-time availability overrides for External Users",
+                "System.WorkItemType": "Product Backlog Item",
+                "System.Description": "As an External User, I want to set one-time availability changes for specific date ranges that override my general schedule, so that I can communicate temporary schedule changes without altering my recurring availability.\n\n**Slice rationale:** Vertical tracer bullet from HcpAvailabilityOverride table through AvailabilityController to date-range picker UI + auto-expire background job. Intra-wave dependency on WI-007 (general schedule schema).\n\n**Business Rules:** BR-009: One-time overrides supersede general schedule and auto-expire\n\n**Acceptance Criteria:**\n\nGiven a general schedule of Mon/Wed/Fri\nWhen an override for next Tue/Thu 'Available, Daytime' is saved\nThen overrides are persisted, displayed alongside general schedule, visible to Internal Users\n\nGiven an override with end date before start date\nWhen submitted\nThen validation error, override not saved\n\nGiven an override marking Wednesday 'Unavailable' while general schedule includes Wednesday\nWhen Internal Users view availability\nThen override takes precedence — Wednesday shows unavailable\n\nGiven expired overrides from last week\nWhen auto-expire job runs\nThen expired overrides removed from active list",
+                "Microsoft.VSTS.Common.AcceptanceCriteria": "Given general schedule Mon/Wed/Fri\nWhen override Tue/Thu Daytime saved\nThen persisted, displayed alongside schedule, visible to Internal Users\n\nGiven end date before start date\nWhen submitted\nThen validation error\n\nGiven override 'Unavailable' on Wednesday, general schedule includes Wednesday\nWhen viewed\nThen override takes precedence\n\nGiven expired overrides\nWhen auto-expire job runs\nThen removed from active list",
+                "Microsoft.VSTS.Common.Priority": 3,
+                "System.Tags": "needs-triage; afk"
+              }
+            }
+          ],
+          "adoFields": {
+            "System.Title": "Wave 4 — External Availability",
+            "System.WorkItemType": "Feature",
+            "System.Description": "Delivers self-service availability management for External Users: recurring general schedule and one-time overrides. Entirely greenfield capability with no dependency on call-out/timecard features from Waves 2–3. Gated behind FF_CallOutManagement_Availability for independent rollout. Blocked by Wave 1 for feature flag infrastructure pattern.\n\n**PRD user stories advanced:** #7 (general schedule), #8 (one-time overrides)\n\n**Slices in this wave:**\n- WI-007 (PBI, AFK): End-to-end general schedule availability management\n- WI-008 (PBI, AFK): End-to-end one-time availability overrides (blocked by WI-007 — intra-wave dependency)\n\n**Blocked by:** Wave 1 — Call-Out & Timecard Foundation (feature flag infrastructure pattern only).",
+            "Microsoft.VSTS.Common.Priority": 3,
+            "System.Tags": "FF_CallOutManagement_Availability; wave-4"
+          }
+        }
+      ],
+      "adoFields": {
+        "System.Title": "Call-Out Management, Timecard Locking & External Availability",
+        "System.WorkItemType": "Epic",
+        "System.Description": "Extend MaxView's existing RTO capability into a broader call-out and attendance management system. This initiative adds structured call-out classification, automatic timecard-day locking for approved absences, paid-sick-time payout logic with accrual visibility, contract-position backfill shift creation, and self-service availability management for External Users.",
+        "Microsoft.VSTS.Common.Priority": 1,
+        "System.Tags": "needs-triage"
+      }
+    }
+  ],
+  "assumptionsMade": [
+    "Approved RTO/call-out means auto-processed — no explicit approval workflow exists today and building one is out of scope. 'Approved' in the context of timecard locking means the RTO request was successfully processed.",
+    "Partial-day absences (Late/Leave Early) lock the entire Timecard day, not just the affected time window. PRD Open Question #3 is resolved with full-day locking for simplicity.",
+    "The lead-time threshold (N hours) for RTO vs call-out classification is a worksite-level setting (WorksiteCallOutSetting.ThresholdHours), not a system-wide constant. Initial values are seeded via DB migration; admin UI is out of scope.",
+    "Accrual balance source is in RC (erecruit_Maxim); MaxView reads via a new MaxHub API endpoint with a session-scoped caching layer. The exact RC accrual tables need architectural review before WI-005 implementation (hence HITL classification).",
+    "Contract-position backfill shift attributes (start time, duration, department) are sourced from the original Match/Position metadata in RC, not from the call-out submission form.",
+    "Call-out notifications are sent to CandidateOwner + PositionOwner only; client/facility Contacts are not notified. PRD Open Question #6 is resolved with internal-only notification.",
+    "External availability is exclusively for External User HCPs. Internal Users have read-only access to view External User availability but cannot self-set their own.",
+    "Both parallel RTO submission paths (TimeClock Web via RtoOrchestrationService and MaxHub Mobile via AbsenceManagementOperation) must be extended for call-out type support. The MaxHub mobile email notification path (currently TODO in code) is wired as part of WI-003.",
+    "The >= boundary for ThresholdHours classification is inclusive for planned absence: a submission at exactly N hours before the shift is classified as planned, not as a call-out.",
+    "All call-out/timecard/accrual/backfill features share FF_CallOutManagement; external availability uses FF_CallOutManagement_Availability for independent rollout."
+  ]
+}

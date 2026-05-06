@@ -1,0 +1,539 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 800;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 760px;
+  max-width: 96vw;
+  height: 100vh;
+  background: var(--bg-primary);
+  border-left: 1px solid var(--border-color);
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  z-index: 801;
+  animation: slideIn 0.25s ease;
+}
+
+@keyframes slideIn {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+  gap: 12px;
+  background: var(--bg-secondary);
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.headerIcon {
+  font-size: 20px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+
+.meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.headerActions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+.actionBtn {
+  padding: 5px 11px;
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.2s ease;
+}
+
+.actionBtn:hover {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border-color: var(--accent-color);
+}
+
+.closeBtn {
+  padding: 5px 9px;
+  background: none;
+  border: none;
+  font-size: 16px;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  line-height: 1;
+}
+
+.closeBtn:hover {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+/* ── Tab bar ─────────────────────────────────────────────────────────────── */
+
+.tabBar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+}
+
+.tab {
+  padding: 8px 14px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin-bottom: -1px;
+}
+
+.tab:hover {
+  color: var(--text-primary);
+}
+
+.tabActive {
+  color: var(--accent-color);
+  border-bottom-color: var(--accent-color);
+}
+
+.editActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding: 6px 0;
+}
+
+.discardBtn {
+  padding: 4px 12px;
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.discardBtn:hover:not(:disabled) {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.applyBtn {
+  padding: 4px 14px;
+  background: var(--accent-color);
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.applyBtn:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.applyBtn:disabled,
+.discardBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.saveError {
+  font-size: 11px;
+  color: var(--error-color);
+  margin-left: 8px;
+}
+
+.unsavedBadge {
+  color: var(--accent-color);
+  font-weight: 600;
+  margin-left: 6px;
+  font-size: 11px;
+}
+
+/* ── Editor pane ──────────────────────────────────────────────────────────── */
+
+.editorPane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.editorWrapper {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding: 16px 20px;
+  gap: 10px;
+}
+
+.editorHint {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  flex-shrink: 0;
+}
+
+.editorHint strong {
+  color: var(--text-secondary);
+}
+
+.editor {
+  flex: 1;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 14px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.7;
+  resize: none;
+  transition: border-color 0.2s ease;
+  min-height: 0;
+}
+
+.editor:focus {
+  outline: none;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.08);
+}
+
+/* ── Two-column layout: TOC + body ──────────────────────────────────────── */
+
+.layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── Table of contents ───────────────────────────────────────────────────── */
+
+.toc {
+  width: 192px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border-color);
+  overflow-y: auto;
+  padding: 20px 0;
+  background: var(--bg-secondary);
+}
+
+.tocTitle {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  padding: 0 16px 8px;
+}
+
+.tocList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.tocList li {
+  margin: 0;
+}
+
+.tocLink {
+  display: block;
+  padding: 4px 16px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  line-height: 1.4;
+  transition: all 0.15s ease;
+  border-left: 2px solid transparent;
+}
+
+.tocLink:hover {
+  color: var(--accent-color);
+  background: var(--bg-primary);
+  border-left-color: var(--accent-color);
+}
+
+/* h1 → no extra indent */
+.tocLevel1 .tocLink { padding-left: 16px; font-weight: 600; }
+/* h2 → standard */
+.tocLevel2 .tocLink { padding-left: 16px; }
+/* h3 → indent once */
+.tocLevel3 .tocLink { padding-left: 28px; font-size: 11px; }
+/* h4 → indent twice */
+.tocLevel4 .tocLink { padding-left: 40px; font-size: 11px; color: var(--text-muted); }
+
+/* ── Body / scroll area ──────────────────────────────────────────────────── */
+
+.body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 28px 32px;
+  scroll-behavior: smooth;
+}
+
+/* ── Prose (ReactMarkdown rendered content) ──────────────────────────────── */
+
+.prose {
+  font-size: 14px;
+  line-height: 1.75;
+  color: var(--text-primary);
+  max-width: 720px;
+}
+
+.prose :global(h1),
+.prose :global(h2),
+.prose :global(h3),
+.prose :global(h4) {
+  color: var(--text-primary);
+  line-height: 1.3;
+  scroll-margin-top: 16px;
+}
+
+.prose :global(h1) {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 0.75em;
+  padding-bottom: 10px;
+  border-bottom: 2px solid var(--border-color);
+}
+
+.prose :global(h2) {
+  font-size: 17px;
+  font-weight: 600;
+  margin: 1.8em 0 0.6em;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.prose :global(h3) {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 1.4em 0 0.5em;
+}
+
+.prose :global(h4) {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 1.2em 0 0.4em;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.prose :global(p) {
+  margin: 0.75em 0;
+}
+
+.prose :global(ul),
+.prose :global(ol) {
+  padding-left: 24px;
+  margin: 0.6em 0;
+}
+
+.prose :global(li) {
+  margin: 0.3em 0;
+}
+
+/* Task list items (remark-gfm) */
+.prose :global(li input[type="checkbox"]) {
+  margin-right: 6px;
+  accent-color: var(--accent-color);
+}
+
+.prose :global(a) {
+  color: var(--accent-color);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.prose :global(a:hover) {
+  color: var(--accent-hover);
+}
+
+.prose :global(code) {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  padding: 1px 5px;
+}
+
+.prose :global(pre) {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  margin: 1em 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.prose :global(pre code) {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+}
+
+.prose :global(blockquote) {
+  border-left: 3px solid var(--accent-color);
+  margin: 1em 0;
+  padding: 6px 16px;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border-radius: 0 6px 6px 0;
+}
+
+.prose :global(hr) {
+  border: none;
+  border-top: 1px solid var(--border-color);
+  margin: 1.6em 0;
+}
+
+.prose :global(strong) { font-weight: 600; }
+.prose :global(em) { font-style: italic; }
+
+/* ── Tables (GFM) ──────────────────────────────────────────────────────── */
+
+.prose :global(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1em 0;
+  font-size: 13px;
+  overflow: hidden;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+}
+
+.prose :global(thead) {
+  background: var(--bg-secondary);
+}
+
+.prose :global(th) {
+  padding: 8px 12px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.prose :global(td) {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color-light, var(--border-color));
+  vertical-align: top;
+}
+
+.prose :global(tr:last-child td) {
+  border-bottom: none;
+}
+
+.prose :global(tbody tr:hover) {
+  background: var(--bg-secondary);
+}
+
+/* ── States ─────────────────────────────────────────────────────────────── */
+
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 0;
+  color: var(--text-muted);
+  font-size: 14px;
+  gap: 10px;
+}
+
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border-color);
+  border-top-color: var(--accent-color);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.error {
+  padding: 20px;
+  color: var(--error-color);
+  font-size: 14px;
+  background: rgba(239, 68, 68, 0.06);
+  border-radius: 8px;
+  border: 1px solid rgba(239, 68, 68, 0.15);
+}

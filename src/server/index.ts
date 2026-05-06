@@ -11,6 +11,11 @@ dotenv.config();
 import apiRoutes from './routes/api';
 import authRoutes from './routes/auth';
 import azureCostRoutes from './routes/azureCost';
+import skillsRoutes from './routes/skills';
+import wikiRoutes from './routes/wiki';
+import chatRoutes from './routes/chat';
+import workitemsFromPrdRoutes from './routes/workitemsFromPrd';
+import { mountAdoMcp } from './mcp/ado/express';
 import { ensureAuthenticated } from './middleware/auth';
 import {
   extractAgentToken,
@@ -94,6 +99,11 @@ app.use('/api', (req, res, next) => {
   ensureAuthenticated(req, res, next);
 }, apiRoutes);
 app.use('/api/azure', ensureAuthenticated, azureCostRoutes);
+app.use('/api/skills', ensureAuthenticated, skillsRoutes);
+app.use('/api/wiki', ensureAuthenticated, wikiRoutes);
+app.use('/api/chat', ensureAuthenticated, chatRoutes);
+app.use('/api/workitems', ensureAuthenticated, workitemsFromPrdRoutes);
+mountAdoMcp(app);
 
 // Serve static files in production
 if (process.env.NODE_ENV === 'production') {

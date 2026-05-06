@@ -20,6 +20,7 @@ interface AppHeaderProps {
   onOpenChangelog: () => void;
   onToggleTheme: () => void;
   onLogout: () => void;
+  onOpenAgentChat?: () => void;
 }
 
 export const AppHeader: React.FC<AppHeaderProps> = ({
@@ -40,6 +41,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   onOpenChangelog,
   onToggleTheme,
   onLogout,
+  onOpenAgentChat,
 }) => (
   <div className="app-header">
     <div className="view-switcher">
@@ -98,6 +100,16 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
           })}
         </select>
       </div>
+      {onOpenAgentChat && (
+        <button
+          className="view-btn"
+          onClick={onOpenAgentChat}
+          title="Open Agent Chat"
+          style={{ marginRight: 4 }}
+        >
+          🤖 Agent
+        </button>
+      )}
       <UserMenu
         onOpenChangelog={onOpenChangelog}
         onToggleTheme={onToggleTheme}

@@ -6,6 +6,10 @@
       "headers": {
         "X-Figma-Token": "${FIGMA_API_TOKEN}"
       }
+    },
+    "ado-skills": {
+      "type": "http",
+      "url": "http://localhost:3001/mcp/ado-skills"
     }
   }
 }

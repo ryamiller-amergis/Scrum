@@ -4818,4 +4818,70 @@ export class AzureDevOpsService {
       return { featureAdoId: featureAdoUrl ? featureAdoId : undefined, featureAdoUrl, pbiAdoId, pbiAdoUrl };
     });
   }
+
+  /**
+   * Create a single work item from a PRD-generated spec.
+   * Optionally links to a parent work item and/or a PRD wiki page URL.
+   */
+  async createWorkItemForPrd(spec: {
+    type: string;
+    title: string;
+    description?: string;
+    parentId?: number;
+    prdUrl?: string;
+    tags?: string[];
+  }): Promise<{ id: number; url: string }> {
+    return retryWithBackoff(async () => {
+      const witApi = await this.connection.getWorkItemTrackingApi();
+      const orgUrl = this.organization.replace(/\/$/, '');
+
+      const patch: any[] = [
+        { op: 'add', path: '/fields/System.Title', value: spec.title },
+      ];
+
+      if (this.areaPath) {
+        patch.push({ op: 'add', path: '/fields/System.AreaPath', value: this.areaPath });
+      }
+
+      if (spec.description) {
+        patch.push({ op: 'add', path: '/fields/System.Description', value: spec.description });
+      }
+
+      if (spec.tags && spec.tags.length > 0) {
+        patch.push({ op: 'add', path: '/fields/System.Tags', value: spec.tags.join('; ') });
+      }
+
+      if (spec.parentId) {
+        patch.push({
+          op: 'add',
+          path: '/relations/-',
+          value: {
+            rel: 'System.LinkTypes.Hierarchy-Reverse',
+            url: `${orgUrl}/_apis/wit/workItems/${spec.parentId}`,
+          },
+        });
+      }
+
+      if (spec.prdUrl) {
+        patch.push({
+          op: 'add',
+          path: '/relations/-',
+          value: {
+            rel: 'Hyperlink',
+            url: spec.prdUrl,
+            attributes: { comment: 'PRD' },
+          },
+        });
+      }
+
+      const wi = await witApi.createWorkItem({}, patch, this.project, spec.type);
+
+      if (!wi?.id) throw new Error(`Failed to create ${spec.type} "${spec.title}"`);
+
+      return {
+        id: wi.id,
+        url: `${orgUrl}/${encodeURIComponent(this.project)}/_workitems/edit/${wi.id}`,
+      };
+    });
+  }
 }
