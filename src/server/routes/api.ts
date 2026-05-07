@@ -12,6 +12,45 @@ import { getPrResolutionMetricsStats } from '../services/agentEvalsPrResolutionS
 
 const router = express.Router();
 
+// GET /api/projects - List ADO projects accessible to the configured PAT,
+// filtered to the allowlist in ADO_ALLOWED_PROJECTS (comma-separated).
+router.get('/projects', async (_req: Request, res: Response) => {
+  try {
+    const adoService = new AzureDevOpsService();
+    let projects = await adoService.getProjects();
+
+    const allowList = (process.env.ADO_ALLOWED_PROJECTS || '')
+      .split(',')
+      .map((p) => p.trim())
+      .filter(Boolean);
+
+    if (allowList.length > 0) {
+      const allowed = new Set(allowList.map((p) => p.toLowerCase()));
+      projects = projects.filter((p) => allowed.has(p.name.toLowerCase()));
+      // Preserve the order defined in ADO_ALLOWED_PROJECTS
+      projects.sort((a, b) => allowList.findIndex((p) => p.toLowerCase() === a.name.toLowerCase()) - allowList.findIndex((p) => p.toLowerCase() === b.name.toLowerCase()));
+    }
+
+    res.json(projects);
+  } catch (error: any) {
+    console.error('Error fetching ADO projects:', error);
+    res.status(500).json({ error: 'Failed to fetch projects' });
+  }
+});
+
+// GET /api/projects/:project/teams - List teams for a given ADO project
+router.get('/projects/:project/teams', async (req: Request, res: Response) => {
+  try {
+    const { project } = req.params;
+    const adoService = new AzureDevOpsService();
+    const teams = await adoService.getProjectTeams(project);
+    res.json(teams);
+  } catch (error: any) {
+    console.error('Error fetching ADO teams:', error);
+    res.status(500).json({ error: 'Failed to fetch teams' });
+  }
+});
+
 // GET /api/workitems - Fetch work items for date range
 router.get('/workitems', async (req: Request, res: Response) => {
   try {

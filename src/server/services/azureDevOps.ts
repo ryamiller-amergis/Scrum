@@ -19,9 +19,9 @@ export class AzureDevOpsService {
     this.project = project || defaultProject;
     this.areaPath = areaPath || defaultAreaPath;
 
-    if (!orgUrl || !pat || !this.project) {
+    if (!orgUrl || !pat) {
       throw new Error(
-        'Missing required environment variables: ADO_ORG, ADO_PAT, and project must be provided'
+        'Missing required environment variables: ADO_ORG and ADO_PAT must be provided'
       );
     }
 
@@ -32,6 +32,28 @@ export class AzureDevOpsService {
       socketTimeout: 120000, // 120 seconds
     };
     this.connection = new azdev.WebApi(orgUrl, authHandler, options);
+  }
+
+  /** Returns all ADO projects in the organization that the PAT has access to. */
+  async getProjects(): Promise<{ id: string; name: string; description: string }[]> {
+    const coreApi = await this.connection.getCoreApi();
+    const projects = await coreApi.getProjects();
+    return (projects || []).map((p) => ({
+      id: p.id || '',
+      name: p.name || '',
+      description: p.description || '',
+    }));
+  }
+
+  /** Returns all teams for a given ADO project. */
+  async getProjectTeams(project: string): Promise<{ id: string; name: string }[]> {
+    if (!project) throw new Error('project is required');
+    const coreApi = await this.connection.getCoreApi();
+    const teams = await coreApi.getTeams(project);
+    return (teams || []).map((t) => ({
+      id: t.id || '',
+      name: t.name || '',
+    }));
   }
 
   async getWorkItems(from?: string, to?: string): Promise<WorkItem[]> {

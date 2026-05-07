@@ -5,23 +5,25 @@
 :root {
   --bg-primary: #ffffff;
   --bg-secondary: #f5f5f5;
-  --bg-tertiary: #e0e0e0;
-  --text-primary: #333333;
-  --text-secondary: #666666;
-  --text-muted: #999999;
+  --bg-tertiary: #e8e8e8;
+  --text-primary: #1a1a1a;
+  --text-secondary: #555555;
+  --text-muted: #888888;
   --border-color: #e0e0e0;
   --border-color-light: #ddd;
-  --accent-color: #0078d4;
-  --accent-hover: #005a9e;
-  --success-color: #4CAF50;
-  --success-hover: #45a049;
+  --accent-color: #142A67;
+  --accent-hover: #0d1c45;
+  --accent-teal: #5ACCA6;
+  --accent-teal-hover: #3aaa86;
+  --success-color: #3aaa86;
+  --success-hover: #2d9070;
   --error-color: #d32f2f;
-  --shadow-sm: rgba(0, 0, 0, 0.1);
-  --shadow-md: rgba(0, 0, 0, 0.15);
+  --shadow-sm: rgba(0, 0, 0, 0.08);
+  --shadow-md: rgba(0, 0, 0, 0.14);
   --calendar-bg: #ffffff;
-  --calendar-event-bg: #e3f2fd;
-  --calendar-event-border: #1976d2;
-  --calendar-event-text: #1565c0;
+  --calendar-event-bg: #eaf7f3;
+  --calendar-event-border: #5ACCA6;
+  --calendar-event-text: #142A67;
 }
 
 [data-theme="dark"] {
@@ -33,17 +35,19 @@
   --text-muted: #808080;
   --border-color: #404040;
   --border-color-light: #505050;
-  --accent-color: #4a9eff;
-  --accent-hover: #6db3ff;
-  --success-color: #66bb6a;
-  --success-hover: #81c784;
+  --accent-color: #5ACCA6;
+  --accent-hover: #6ed9b4;
+  --accent-teal: #5ACCA6;
+  --accent-teal-hover: #6ed9b4;
+  --success-color: #5ACCA6;
+  --success-hover: #6ed9b4;
   --error-color: #ef5350;
   --shadow-sm: rgba(0, 0, 0, 0.3);
   --shadow-md: rgba(0, 0, 0, 0.5);
   --calendar-bg: #2d2d2d;
-  --calendar-event-bg: #1a3a52;
-  --calendar-event-border: #4a9eff;
-  --calendar-event-text: #6db3ff;
+  --calendar-event-bg: #1a3330;
+  --calendar-event-border: #5ACCA6;
+  --calendar-event-text: #5ACCA6;
 }
 
 body {

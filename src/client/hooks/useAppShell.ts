@@ -15,17 +15,30 @@ interface DueDateChange {
   newDueDate: string | null;
 }
 
-function parseTeamsEnv(): { availableProjects: string[]; availableAreaPaths: string[] } {
+export interface Team {
+  project: string;
+  areaPath: string;
+  displayName: string;
+}
+
+function parseTeamsEnv(): { availableProjects: string[]; availableAreaPaths: string[]; availableTeams: Team[] } {
   const projects = new Set<string>();
   const areaPaths = new Set<string>();
+  const teams: Team[] = [];
   env.VITE_TEAMS.split('~~~').forEach((team: string) => {
     const [project, areaPath] = team.trim().split('|');
     if (project) projects.add(project);
     if (areaPath) areaPaths.add(areaPath);
+    if (project && areaPath) {
+      const segments = areaPath.split('/');
+      const displayName = segments[segments.length - 1];
+      teams.push({ project, areaPath, displayName });
+    }
   });
   return {
     availableProjects: Array.from(projects).sort(),
     availableAreaPaths: Array.from(areaPaths).sort(),
+    availableTeams: teams,
   };
 }
 
@@ -42,7 +55,7 @@ export function useAppShell() {
   const [isChangingTeam, setIsChangingTeam] = useState(false);
   const originalDueDates = useRef<Map<number, string | undefined>>(new Map());
 
-  const { availableProjects, availableAreaPaths } = useMemo(parseTeamsEnv, []);
+  const { availableProjects, availableAreaPaths, availableTeams } = useMemo(parseTeamsEnv, []);
 
   const [selectedProject, setSelectedProject] = useState<string>(() => localStorage.getItem('selectedProject') || availableProjects[0] || 'MaxView');
   const [selectedAreaPath, setSelectedAreaPath] = useState<string>(() => localStorage.getItem('selectedAreaPath') || availableAreaPaths[0] || 'MaxView');
@@ -195,6 +208,7 @@ export function useAppShell() {
     selectedAreaPath,
     availableProjects,
     availableAreaPaths,
+    availableTeams,
     changeProject,
     changeAreaPath,
     scheduledItems,

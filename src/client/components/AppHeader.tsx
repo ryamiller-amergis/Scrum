@@ -2,21 +2,15 @@ import React from 'react';
 import { UserMenu } from './UserMenu';
 
 interface AppHeaderProps {
-  currentView: 'calendar' | 'planning' | 'cloudcost' | 'backlog';
+  currentView: 'home' | 'calendar' | 'planning' | 'cloudcost' | 'backlog';
   planningTab: string;
-  availableProjects: string[];
-  availableAreaPaths: string[];
-  selectedProject: string;
-  selectedAreaPath: string;
-  isLoading: boolean;
   theme: 'light' | 'dark';
   hasUnreadChangelog: boolean;
+  onNavigateHome: () => void;
   onNavigateCalendar: () => void;
   onNavigatePlanning: () => void;
   onNavigateCloudCost: () => void;
   onNavigateBacklog: () => void;
-  onChangeProject: (project: string) => void;
-  onChangeAreaPath: (areaPath: string) => void;
   onOpenChangelog: () => void;
   onToggleTheme: () => void;
   onLogout: () => void;
@@ -25,19 +19,13 @@ interface AppHeaderProps {
 
 export const AppHeader: React.FC<AppHeaderProps> = ({
   currentView,
-  availableProjects,
-  availableAreaPaths,
-  selectedProject,
-  selectedAreaPath,
-  isLoading,
   theme,
   hasUnreadChangelog,
+  onNavigateHome,
   onNavigateCalendar,
   onNavigatePlanning,
   onNavigateCloudCost,
   onNavigateBacklog,
-  onChangeProject,
-  onChangeAreaPath,
   onOpenChangelog,
   onToggleTheme,
   onLogout,
@@ -45,6 +33,12 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
 }) => (
   <div className="app-header">
     <div className="view-switcher">
+      <button
+        className={`view-btn ${currentView === 'home' ? 'active' : ''}`}
+        onClick={onNavigateHome}
+      >
+        Home
+      </button>
       <button
         className={`view-btn ${currentView === 'calendar' ? 'active' : ''}`}
         onClick={onNavigateCalendar}
@@ -71,35 +65,6 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
       </button>
     </div>
     <div className="header-controls">
-      <div className="selector-group">
-        <label htmlFor="project-selector">Project:</label>
-        <select
-          id="project-selector"
-          className="team-selector"
-          value={selectedProject}
-          onChange={e => onChangeProject(e.target.value)}
-          disabled={isLoading}
-        >
-          {availableProjects.map(p => (
-            <option key={p} value={p}>{p}</option>
-          ))}
-        </select>
-      </div>
-      <div className="selector-group">
-        <label htmlFor="team-selector">Team:</label>
-        <select
-          id="team-selector"
-          className="team-selector"
-          value={selectedAreaPath}
-          onChange={e => onChangeAreaPath(e.target.value)}
-          disabled={isLoading}
-        >
-          {availableAreaPaths.map(ap => {
-            const displayName = ap.includes('\\') ? ap.split('\\').pop() || ap : ap;
-            return <option key={ap} value={ap}>{displayName}</option>;
-          })}
-        </select>
-      </div>
       {onOpenAgentChat && (
         <button
           className="view-btn"

@@ -1,0 +1,397 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+  background: var(--bg-primary);
+}
+
+/* ── Compose state ─────────────────────────────────────────────────────────── */
+
+.compose {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  padding: 24px;
+}
+
+.composeInner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  width: 100%;
+  max-width: 680px;
+}
+
+.composeLogo {
+  width: 180px;
+  color: var(--text-primary);
+  opacity: 0.9;
+}
+
+.composeLogo svg {
+  width: 100%;
+  height: auto;
+}
+
+.composeHeading {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-align: center;
+  letter-spacing: -0.3px;
+}
+
+.contextPills {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 20px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.pill svg {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* ── Skill picker ──────────────────────────────────────────────────────────── */
+
+.inputWrapper {
+  position: relative;
+  width: 100%;
+}
+
+.skillPicker {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  margin-bottom: 4px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  box-shadow: 0 -4px 16px var(--shadow-md);
+  overflow-y: auto;
+  max-height: 260px;
+  display: flex;
+  flex-direction: column;
+  z-index: 50;
+  animation: pickerSlideUp 0.15s ease;
+}
+
+@keyframes pickerSlideUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.skillPickerHeader {
+  padding: 6px 12px;
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color-light);
+  flex-shrink: 0;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  border-radius: 10px 10px 0 0;
+}
+
+.skillPickerItem {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 12px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border-color-light);
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: background 0.1s ease;
+  flex-shrink: 0;
+}
+
+.skillPickerItem:last-child {
+  border-bottom: none;
+}
+
+.skillPickerItem:hover,
+.skillPickerItemActive {
+  background: rgba(99, 102, 241, 0.06);
+}
+
+.skillPickerName {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.skillPickerItemActive .skillPickerName {
+  color: var(--accent-color);
+}
+
+.skillPickerDesc {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Shared input box ──────────────────────────────────────────────────────── */
+
+.inputBox {
+  width: 100%;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  padding: 12px 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-shadow: 0 2px 8px var(--shadow-sm);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.inputBox:focus-within {
+  border-color: var(--accent-color);
+  box-shadow: 0 2px 12px var(--shadow-md);
+}
+
+.textarea {
+  width: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  font-family: inherit;
+  font-size: 0.95rem;
+  color: var(--text-primary);
+  line-height: 1.5;
+  min-height: 24px;
+  max-height: 200px;
+}
+
+.textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.inputActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.modelSelect {
+  padding: 4px 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  cursor: pointer;
+  outline: none;
+}
+
+.sendBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent-color);
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.2s ease, opacity 0.2s ease;
+  flex-shrink: 0;
+}
+
+.sendBtn:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.sendBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.sendBtn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.stopBtn {
+  background: var(--error-color);
+}
+
+.stopBtn:hover:not(:disabled) {
+  background: var(--error-color);
+  opacity: 0.85;
+}
+
+/* ── Chat state ────────────────────────────────────────────────────────────── */
+
+.chat {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 24px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.chatInputBar {
+  padding: 0 24px 16px;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  padding-top: 12px;
+}
+
+/* ── Message rows ──────────────────────────────────────────────────────────── */
+
+.userRow {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.userBubble {
+  max-width: 70%;
+  padding: 10px 14px;
+  background: var(--accent-color);
+  color: #fff;
+  border-radius: 16px 16px 4px 16px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.agentRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.agentAvatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--accent-color);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.agentBubble {
+  max-width: 80%;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px 16px 16px 16px;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.toolMsg {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  padding: 0 4px;
+}
+
+.toolMsg svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+.systemMsg {
+  text-align: center;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  padding: 2px 0;
+}
+
+/* ── Typing indicator ──────────────────────────────────────────────────────── */
+
+.typing {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 12px 14px;
+}
+
+.typing span {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  animation: bounce 1.2s ease-in-out infinite;
+}
+
+.typing span:nth-child(2) { animation-delay: 0.2s; }
+.typing span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes bounce {
+  0%, 80%, 100% { transform: translateY(0); }
+  40%           { transform: translateY(-6px); }
+}
+
+/* ── Streaming cursor ──────────────────────────────────────────────────────── */
+
+.cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background: var(--text-primary);
+  vertical-align: text-bottom;
+  margin-left: 2px;
+  animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+  50% { opacity: 0; }
+}

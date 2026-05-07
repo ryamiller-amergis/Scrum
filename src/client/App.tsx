@@ -12,6 +12,8 @@ import { AppHeader } from './components/AppHeader';
 import { PlanningTabs } from './components/PlanningTabs';
 import { ChatAgentPanel } from './components/ChatAgentPanel';
 import { StartChatModal } from './components/StartChatModal';
+import { ProjectSelector } from './components/ProjectSelector';
+import { AgentHome } from './components/AgentHome';
 import { useAppShell } from './hooks/useAppShell';
 import { useChatThread } from './hooks/useChatThreads';
 import './App.css';
@@ -40,13 +42,21 @@ function App() {
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const { data: activeThread = null } = useChatThread(activeThreadId);
 
-  const currentView: 'calendar' | 'planning' | 'cloudcost' | 'backlog' = location.pathname.startsWith('/planning')
-    ? 'planning'
-    : location.pathname === '/cloud-cost'
-      ? 'cloudcost'
-      : location.pathname.startsWith('/backlog')
-        ? 'backlog'
-        : 'calendar';
+  type CurrentView = 'project-selector' | 'home' | 'calendar' | 'planning' | 'cloudcost' | 'backlog';
+  const currentView: CurrentView =
+    location.pathname === '/'
+      ? 'project-selector'
+      : location.pathname === '/home'
+        ? 'home'
+        : location.pathname === '/calendar'
+          ? 'calendar'
+          : location.pathname.startsWith('/planning')
+            ? 'planning'
+            : location.pathname === '/cloud-cost'
+              ? 'cloudcost'
+              : location.pathname.startsWith('/backlog')
+                ? 'backlog'
+                : 'calendar';
 
   const planningTab = (location.pathname.split('/')[2] as PlanningTab) || 'dev-stats';
 
@@ -67,8 +77,6 @@ function App() {
     handleLogout,
     selectedProject,
     selectedAreaPath,
-    availableProjects,
-    availableAreaPaths,
     changeProject,
     changeAreaPath,
     scheduledItems,
@@ -83,11 +91,26 @@ function App() {
   if (isAuthenticated === null) return <div>Loading...</div>;
   if (!isAuthenticated) return <Login />;
 
+  if (currentView === 'project-selector') {
+    return (
+      <ErrorBoundary FallbackComponent={ViewErrorFallback}>
+        <ProjectSelector
+          selectedProject={selectedProject}
+          onSelect={(project) => {
+            changeProject(project);
+            changeAreaPath(project);
+            navigate('/home');
+          }}
+        />
+      </ErrorBoundary>
+    );
+  }
+
   return (
     <ErrorBoundary FallbackComponent={ViewErrorFallback}>
       <DndProvider backend={HTML5Backend}>
         <div className="app">
-          {isLoading && (
+          {isLoading && currentView !== 'home' && (
             <div className="loading-overlay">
               <div className="loading-spinner-container">
                 <div className="spinner"></div>
@@ -104,21 +127,15 @@ function App() {
             </div>
           )}
           <AppHeader
-            currentView={currentView}
+            currentView={currentView as 'home' | 'calendar' | 'planning' | 'cloudcost' | 'backlog'}
             planningTab={planningTab}
-            availableProjects={availableProjects}
-            availableAreaPaths={availableAreaPaths}
-            selectedProject={selectedProject}
-            selectedAreaPath={selectedAreaPath}
-            isLoading={isLoading}
             theme={theme}
             hasUnreadChangelog={hasUnreadChangelog}
-            onNavigateCalendar={() => navigate('/')}
+            onNavigateHome={() => navigate('/home')}
+            onNavigateCalendar={() => navigate('/calendar')}
             onNavigatePlanning={() => navigate(`/planning/${planningTab}`)}
             onNavigateCloudCost={() => navigate('/cloud-cost')}
             onNavigateBacklog={() => navigate('/backlog')}
-            onChangeProject={changeProject}
-            onChangeAreaPath={changeAreaPath}
             onOpenChangelog={() => setShowChangelog(true)}
             onToggleTheme={toggleTheme}
             onLogout={handleLogout}
@@ -126,7 +143,11 @@ function App() {
           />
           {error && <div className="error-banner">{error}</div>}
 
-          {!isLoading && currentView === 'calendar' ? (
+          {currentView === 'home' ? (
+            <ErrorBoundary FallbackComponent={ViewErrorFallback}>
+              <AgentHome selectedProject={selectedProject} />
+            </ErrorBoundary>
+          ) : !isLoading && currentView === 'calendar' ? (
             <ErrorBoundary FallbackComponent={ViewErrorFallback}>
               <Suspense fallback={<ViewSkeleton />}>
                 <div className="calendar-view">
