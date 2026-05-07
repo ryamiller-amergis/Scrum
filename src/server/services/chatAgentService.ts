@@ -13,7 +13,11 @@ import type {
 
 function isAzureWwwroot(): boolean {
   const home = process.env.HOME;
-  return Boolean(home && process.cwd().startsWith(path.join(home, 'site', 'wwwroot')));
+  const cwd = process.cwd();
+  return (
+    cwd.startsWith('/home/site/wwwroot') ||
+    Boolean(home && cwd.startsWith(path.join(home, 'site', 'wwwroot')))
+  );
 }
 
 function resolveDataRoot(): string {
@@ -23,8 +27,8 @@ function resolveDataRoot(): string {
 
   // Azure App Service deploys app code to /home/site/wwwroot, which can be
   // read-only. /home/data is the writable file-storage location.
-  if (isAzureWwwroot() && process.env.HOME) {
-    return path.join(process.env.HOME, 'data', 'ai-pilot');
+  if (isAzureWwwroot()) {
+    return path.join('/home', 'data', 'ai-pilot');
   }
 
   return path.join(process.cwd(), 'data');
