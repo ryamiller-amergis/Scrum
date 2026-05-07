@@ -348,7 +348,33 @@ export function subscribeToThread(
   return () => state.subscribers.delete(callback);
 }
 
-const DEFAULT_MODEL = 'claude-opus-4-6';
+const DEFAULT_MODEL = 'composer-2';
+const SUPPORTED_MODELS = new Set(['composer-2', 'auto']);
+
+function resolveModelId(model?: string): string {
+  return model && SUPPORTED_MODELS.has(model) ? model : DEFAULT_MODEL;
+}
+
+function describeError(err: unknown): string {
+  if (err instanceof Error && err.message) return err.message;
+  if (typeof err === 'string') return err;
+  return 'Unknown error';
+}
+
+function logAgentError(threadId: string, err: unknown): void {
+  if (err instanceof Error) {
+    console.error(`[chat] Agent failed for thread ${threadId}:`, {
+      name: err.name,
+      message: err.message,
+      stack: err.stack,
+      cause: (err as any).cause,
+      retryable: (err as any).isRetryable,
+    });
+    return;
+  }
+
+  console.error(`[chat] Agent failed for thread ${threadId}:`, err);
+}
 
 export async function sendMessage(threadId: string, text: string, modelOverride?: string): Promise<void> {
   const state = threads.get(threadId);
@@ -360,8 +386,9 @@ export async function sendMessage(threadId: string, text: string, modelOverride?
 
   // If the caller wants a different model, dispose the current agent so it
   // will be recreated (or resumed) with the new model on this turn.
-  if (modelOverride && modelOverride !== state.thread.kickoff.model) {
-    state.thread.kickoff.model = modelOverride;
+  const resolvedModel = resolveModelId(modelOverride ?? state.thread.kickoff.model);
+  if (state.thread.kickoff.model !== resolvedModel) {
+    state.thread.kickoff.model = resolvedModel;
     if (state.agent) {
       await state.agent[Symbol.asyncDispose]().catch(() => {});
       state.agent = null;
@@ -399,7 +426,7 @@ export async function sendMessage(threadId: string, text: string, modelOverride?
       if (state.thread.cursorAgentId) {
         state.agent = await Agent.resume(state.thread.cursorAgentId, {
           apiKey,
-          model: { id: state.thread.kickoff.model ?? DEFAULT_MODEL },
+          model: { id: resolvedModel },
           local: { cwd: state.thread.workspaceDir },
           mcpServers: {
             'ado-skills': { url: mcpServerUrl },
@@ -408,7 +435,7 @@ export async function sendMessage(threadId: string, text: string, modelOverride?
       } else {
         state.agent = await Agent.create({
           apiKey,
-          model: { id: state.thread.kickoff.model ?? DEFAULT_MODEL },
+          model: { id: resolvedModel },
           local: { cwd: state.thread.workspaceDir },
           mcpServers: {
             'ado-skills': { url: mcpServerUrl },
@@ -474,19 +501,18 @@ export async function sendMessage(threadId: string, text: string, modelOverride?
     broadcast(state, { type: 'done', runId: state.thread.activeRunId });
     state.thread.activeRunId = undefined;
   } catch (err: any) {
+    logAgentError(threadId, err);
     if (err instanceof CursorAgentError) {
-      console.error(`[chat] Agent startup failed for thread ${threadId}:`, err.message);
       state.thread.status = 'error';
-      state.thread.lastError = err.message;
+      state.thread.lastError = describeError(err);
       // Startup failure — dispose and clear so next send creates a fresh agent
       if (state.agent) {
         await state.agent[Symbol.asyncDispose]().catch(() => {});
         state.agent = null;
       }
     } else {
-      console.error(`[chat] Unexpected error for thread ${threadId}:`, err.message);
       state.thread.status = 'error';
-      state.thread.lastError = err.message ?? 'Unexpected error';
+      state.thread.lastError = describeError(err);
     }
     broadcast(state, { type: 'error', error: state.thread.lastError ?? 'Unknown error' });
     broadcast(state, { type: 'done' });
