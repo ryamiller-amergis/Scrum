@@ -119,8 +119,10 @@ jobs:
               AZURE_COST_CLIENT_ID="${{ secrets.AZURE_COST_CLIENT_ID }}" \
               AZURE_COST_CLIENT_SECRET="${{ secrets.AZURE_COST_CLIENT_SECRET }}" \
               SESSION_SECRET="${{ secrets.SESSION_SECRET }}" \
+              CURSOR_API_KEY="${{ secrets.CURSOR_API_KEY }}" \
               PORT=8080 \
               POLL_INTERVAL=30 \
+              WEBSITES_ENABLE_APP_SERVICE_STORAGE=true \
               AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}" \
               AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}" \
               AWS_REGION="${{ secrets.AWS_REGION }}" \
