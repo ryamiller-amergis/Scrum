@@ -74,6 +74,7 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
   const [isSending, setIsSending] = useState(false);
   const [skillPickerOpen, setSkillPickerOpen] = useState(false);
   const [skillPickerIdx, setSkillPickerIdx] = useState(0);
+  const [selectedSkillPath, setSelectedSkillPath] = useState<string | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -164,16 +165,20 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
 
   const selectSkill = useCallback((skill: { name: string; path: string }) => {
     setInput(`Run skill: ${skill.name} (\`${skill.path}\`)`);
+    setSelectedSkillPath(skill.path);
     setSkillPickerOpen(false);
   }, []);
 
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
     setInput(val);
+    if (!selectedSkillPath || !val.includes(selectedSkillPath)) {
+      setSelectedSkillPath(null);
+    }
     const isSlash = /^\//.test(val);
     setSkillPickerOpen(isSlash);
     if (isSlash) setSkillPickerIdx(0);
-  }, []);
+  }, [selectedSkillPath]);
 
   const handleAttachmentChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     await addFiles(e.currentTarget.files);
@@ -202,11 +207,18 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
             project: selectedProject,
             repo: defaultRepo!.name,
             branch: defaultBranch,
+            skillPath: selectedSkillPath ?? undefined,
+            freeformContext: selectedSkillPath ? text : undefined,
             model,
           },
         });
         activeThreadId = result.threadId;
         setThreadId(activeThreadId);
+      }
+
+      if (selectedSkillPath && text.includes(selectedSkillPath)) {
+        clearAttachments();
+        return;
       }
 
       const response = await fetch(`/api/chat/threads/${activeThreadId}/messages`, {
@@ -227,7 +239,7 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
     } finally {
       setIsSending(false);
     }
-  }, [input, attachments, isRunning, isSending, threadId, defaultRepo, startChat, selectedProject, defaultBranch, model, clearAttachments]);
+  }, [input, attachments, isRunning, isSending, threadId, defaultRepo, startChat, selectedProject, defaultBranch, selectedSkillPath, model, clearAttachments]);
 
   const handleKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (skillPickerOpen && filteredSkills.length > 0) {
@@ -272,6 +284,7 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
     setInput('');
     setSkillPickerOpen(false);
     setSkillPickerIdx(0);
+    setSelectedSkillPath(null);
     clearAttachments();
   }, [isRunning, isSending, clearAttachments]);
 

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useState } from 'react';
+import { lazy, Suspense } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ErrorBoundary } from 'react-error-boundary';
 import { DndProvider } from 'react-dnd';
@@ -10,12 +10,9 @@ import { ViewErrorFallback } from './components/ViewErrorFallback';
 import { ViewSkeleton } from './components/ViewSkeleton';
 import { AppHeader } from './components/AppHeader';
 import { PlanningTabs } from './components/PlanningTabs';
-import { ChatAgentPanel } from './components/ChatAgentPanel';
 import { ProjectSelector } from './components/ProjectSelector';
 import { AgentHome } from './components/AgentHome';
 import { useAppShell } from './hooks/useAppShell';
-import { useChatThread, useSkillRepos, useStartChat } from './hooks/useChatThreads';
-import { DEFAULT_MODEL_ID } from './config/models';
 import './App.css';
 
 // Lazy-loaded views for code splitting
@@ -36,10 +33,6 @@ type PlanningTab = 'cycle-time' | 'dev-stats' | 'qa' | 'ai-analysis' | 'roadmap'
 function App() {
   const navigate = useNavigate();
   const location = useLocation();
-
-  const [chatOpen, setChatOpen] = useState(false);
-  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
-  const { data: activeThread = null } = useChatThread(activeThreadId);
 
   type CurrentView = 'project-selector' | 'home' | 'calendar' | 'planning' | 'cloudcost' | 'backlog';
   const currentView: CurrentView =
@@ -86,32 +79,6 @@ function App() {
     handleCancelDueDateChange,
     handleFieldUpdate,
   } = useAppShell();
-
-  const { data: skillRepos = [], isLoading: isLoadingSkillRepos } = useSkillRepos(selectedProject || null);
-  const startChat = useStartChat();
-  const defaultAgentRepo = skillRepos.find(
-    (repo) => repo.name.toLowerCase() === selectedProject.toLowerCase(),
-  ) ?? skillRepos[0];
-
-  const handleStartPanelChat = useCallback(async () => {
-    setChatOpen(true);
-    if (!defaultAgentRepo || startChat.isPending) return;
-
-    setActiveThreadId(null);
-    try {
-      const result = await startChat.mutateAsync({
-        kickoff: {
-          project: selectedProject,
-          repo: defaultAgentRepo.name,
-          branch: defaultAgentRepo.defaultBranch ?? 'main',
-          model: DEFAULT_MODEL_ID,
-        },
-      });
-      setActiveThreadId(result.threadId);
-    } catch {
-      // Error is shown in the slide-out panel.
-    }
-  }, [defaultAgentRepo, selectedProject, startChat]);
 
   if (isAuthenticated === null) return <div>Loading...</div>;
   if (!isAuthenticated) return <Login />;
@@ -164,7 +131,6 @@ function App() {
             onOpenChangelog={() => setShowChangelog(true)}
             onToggleTheme={toggleTheme}
             onLogout={handleLogout}
-            onOpenAgentChat={() => setChatOpen(true)}
           />
           {error && <div className="error-banner">{error}</div>}
 
@@ -307,15 +273,6 @@ function App() {
           onMarkAsRead={handleMarkChangelogAsRead}
         />
 
-        <ChatAgentPanel
-          thread={activeThread}
-          isOpen={chatOpen}
-          onClose={() => setChatOpen(false)}
-          onNewChat={handleStartPanelChat}
-          canStartNewChat={!!defaultAgentRepo && !isLoadingSkillRepos && !startChat.isPending}
-          isStartingNewChat={startChat.isPending}
-          newChatError={startChat.error?.message}
-        />
       </DndProvider>
     </ErrorBoundary>
   );
