@@ -108,6 +108,7 @@ jobs:
               ADO_PAT="${{ secrets.ADO_PAT }}" \
               ADO_PROJECT="${{ secrets.ADO_PROJECT }}" \
               ADO_AREA_PATH="${{ secrets.ADO_PROJECT }}" \
+              ADO_ALLOWED_PROJECTS="${{ vars.ADO_ALLOWED_PROJECTS }}" \
               VITE_ADO_ORG="amergis" \
               VITE_ADO_PROJECT="${{ secrets.ADO_PROJECT }}" \
               VITE_TEAMS="${{ vars.VITE_TEAMS }}" \
