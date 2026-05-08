@@ -336,9 +336,13 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, onSelectItem }) =
   const [showPrFeedbackInfo, setShowPrFeedbackInfo] = useState(false);
   const [showPrResolutionInfo, setShowPrResolutionInfo] = useState(false);
   const [showAiAdoptionInfo, setShowAiAdoptionInfo] = useState(false);
+  const [showPrCycleInfo, setShowPrCycleInfo] = useState(false);
+  const [showAiCodeTagInfo, setShowAiCodeTagInfo] = useState(false);
 
   // Collapse state for sections — all default to collapsed for better visibility
   const [isAiAdoptionCollapsed, setIsAiAdoptionCollapsed] = useState(true);
+  const [isPrCycleCollapsed, setIsPrCycleCollapsed] = useState(true);
+  const [isAiCodeTagCollapsed, setIsAiCodeTagCollapsed] = useState(true);
   const [isChangesCollapsed, setIsChangesCollapsed] = useState(true);
   const [isHitRateCollapsed, setIsHitRateCollapsed] = useState(true);
   const [isPrTimeCollapsed, setIsPrTimeCollapsed] = useState(true);
@@ -1319,6 +1323,129 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, onSelectItem }) =
       }));
   }, [filteredKickoffStats, filteredPrResolutionStats]);
 
+  /** Weekly PR cycle-time trend: opened PRs by creation week; completed PRs by closed week. */
+  const prCycleTimeChartData = useMemo(() => {
+    type WeekBucket = {
+      weekKey: string;
+      openedTotalDays: number;
+      openedCount: number;
+      completedTotalDays: number;
+      completedCount: number;
+    };
+    const bucket = new Map<string, WeekBucket>();
+    const getBucket = (weekKey: string) => {
+      const cur = bucket.get(weekKey) ?? {
+        weekKey,
+        openedTotalDays: 0,
+        openedCount: 0,
+        completedTotalDays: 0,
+        completedCount: 0,
+      };
+      bucket.set(weekKey, cur);
+      return cur;
+    };
+
+    for (const dev of filteredPrTimeStats) {
+      for (const item of dev.workItemDetails) {
+        const openedDay = parseStatDay(item.enteredPullRequestDate);
+        if (openedDay) {
+          const openedBucket = getBucket(weekStartMondayKey(openedDay));
+          openedBucket.openedTotalDays += item.timeInPullRequestDays;
+          openedBucket.openedCount += 1;
+        }
+
+        if (!item.isActive) {
+          const closedDay = parseStatDay(item.exitedPullRequestDate);
+          if (closedDay) {
+            const closedBucket = getBucket(weekStartMondayKey(closedDay));
+            closedBucket.completedTotalDays += item.timeInPullRequestDays;
+            closedBucket.completedCount += 1;
+          }
+        }
+      }
+    }
+
+    return Array.from(bucket.values())
+      .sort((a, b) => a.weekKey.localeCompare(b.weekKey))
+      .map(row => ({
+        weekKey: row.weekKey,
+        period: formatWeekLabel(row.weekKey),
+        avgCycleTimeDays: row.openedCount > 0 ? Math.round((row.openedTotalDays / row.openedCount) * 10) / 10 : null,
+        completedAvgCycleTimeDays: row.completedCount > 0 ? Math.round((row.completedTotalDays / row.completedCount) * 10) / 10 : null,
+        prCount: row.openedCount,
+        completedPrCount: row.completedCount,
+      }));
+  }, [filteredPrTimeStats]);
+
+  /** Weekly work item counts split by whether the current item has the ai-code tag. */
+  const aiCodeTagChartData = useMemo(() => {
+    const selectedTeamDef = teams.find(t => t.id === selectedTeam);
+    const fromDate = timeFrame === 'custom'
+      ? customFromDate
+      : (() => {
+        const from = new Date();
+        from.setDate(from.getDate() - parseInt(timeFrame));
+        return from.toISOString().split('T')[0];
+      })();
+    const toDate = timeFrame === 'custom'
+      ? customToDate
+      : new Date().toISOString().split('T')[0];
+    const bucket = new Map<string, { weekKey: string; aiCodeCount: number; nonAiCodeCount: number }>();
+
+    const hasAiCodeTag = (tags?: string) => (tags ?? '')
+      .split(';')
+      .map(tag => tag.trim().toLowerCase())
+      .includes('ai-code');
+    const inProgressOrLaterStates = new Set([
+      'active',
+      'committed',
+      'in progress',
+      'in pull request',
+      'ready for test',
+      'in test',
+      'uat - ready for test',
+      'uat ready for test',
+      'uat-ready for test',
+      'uat - test done',
+      'ready for release',
+      'done',
+      'closed',
+      'resolved',
+    ]);
+
+    for (const item of workItems) {
+      if (!inProgressOrLaterStates.has(item.state.toLowerCase())) continue;
+      if (selectedDeveloper !== 'all' && item.assignedTo !== selectedDeveloper) continue;
+      if (activeMemberSet && item.assignedTo && !activeMemberSet.has(item.assignedTo)) continue;
+      if (selectedTeamDef?.areaPath && !item.areaPath.startsWith(selectedTeamDef.areaPath)) continue;
+
+      const dateString = item.changedDate || item.createdDate;
+      const day = parseStatDay(dateString);
+      if (!day) continue;
+      const dayKey = dateString.slice(0, 10);
+      if (fromDate && dayKey < fromDate) continue;
+      if (toDate && dayKey > toDate) continue;
+
+      const weekKey = weekStartMondayKey(day);
+      const cur = bucket.get(weekKey) ?? { weekKey, aiCodeCount: 0, nonAiCodeCount: 0 };
+      if (hasAiCodeTag(item.tags)) {
+        cur.aiCodeCount += 1;
+      } else {
+        cur.nonAiCodeCount += 1;
+      }
+      bucket.set(weekKey, cur);
+    }
+
+    return Array.from(bucket.values())
+      .sort((a, b) => a.weekKey.localeCompare(b.weekKey))
+      .map(row => ({
+        weekKey: row.weekKey,
+        period: formatWeekLabel(row.weekKey),
+        aiCodeCount: row.aiCodeCount,
+        nonAiCodeCount: row.nonAiCodeCount,
+      }));
+  }, [activeMemberSet, customFromDate, customToDate, selectedDeveloper, selectedTeam, teams, timeFrame, workItems]);
+
   // Build a minimal WorkItem stub from stats data when the item isn't in the
   // currently loaded workItems array (e.g. different date range / area path).
   // The DetailsPanel uses workItem.id for its own API calls, so this is enough
@@ -1472,7 +1599,7 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, onSelectItem }) =
           >
             {isAiAdoptionCollapsed ? '▶' : '▼'}
           </button>
-          AI Adoption Trends
+          AI Skill Usage Trends
           <div
             className="info-icon"
             onClick={() => setShowAiAdoptionInfo(!showAiAdoptionInfo)}
@@ -1510,7 +1637,7 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, onSelectItem }) =
               Each point is a calendar week (Monday–Sunday). Lines show event counts in that week after filters are applied — not adoption %.
             </p>
             <p>
-              <strong>Note:</strong> Load <em>Design Doc Kickoff</em> and <em>PR comment resolutions</em> below first; this chart reads from that loaded data.
+              <strong>Note:</strong> Use the load button here to fetch the underlying kickoff and PR resolution data directly. Detailed grids live in Other Metrics.
             </p>
           </div>
         )}
@@ -1526,15 +1653,40 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, onSelectItem }) =
               {kickoffLoading || prResolutionLoading
                 ? 'Loading...'
                 : kickoffHasLoaded || prResolutionHasLoaded
-                  ? 'Refresh AI Trends'
-                  : 'Load AI Trends'}
+                  ? 'Refresh AI Skill Trends'
+                  : 'Load AI Skill Trends'}
             </button>
           </div>
         )}
 
-        {!isAiAdoptionCollapsed && (!kickoffHasLoaded || !prResolutionHasLoaded) && (
+        {!isAiAdoptionCollapsed && (kickoffLoading || prResolutionLoading || showKickoffNotification || showPrResolutionNotification) && (
+          <div className={`background-notification ${kickoffLoading || prResolutionLoading ? 'loading' : kickoffError || prResolutionError ? 'error' : 'success'}`}>
+            {(kickoffLoading || prResolutionLoading) && <div className="notification-spinner"></div>}
+            <span className="notification-text">
+              {kickoffLoading || prResolutionLoading
+                ? 'Loading AI skill trend data in background...'
+                : kickoffError || prResolutionError
+                  ? `Error: ${kickoffError ?? prResolutionError}`
+                  : 'AI skill trend data loaded successfully!'}
+            </span>
+            {!kickoffLoading && !prResolutionLoading && (
+              <button
+                className="notification-close"
+                onClick={() => {
+                  setShowKickoffNotification(false);
+                  setShowPrResolutionNotification(false);
+                }}
+                aria-label="Close notification"
+              >
+                ×
+              </button>
+            )}
+          </div>
+        )}
+
+        {!isAiAdoptionCollapsed && (!kickoffHasLoaded || !prResolutionHasLoaded) && !kickoffLoading && !prResolutionLoading && (
           <p className="placeholder-text">
-            Click <strong>Load AI Trends</strong> to load both <strong>Design Doc Kickoff</strong> and <strong>PR comment resolutions</strong> data. Current: Design Doc Kickoff{' '}
+            Click <strong>Load AI Skill Trends</strong> to load both <strong>Design Doc Kickoff</strong> and <strong>PR comment resolutions</strong> data. Current: Design Doc Kickoff{' '}
             {kickoffHasLoaded ? 'loaded' : 'not loaded'}, PR resolutions {prResolutionHasLoaded ? 'loaded' : 'not loaded'}.
           </p>
         )}
@@ -1544,7 +1696,7 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, onSelectItem }) =
         )}
 
         {!isAiAdoptionCollapsed && kickoffHasLoaded && prResolutionHasLoaded && aiAdoptionChartData.length > 0 && (
-          <div className="ai-adoption-chart-container" aria-label="AI adoption weekly line chart">
+          <div className="ai-adoption-chart-container" aria-label="AI skill usage weekly line chart">
             <ResponsiveContainer width="100%" height={320}>
               <LineChart data={aiAdoptionChartData} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
                 <CartesianGrid stroke="var(--border-color)" strokeDasharray="3 3" />
@@ -1569,14 +1721,282 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, onSelectItem }) =
                 />
                 <Legend wrapperStyle={{ color: 'var(--text-primary)' }} />
                 <Line type="monotone" dataKey="designDocCount" name="Design doc kickoffs" stroke="var(--accent-color)" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-                <Line type="monotone" dataKey="prResolutionCount" name="PR resolutions" stroke="var(--success-color)" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                <Line type="monotone" dataKey="prResolutionCount" name="PR resolutions" stroke="var(--text-secondary)" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
         )}
       </div>
       )}
-      
+
+      {activeStatsTab === 'ai' && (
+      <div className="stats-section pr-cycle-section">
+        <h3>
+          <button
+            type="button"
+            className="collapse-button"
+            onClick={() => setIsPrCycleCollapsed(!isPrCycleCollapsed)}
+            aria-label={isPrCycleCollapsed ? 'Expand section' : 'Collapse section'}
+          >
+            {isPrCycleCollapsed ? '▶' : '▼'}
+          </button>
+          PR Cycle Time Trend
+          <div
+            className="info-icon"
+            onClick={() => setShowPrCycleInfo(!showPrCycleInfo)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setShowPrCycleInfo(!showPrCycleInfo);
+              }
+            }}
+            role="button"
+            tabIndex={0}
+            aria-label="Show information about this section"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z" />
+              <path d="m8.93 6.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.194.897.105 1.319.808 1.319.545 0 1.178-.252 1.465-.598l.088-.416c-.2.176-.492.246-.686.246-.275 0-.375-.193-.304-.533L8.93 6.588zM9 4.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0z" />
+            </svg>
+          </div>
+        </h3>
+
+        {showPrCycleInfo && (
+          <div className="info-tooltip">
+            <button type="button" className="info-close" onClick={() => setShowPrCycleInfo(false)} aria-label="Close information">
+              ×
+            </button>
+            <p>
+              <strong>What this section shows:</strong>
+              <br />
+              Weekly average time PRs spent open (from creation to merge) for the developers and time frame selected. As the team uses AI more, you should see this trend decrease.
+            </p>
+            <p>
+              <strong>How to interpret:</strong>
+              <br />
+              Each point is a calendar week (Monday–Sunday). <strong>All PRs avg (days)</strong> is grouped by the week the PR opened and includes active PRs measured to today.{' '}
+              <strong>Completed PRs avg (days)</strong> and <strong>Completed PRs merged</strong> are grouped by the week the PR closed, so the dashed line shows actual weekly throughput.
+            </p>
+            <p>
+              <strong>Note:</strong> This chart uses the same underlying PR Time data as the Pull Request Time section. Use the load button here to fetch it directly.
+            </p>
+          </div>
+        )}
+
+        {!isPrCycleCollapsed && (
+          <div className="filter-actions">
+            <button
+              type="button"
+              onClick={fetchPullRequestTimeStats}
+              disabled={prTimeLoading || (timeFrame === 'custom' && (!customFromDate || !customToDate))}
+              className="load-stats-button"
+            >
+              {prTimeLoading ? 'Loading...' : prTimeHasLoaded ? 'Refresh PR Cycle Trend' : 'Load PR Cycle Trend'}
+            </button>
+          </div>
+        )}
+
+        {!isPrCycleCollapsed && (showPrTimeNotification || prTimeLoading) && (
+          <div className={`background-notification ${prTimeLoading ? 'loading' : prTimeError ? 'error' : 'success'}`}>
+            {prTimeLoading && <div className="notification-spinner"></div>}
+            <span className="notification-text">{prTimeLoading ? 'Loading pull request time statistics in background...' : prTimeNotificationMessage}</span>
+            {!prTimeLoading && (
+              <button
+                className="notification-close"
+                onClick={() => setShowPrTimeNotification(false)}
+                aria-label="Close notification"
+              >
+                ×
+              </button>
+            )}
+          </div>
+        )}
+
+        {!isPrCycleCollapsed && !prTimeHasLoaded && !prTimeLoading && (
+          <p className="placeholder-text">
+            Click <strong>Load PR Cycle Trend</strong> to fetch PR cycle-time data for the selected filters.
+          </p>
+        )}
+
+        {!isPrCycleCollapsed && prTimeHasLoaded && prCycleTimeChartData.length === 0 && (
+          <p className="placeholder-text">No PR cycle-time data found for the selected filters.</p>
+        )}
+
+        {!isPrCycleCollapsed && prTimeHasLoaded && prCycleTimeChartData.length > 0 && (
+          <div className="pr-cycle-chart-container" aria-label="PR cycle time weekly trend line chart">
+            <ResponsiveContainer width="100%" height={320}>
+              <LineChart data={prCycleTimeChartData} margin={{ top: 8, right: 48, left: 0, bottom: 8 }}>
+                <CartesianGrid stroke="var(--border-color)" strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="weekKey"
+                  tickFormatter={wk => formatWeekLabel(wk)}
+                  tick={{ fill: 'var(--text-secondary)', fontSize: 11 }}
+                  interval="preserveStartEnd"
+                  angle={-30}
+                  textAnchor="end"
+                  height={56}
+                />
+                {/* Left axis — cycle time in days */}
+                <YAxis
+                  yAxisId="days"
+                  allowDecimals={true}
+                  tick={{ fill: 'var(--text-secondary)', fontSize: 11 }}
+                  width={42}
+                  tickFormatter={v => `${v}d`}
+                />
+                {/* Right axis — PR count */}
+                <YAxis
+                  yAxisId="count"
+                  orientation="right"
+                  allowDecimals={false}
+                  tick={{ fill: 'var(--text-secondary)', fontSize: 11 }}
+                  width={36}
+                  tickFormatter={v => String(v)}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'var(--card-bg)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: 8,
+                    color: 'var(--text-primary)',
+                  }}
+                  labelFormatter={wk => `Week of ${formatWeekLabel(String(wk))}`}
+                  formatter={(value, name) => {
+                    if (name === 'Completed PRs merged') return [value != null ? `${value} PRs` : '—', name];
+                    return [value != null ? `${value} days` : '—', name];
+                  }}
+                />
+                <Legend wrapperStyle={{ color: 'var(--text-primary)' }} />
+                <Line
+                  yAxisId="days"
+                  type="monotone"
+                  dataKey="avgCycleTimeDays"
+                  name="All PRs avg (days)"
+                  stroke="var(--accent-color)"
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                  activeDot={{ r: 5 }}
+                  connectNulls
+                />
+                <Line
+                  yAxisId="days"
+                  type="monotone"
+                  dataKey="completedAvgCycleTimeDays"
+                  name="Completed PRs avg (days)"
+                  stroke="var(--text-secondary)"
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                  activeDot={{ r: 5 }}
+                  connectNulls
+                />
+                <Line
+                  yAxisId="count"
+                  type="monotone"
+                  dataKey="completedPrCount"
+                  name="Completed PRs merged"
+                  stroke="var(--error-color)"
+                  strokeWidth={2}
+                  strokeDasharray="5 3"
+                  dot={{ r: 3 }}
+                  activeDot={{ r: 5 }}
+                  connectNulls
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </div>
+      )}
+
+      {activeStatsTab === 'ai' && (
+      <div className="stats-section ai-code-tag-section">
+        <h3>
+          <button
+            type="button"
+            className="collapse-button"
+            onClick={() => setIsAiCodeTagCollapsed(!isAiCodeTagCollapsed)}
+            aria-label={isAiCodeTagCollapsed ? 'Expand section' : 'Collapse section'}
+          >
+            {isAiCodeTagCollapsed ? '▶' : '▼'}
+          </button>
+          AI Code Tag Trend
+          <div
+            className="info-icon"
+            onClick={() => setShowAiCodeTagInfo(!showAiCodeTagInfo)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setShowAiCodeTagInfo(!showAiCodeTagInfo);
+              }
+            }}
+            role="button"
+            tabIndex={0}
+            aria-label="Show information about this section"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z" />
+              <path d="m8.93 6.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.194.897.105 1.319.808 1.319.545 0 1.178-.252 1.465-.598l.088-.416c-.2.176-.492.246-.686.246-.275 0-.375-.193-.304-.533L8.93 6.588zM9 4.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0z" />
+            </svg>
+          </div>
+        </h3>
+
+        {showAiCodeTagInfo && (
+          <div className="info-tooltip">
+            <button type="button" className="info-close" onClick={() => setShowAiCodeTagInfo(false)} aria-label="Close information">
+              ×
+            </button>
+            <p>
+              <strong>What this section shows:</strong>
+              <br />
+              Weekly counts for work items that have reached an in-progress-or-later state, split by whether the current work item has the <code>ai-code</code> tag.
+            </p>
+            <p>
+              <strong>How to interpret:</strong>
+              <br />
+              Each point is grouped by the work item's latest changed date. As AI-assisted coding becomes more common, the <strong>ai-code tagged</strong> line should trend up while <strong>without ai-code</strong> trends down.
+            </p>
+          </div>
+        )}
+
+        {!isAiCodeTagCollapsed && aiCodeTagChartData.length === 0 && (
+          <p className="placeholder-text">No in-progress-or-later work items found for the selected filters and time frame.</p>
+        )}
+
+        {!isAiCodeTagCollapsed && aiCodeTagChartData.length > 0 && (
+          <div className="ai-code-tag-chart-container" aria-label="AI code tag weekly trend line chart">
+            <ResponsiveContainer width="100%" height={320}>
+              <LineChart data={aiCodeTagChartData} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
+                <CartesianGrid stroke="var(--border-color)" strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="weekKey"
+                  tickFormatter={wk => formatWeekLabel(wk)}
+                  tick={{ fill: 'var(--text-secondary)', fontSize: 11 }}
+                  interval="preserveStartEnd"
+                  angle={-30}
+                  textAnchor="end"
+                  height={56}
+                />
+                <YAxis allowDecimals={false} tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} width={36} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'var(--card-bg)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: 8,
+                    color: 'var(--text-primary)',
+                  }}
+                  labelFormatter={wk => `Week of ${formatWeekLabel(String(wk))}`}
+                  formatter={(value, name) => [value != null ? `${value} work items` : '—', name]}
+                />
+                <Legend wrapperStyle={{ color: 'var(--text-primary)' }} />
+                <Line type="monotone" dataKey="aiCodeCount" name="ai-code tagged" stroke="var(--accent-color)" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                <Line type="monotone" dataKey="nonAiCodeCount" name="without ai-code" stroke="var(--text-secondary)" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </div>
+      )}
+
       {activeStatsTab === 'other' && (
       <div className="stats-section">
         <h3>          <button 
@@ -2318,7 +2738,7 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, onSelectItem }) =
       )}
 
       {/* Design Doc Kickoff Usage Section */}
-      {activeStatsTab === 'ai' && (
+      {activeStatsTab === 'other' && (
       <div className="stats-section">
         <h3>
           <button
@@ -2769,7 +3189,7 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, onSelectItem }) =
       )}
 
       {/* PR resolution metrics (agent-evals) */}
-      {activeStatsTab === 'ai' && (
+      {activeStatsTab === 'other' && (
       <div className="stats-section">
         <h3>
           <button

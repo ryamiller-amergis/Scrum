@@ -1352,3 +1352,43 @@
 .ai-adoption-chart-container .recharts-tooltip-label {
   color: var(--text-primary);
 }
+
+/* PR Cycle Time Trend (Recharts) */
+.pr-cycle-section .pr-cycle-chart-container {
+  width: 100%;
+  min-height: 320px;
+  margin-top: 8px;
+  padding: 4px 0 12px;
+}
+
+.pr-cycle-chart-container .recharts-default-legend {
+  color: var(--text-primary);
+}
+
+.pr-cycle-chart-container .recharts-legend-item-text {
+  color: var(--text-primary);
+}
+
+.pr-cycle-chart-container .recharts-tooltip-label {
+  color: var(--text-primary);
+}
+
+/* AI Code Tag Trend (Recharts) */
+.ai-code-tag-section .ai-code-tag-chart-container {
+  width: 100%;
+  min-height: 320px;
+  margin-top: 8px;
+  padding: 4px 0 12px;
+}
+
+.ai-code-tag-chart-container .recharts-default-legend {
+  color: var(--text-primary);
+}
+
+.ai-code-tag-chart-container .recharts-legend-item-text {
+  color: var(--text-primary);
+}
+
+.ai-code-tag-chart-container .recharts-tooltip-label {
+  color: var(--text-primary);
+}
