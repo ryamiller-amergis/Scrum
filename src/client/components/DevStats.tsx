@@ -1,5 +1,6 @@
 import { WorkItem, DeveloperDueDateStats, DueDateHitRateStats, PullRequestTimeStats, QABugStats, InProgressTimeStats, DesignDocKickoffStats, PullRequestFeedbackStats, PrResolutionMetricsStats } from '../types/workitem';
 import './DevStats.css';
+import { AiCapabilityLadderSection } from './AiCapabilityLadderSection';
 import { useState, useMemo, useEffect } from 'react';
 import {
   ResponsiveContainer,
@@ -1586,6 +1587,22 @@ export const DevStats: React.FC<DevStatsProps> = ({ workItems, onSelectItem }) =
         >
           Other Metrics
         </button>
+      </div>
+
+      <div style={{ display: activeStatsTab === 'ai' ? '' : 'none' }}>
+        <AiCapabilityLadderSection
+          fromDate={
+            timeFrame === 'custom' && customFromDate
+              ? customFromDate
+              : (() => { const d = new Date(); d.setDate(d.getDate() - parseInt(timeFrame || '30', 10)); return d.toISOString().split('T')[0]!; })()
+          }
+          toDate={
+            timeFrame === 'custom' && customToDate
+              ? customToDate
+              : new Date().toISOString().split('T')[0]!
+          }
+          areaPath={teams.find(t => t.id === selectedTeam)?.areaPath || undefined}
+        />
       </div>
 
       {activeStatsTab === 'ai' && (

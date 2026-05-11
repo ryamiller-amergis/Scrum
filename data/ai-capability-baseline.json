@@ -1,0 +1,12 @@
+{
+  "_comment": "Pre-AI baseline for the AI Capability Ladder. Edit these values to reflect your team's metrics before AI adoption began.",
+  "capturedAt": "",
+  "prCycleTimeDays": null,
+  "leadTimeDays": null,
+  "defectRatePerPbi": null,
+  "deploysPerMonth": null,
+  "trainingCompletionByDeveloper": {},
+  "identifiedUseCases": [],
+  "skillContributions": [],
+  "crossTeamDemoEvidence": []
+}

@@ -134,7 +134,7 @@ function App() {
     <ErrorBoundary FallbackComponent={ViewErrorFallback}>
       <DndProvider backend={HTML5Backend}>
         <div className="app">
-          {isLoading && currentView !== 'home' && (
+          {isLoading && currentView === 'calendar' && (
             <div className="loading-overlay">
               <div className="loading-spinner-container">
                 <div className="spinner"></div>
@@ -171,55 +171,57 @@ function App() {
             <ErrorBoundary FallbackComponent={ViewErrorFallback}>
               <AgentHome selectedProject={selectedProject} />
             </ErrorBoundary>
-          ) : !isLoading && currentView === 'calendar' ? (
+          ) : currentView === 'calendar' ? (
             <ErrorBoundary FallbackComponent={ViewErrorFallback}>
               <Suspense fallback={<ViewSkeleton />}>
-                <div className="calendar-view">
-                  <UnscheduledList
-                    workItems={unscheduledItems}
-                    onSelectItem={setSelectedItem}
-                    onUpdateDueDate={(id, dueDate) => {
-                      setSelectedItem(null);
-                      handleDueDateChange(id, dueDate);
-                    }}
-                  />
-                  <ScrumCalendar
-                    workItems={scheduledItems}
-                    unscheduledItems={unscheduledItems}
-                    onUpdateDueDate={(id, dueDate) => {
-                      setSelectedItem(null);
-                      handleDueDateChange(id, dueDate);
-                    }}
-                    onUpdateField={handleFieldUpdate}
-                    onSelectItem={setSelectedItem}
-                  />
-                  {selectedItem && (
-                    <DetailsPanel
-                      workItem={selectedItem}
-                      onClose={() => setSelectedItem(null)}
-                      onUpdateDueDate={handleDueDateChange}
-                      allWorkItems={workItems}
+                {!isLoading && (
+                  <div className="calendar-view">
+                    <UnscheduledList
+                      workItems={unscheduledItems}
+                      onSelectItem={setSelectedItem}
+                      onUpdateDueDate={(id, dueDate) => {
+                        setSelectedItem(null);
+                        handleDueDateChange(id, dueDate);
+                      }}
+                    />
+                    <ScrumCalendar
+                      workItems={scheduledItems}
+                      unscheduledItems={unscheduledItems}
+                      onUpdateDueDate={(id, dueDate) => {
+                        setSelectedItem(null);
+                        handleDueDateChange(id, dueDate);
+                      }}
                       onUpdateField={handleFieldUpdate}
-                      isSaving={isSaving}
-                      project={selectedProject}
-                      areaPath={selectedAreaPath}
                       onSelectItem={setSelectedItem}
                     />
-                  )}
-                  {pendingDueDateChange && (
-                    <DueDateReasonModal
-                      workItemId={pendingDueDateChange.workItemId}
-                      workItemTitle={pendingDueDateChange.workItemTitle}
-                      oldDueDate={pendingDueDateChange.oldDueDate}
-                      newDueDate={pendingDueDateChange.newDueDate}
-                      onConfirm={handleConfirmDueDateChange}
-                      onCancel={handleCancelDueDateChange}
-                    />
-                  )}
-                </div>
+                    {selectedItem && (
+                      <DetailsPanel
+                        workItem={selectedItem}
+                        onClose={() => setSelectedItem(null)}
+                        onUpdateDueDate={handleDueDateChange}
+                        allWorkItems={workItems}
+                        onUpdateField={handleFieldUpdate}
+                        isSaving={isSaving}
+                        project={selectedProject}
+                        areaPath={selectedAreaPath}
+                        onSelectItem={setSelectedItem}
+                      />
+                    )}
+                    {pendingDueDateChange && (
+                      <DueDateReasonModal
+                        workItemId={pendingDueDateChange.workItemId}
+                        workItemTitle={pendingDueDateChange.workItemTitle}
+                        oldDueDate={pendingDueDateChange.oldDueDate}
+                        newDueDate={pendingDueDateChange.newDueDate}
+                        onConfirm={handleConfirmDueDateChange}
+                        onCancel={handleCancelDueDateChange}
+                      />
+                    )}
+                  </div>
+                )}
               </Suspense>
             </ErrorBoundary>
-          ) : !isLoading && currentView === 'cloudcost' ? (
+          ) : currentView === 'cloudcost' ? (
             <ErrorBoundary FallbackComponent={ViewErrorFallback}>
               <Suspense fallback={<ViewSkeleton />}>
                 <div className="cloudcost-view">
@@ -227,7 +229,7 @@ function App() {
                 </div>
               </Suspense>
             </ErrorBoundary>
-          ) : !isLoading && currentView === 'backlog' ? (
+          ) : currentView === 'backlog' ? (
             <ErrorBoundary FallbackComponent={ViewErrorFallback}>
               <Suspense fallback={<ViewSkeleton />}>
                 <div className="backlog-view">
@@ -235,7 +237,7 @@ function App() {
                 </div>
               </Suspense>
             </ErrorBoundary>
-          ) : !isLoading && (
+          ) : currentView === 'planning' ? (
             <ErrorBoundary FallbackComponent={ViewErrorFallback}>
               <div className="planning-view">
                 <PlanningTabs
@@ -298,7 +300,7 @@ function App() {
                 )}
               </div>
             </ErrorBoundary>
-          )}
+          ) : null}
         </div>
         <Changelog
           isOpen={showChangelog}

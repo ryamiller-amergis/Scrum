@@ -1,6 +1,7 @@
 import * as azdev from 'azure-devops-node-api';
 import { WorkItemExpand } from 'azure-devops-node-api/interfaces/WorkItemTrackingInterfaces';
 import { WorkItem, CycleTimeData, DueDateChange, DeveloperDueDateStats, DueDateHitRateStats, Release, ReleaseMetrics, InProgressTimeStats, QACycleTimeStats, UATCycleTimeStats, UATSittingItem, AIWorkItemMetric, AIWorkItemHealthSummary, DesignDocKickoffStats } from '../types/workitem';
+import type { AiCodeWorkItemAdoptionSummary } from '../types/aiCapabilityLadder';
 import { retryWithBackoff } from '../utils/retry';
 
 export class AzureDevOpsService {
@@ -4086,6 +4087,95 @@ export class AzureDevOpsService {
       console.error('Error in getAIWorkItemHealthMetrics:', error);
       return empty;
     }
+  }
+
+  async getAiCodeWorkItemAdoptionStats(
+    from: string,
+    to: string,
+    teamMembers: string[] = [],
+  ): Promise<AiCodeWorkItemAdoptionSummary> {
+    return retryWithBackoff(async () => {
+      const witApi = await this.connection.getWorkItemTrackingApi();
+
+      // Population: PBI/TBI/Bug that newly entered an In Progress state during the window.
+      // ActivatedDate captures the first time a work item was moved to Active/In Progress/Committed,
+      // which correctly limits the denominator to items where development actually started.
+      let wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${this.project}' AND ([System.WorkItemType] = 'Product Backlog Item' OR [System.WorkItemType] = 'Technical Backlog Item' OR [System.WorkItemType] = 'Bug')`;
+      if (this.areaPath) {
+        wiql += ` AND [System.AreaPath] UNDER '${this.areaPath}'`;
+      }
+      wiql += ` AND [System.State] IN ('In Progress', 'Active', 'Committed', 'Done', 'Closed', 'Resolved')`;
+      wiql += ` AND [Microsoft.VSTS.Common.ActivatedDate] >= '${from}' AND [Microsoft.VSTS.Common.ActivatedDate] <= '${to}' ORDER BY [Microsoft.VSTS.Common.ActivatedDate] DESC`;
+
+      const queryResult = await witApi.queryByWiql({ query: wiql }, { project: this.project });
+      const ids = (queryResult.workItems ?? []).map(wi => wi.id!).filter(Boolean);
+
+      const memberSet = new Set(teamMembers.map(m => m.toLowerCase().trim()));
+      const hasTeamFilter = memberSet.size > 0;
+
+      const hasAiCodeTag = (tags: unknown): boolean =>
+        String(tags ?? '').split(';').map(t => t.trim().toLowerCase()).includes('ai-code');
+
+      const identityDisplayName = (identity: unknown): string | undefined => {
+        if (!identity) return undefined;
+        if (typeof identity === 'string') return identity;
+        if (typeof identity === 'object') {
+          const obj = identity as { displayName?: string; uniqueName?: string; name?: string };
+          return obj.displayName ?? obj.uniqueName ?? obj.name;
+        }
+        return undefined;
+      };
+
+      const developerMap = new Map<string, { totalWorkItems: number; aiCodeWorkItems: number }>();
+      let totalWorkItems = 0;
+      let aiCodeWorkItems = 0;
+
+      const batchSize = 200;
+      for (let i = 0; i < ids.length; i += batchSize) {
+        const batch = ids.slice(i, i + batchSize);
+        const workItems = await witApi.getWorkItems(batch, [
+          'System.Tags',
+          'System.WorkItemType',
+          'System.AssignedTo',
+        ]);
+
+        for (const wi of workItems) {
+          if (!wi?.id || !wi.fields) continue;
+
+          const itemHasAiCode = hasAiCodeTag(wi.fields['System.Tags']);
+          const developer = identityDisplayName(wi.fields['System.AssignedTo']);
+
+          totalWorkItems += 1;
+          if (itemHasAiCode) aiCodeWorkItems += 1;
+
+          if (developer) {
+            const normalized = developer.toLowerCase().trim();
+            if (!hasTeamFilter || memberSet.has(normalized)) {
+              const cur = developerMap.get(developer) ?? { totalWorkItems: 0, aiCodeWorkItems: 0 };
+              cur.totalWorkItems += 1;
+              if (itemHasAiCode) cur.aiCodeWorkItems += 1;
+              developerMap.set(developer, cur);
+            }
+          }
+        }
+      }
+
+      const developerAdoption = Array.from(developerMap.entries())
+        .map(([developer, stats]) => ({
+          developer,
+          totalAssignedWorkItems: stats.totalWorkItems,
+          aiCodeWorkItems: stats.aiCodeWorkItems,
+          adoptionRate: stats.totalWorkItems > 0 ? stats.aiCodeWorkItems / stats.totalWorkItems : 0,
+        }))
+        .sort((a, b) => a.adoptionRate - b.adoptionRate || b.totalAssignedWorkItems - a.totalAssignedWorkItems);
+
+      return {
+        totalAssignedWorkItems: totalWorkItems,
+        aiCodeWorkItems,
+        adoptionRate: totalWorkItems > 0 ? aiCodeWorkItems / totalWorkItems : null,
+        developerAdoption,
+      };
+    });
   }
 
   async getDesignDocKickoffStats(from?: string, to?: string, developerFilter?: string): Promise<DesignDocKickoffStats[]> {

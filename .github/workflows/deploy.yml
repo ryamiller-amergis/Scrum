@@ -121,6 +121,7 @@ jobs:
               AZURE_COST_CLIENT_SECRET="${{ secrets.AZURE_COST_CLIENT_SECRET }}" \
               SESSION_SECRET="${{ secrets.SESSION_SECRET }}" \
               CURSOR_API_KEY="${{ secrets.CURSOR_API_KEY }}" \
+              CURSOR_TEAM_API_KEY="${{ secrets.CURSOR_TEAM_API_KEY }}" \
               PORT=8080 \
               POLL_INTERVAL=30 \
               WEBSITES_ENABLE_APP_SERVICE_STORAGE=true \

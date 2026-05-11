@@ -3368,4 +3368,156 @@ router.put('/backlog/drafts', async (req: Request, res: Response) => {
   }
 });
 
+// ── AI Capability Ladder ───────────────────────────────────────────────────────
+
+// GET /api/ai-capability-ladder - Full scorecard combining Cursor analytics + ADO metrics
+router.get('/ai-capability-ladder', async (req: Request, res: Response) => {
+  try {
+    const {
+      from,
+      to,
+      areaPath: areaPathParam,
+    } = req.query as { from?: string; to?: string; areaPath?: string };
+
+    const toDate = to ? new Date(to) : new Date();
+    const fromDate = from ? new Date(from) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const fromStr = fromDate.toISOString().split('T')[0]!;
+    const toStr = toDate.toISOString().split('T')[0]!;
+
+    console.log('=== API: /ai-capability-ladder called ===', { from: fromStr, to: toStr });
+
+    const { buildCursorTeamSummary } = await import('../services/cursorAnalyticsService');
+    const { buildLadderResult } = await import('../services/aiCapabilityLadderService');
+    const { getBaseline } = await import('../services/aiCapabilityBaselineService');
+
+    const adoService = new AzureDevOpsService('MaxView', areaPathParam || '');
+
+    // Fetch all ADO data concurrently
+    const [
+      adoMembersResult,
+      kickoffResult,
+      prTimeResult,
+      inProgressResult,
+      qaBugResult,
+      deploymentsResult,
+    ] = await Promise.allSettled([
+      adoService.getTeamMembers('MaxView - Dev').catch(() => []),
+      adoService.getDesignDocKickoffStats(fromStr, toStr),
+      adoService.getPullRequestTimeStats(fromStr, toStr),
+      adoService.getInProgressTimeStats(fromStr, toStr),
+      adoService.getQABugStats(fromStr, toStr),
+      import('../services/deploymentTracking').then(m =>
+        new m.DeploymentTrackingService().getDeploymentHistory(200)
+      ),
+    ]);
+
+    const adoMembers: string[] = adoMembersResult.status === 'fulfilled' ? adoMembersResult.value : [];
+    const kickoffStats = kickoffResult.status === 'fulfilled' ? kickoffResult.value : [];
+    const prTimeStats = prTimeResult.status === 'fulfilled' ? prTimeResult.value : [];
+    const inProgressStats = inProgressResult.status === 'fulfilled' ? inProgressResult.value : [];
+    const qaBugStats = qaBugResult.status === 'fulfilled' ? qaBugResult.value : [];
+    const deployments = deploymentsResult.status === 'fulfilled' ? deploymentsResult.value : [];
+
+    // Aggregate ADO metrics
+    const kickoffCount = kickoffStats.reduce((s, d) => s + d.kickoffCount, 0);
+    const totalEligibleFeatures = kickoffStats.reduce((s, d) => s + d.totalWorkItems, 0);
+
+    const avgPrCycleTimeDays = prTimeStats.length > 0
+      ? prTimeStats.reduce((s, d) => s + d.averageTimeInPullRequest, 0) / prTimeStats.length
+      : null;
+
+    const avgLeadTimeDays = inProgressStats.length > 0
+      ? inProgressStats.reduce((s, d) => s + d.averageDaysInProgress, 0) / inProgressStats.length
+      : null;
+
+    const totalPbis = qaBugStats.reduce((s, d) => s + d.totalPBIs, 0);
+    const totalBugs = qaBugStats.reduce((s, d) => s + d.totalBugs, 0);
+    const avgDefectRatePerPbi = totalPbis > 0 ? totalBugs / totalPbis : null;
+
+    const aiCodeWorkItemAdoption = await adoService.getAiCodeWorkItemAdoptionStats(fromStr, toStr, adoMembers);
+
+    // Deploy frequency: deployments in window / window months
+    const windowMonths = Math.max(1,
+      (toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24 * 30));
+    const deploysInWindow = deployments.filter(d =>
+      d.deployedAt >= fromStr && d.deployedAt <= toStr + 'T23:59:59Z'
+    ).length;
+    const deployFrequencyPerMonth = deploymentsResult.status === 'fulfilled'
+      ? deploysInWindow / windowMonths
+      : null;
+
+    // Fetch Cursor team summary (server-side only — key never leaves server)
+    let cursorSummary;
+    let cursorDataAvailable = false;
+    let cursorApiError: string | null = null;
+    try {
+      cursorSummary = await buildCursorTeamSummary(fromDate, toDate);
+      // Consider Cursor data available only if we got at least 1 member back
+      cursorDataAvailable = cursorSummary.teamSize > 0;
+      if (!cursorDataAvailable) {
+        cursorApiError = 'Cursor API returned 0 team members — verify the CURSOR_API_KEY has admin:* scope and the team has members';
+        console.warn('Cursor analytics: 0 members returned. Key may lack admin:* scope.');
+      }
+    } catch (cursorErr: any) {
+      const msg = cursorErr.message ?? 'Unknown error';
+      console.error('Cursor analytics fetch failed:', msg);
+      cursorApiError = `Cursor API error: ${msg}`;
+      cursorSummary = {
+        teamSize: 0, activeSeats: 0, developers: [],
+        dauSeries: [], daysAbove50pct: 0, daysAbove80pct: 0,
+        weeksAbove50pct: 0, weeksAbove80pct: 0,
+        tabAcceptRate: 0, agentEditAcceptRate: 0,
+        skillsInUse: [], totalSkillUsages: 0,
+        mcpToolsInUse: [], planModeUsages: 0, commandsUsed: [],
+      };
+    }
+
+    const baseline = getBaseline();
+
+    const result = buildLadderResult({
+      cursorSummary,
+      cursorDataAvailable,
+      cursorApiError,
+      adoMembers,
+      kickoffCount,
+      totalEligibleFeatures,
+      aiCodeWorkItemAdoption,
+      avgPrCycleTimeDays,
+      avgLeadTimeDays,
+      avgDefectRatePerPbi,
+      deployFrequencyPerMonth,
+      baseline,
+      fromDate: fromStr,
+      toDate: toStr,
+    });
+
+    console.log(`=== API: /ai-capability-ladder returning scorecard, ${result.bars.length} bars ===`);
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error generating AI capability ladder:', error);
+    res.status(500).json({ error: 'Failed to generate AI capability ladder scorecard' });
+  }
+});
+
+// GET /api/ai-capability-baseline - Read baseline config
+router.get('/ai-capability-baseline', async (_req: Request, res: Response) => {
+  try {
+    const { getBaseline } = await import('../services/aiCapabilityBaselineService');
+    res.json(getBaseline());
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to read baseline' });
+  }
+});
+
+// PUT /api/ai-capability-baseline - Save baseline config
+router.put('/ai-capability-baseline', async (req: Request, res: Response) => {
+  try {
+    const { saveBaseline } = await import('../services/aiCapabilityBaselineService');
+    saveBaseline(req.body);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to save baseline' });
+  }
+});
+
 export default router;
