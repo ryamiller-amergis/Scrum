@@ -221,6 +221,106 @@ export function createAdoMcpServer(): McpServer {
   });
 
   server.tool(
+    'query_work_items',
+    'Run a WIQL query and return matching work items with selected fields.',
+    {
+      project: z.string().describe('ADO project name'),
+      wiql: z.string().describe('Raw WIQL query text'),
+      areaPath: z
+        .string()
+        .optional()
+        .describe('Optional area path override (e.g. "MyProject\\MyTeam")'),
+      fields: z
+        .array(z.string())
+        .optional()
+        .describe('Optional list of fields to hydrate (defaults to all available fields)'),
+      maxResults: z
+        .number()
+        .int()
+        .min(1)
+        .max(500)
+        .optional()
+        .describe('Maximum number of items to return (default 200, capped at 500)'),
+      includeRelations: z
+        .boolean()
+        .optional()
+        .describe('When true, include work item relations in each result'),
+    },
+    async ({ project, wiql, areaPath, fields, maxResults, includeRelations }) => {
+      const adoService = new AzureDevOpsService(project, areaPath);
+      const result = await adoService.queryWorkItemsByWiql({
+        wiql,
+        fields,
+        maxResults,
+        includeRelations,
+      });
+      return {
+        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+      };
+    },
+  );
+
+  server.tool(
+    'get_work_item_history',
+    'Get revision history for a work item, including changed date/by and field snapshots.',
+    {
+      project: z.string().describe('ADO project name'),
+      workItemId: z.number().int().describe('Work item ID'),
+      areaPath: z
+        .string()
+        .optional()
+        .describe('Optional area path override (e.g. "MyProject\\MyTeam")'),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(500)
+        .optional()
+        .describe('Maximum number of most recent revisions to return (default 100)'),
+    },
+    async ({ project, workItemId, areaPath, limit }) => {
+      const adoService = new AzureDevOpsService(project, areaPath);
+      const history = await adoService.getWorkItemRevisionHistory(workItemId, limit ?? 100);
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({ workItemId, revisions: history }, null, 2),
+        }],
+      };
+    },
+  );
+
+  server.tool(
+    'get_work_item_comment_history',
+    'Get comment history for a work item, including author and timestamps.',
+    {
+      project: z.string().describe('ADO project name'),
+      workItemId: z.number().int().describe('Work item ID'),
+      areaPath: z
+        .string()
+        .optional()
+        .describe('Optional area path override (e.g. "MyProject\\MyTeam")'),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(500)
+        .optional()
+        .describe('Maximum number of most recent comments to return (default 200)'),
+    },
+    async ({ project, workItemId, areaPath, limit }) => {
+      const adoService = new AzureDevOpsService(project, areaPath);
+      const comments = await adoService.getWorkItemCommentHistory(workItemId, limit ?? 200);
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({ workItemId, comments }, null, 2),
+        }],
+      };
+    },
+  );
+
+  server.tool(
     'create_work_items',
     'Create one or more Azure DevOps work items from a PRD-generated list. ' +
     'Items are created in order so parents must appear before their children. ' +

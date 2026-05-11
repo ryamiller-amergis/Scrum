@@ -21,6 +21,62 @@ interface AgentHomeProps {
   selectedProject: string;
 }
 
+interface SpeechRecognitionAlternativeLike {
+  transcript: string;
+}
+
+interface SpeechRecognitionResultLike {
+  isFinal: boolean;
+  0: SpeechRecognitionAlternativeLike;
+}
+
+interface SpeechRecognitionEventLike {
+  results: ArrayLike<SpeechRecognitionResultLike>;
+}
+
+interface SpeechRecognitionErrorEventLike {
+  error?: string;
+}
+
+interface SpeechRecognitionLike {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onstart: (() => void) | null;
+  onend: (() => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  start: () => void;
+  stop: () => void;
+}
+
+type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
+
+async function copyTextToClipboard(text: string): Promise<void> {
+  const value = text.trim();
+  if (!value) return;
+
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return;
+    }
+  } catch {
+    // fall through to legacy copy
+  }
+
+  if (typeof document === 'undefined') return;
+  const textarea = document.createElement('textarea');
+  textarea.value = value;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand('copy');
+  document.body.removeChild(textarea);
+}
+
 const DEFAULT_CONTEXT_TOKEN_LIMIT = 200_000;
 const MODEL_CONTEXT_TOKEN_LIMITS: Record<string, number> = {
   'composer-2': 200_000,
@@ -39,6 +95,56 @@ const ToolIcon: React.FC = () => (
     <path d="M13 2l-1 3H4L3 2" /><rect x="2" y="5" width="12" height="8" rx="1" /><path d="M6 9h4" />
   </svg>
 );
+
+interface MessageCopyButtonProps {
+  text: string;
+  label: string;
+  inverted?: boolean;
+}
+
+const MessageCopyButton: React.FC<MessageCopyButtonProps> = ({ text, label, inverted = false }) => {
+  const [copied, setCopied] = useState(false);
+  const copiedTimerRef = useRef<number | null>(null);
+
+  const handleCopy = useCallback(async () => {
+    await copyTextToClipboard(text);
+    setCopied(true);
+    if (copiedTimerRef.current !== null) {
+      window.clearTimeout(copiedTimerRef.current);
+    }
+    copiedTimerRef.current = window.setTimeout(() => {
+      setCopied(false);
+      copiedTimerRef.current = null;
+    }, 1400);
+  }, [text]);
+
+  useEffect(() => () => {
+    if (copiedTimerRef.current !== null) {
+      window.clearTimeout(copiedTimerRef.current);
+    }
+  }, []);
+
+  return (
+    <button
+      className={`${styles.messageCopyIconBtn} ${inverted ? styles.messageCopyIconBtnInverted : ''}`}
+      onClick={() => { void handleCopy(); }}
+      type="button"
+      aria-label={label}
+      title={copied ? 'Copied' : label}
+    >
+      {copied ? (
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M4.5 10.5l3.5 3.5 7.5-8" />
+        </svg>
+      ) : (
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="7" y="7" width="9" height="9" rx="1.8" />
+          <rect x="4" y="4" width="9" height="9" rx="1.8" />
+        </svg>
+      )}
+    </button>
+  );
+};
 
 // ── Interactive choice block ───────────────────────────────────────────────────
 
@@ -221,6 +327,9 @@ const AgentMessage: React.FC<AgentMessageProps> = ({ msg, onSend, isRunning, que
         <span className={styles.agentMsgMeta}>{new Date(msg.ts).toLocaleTimeString()}</span>
       </div>
       <div className={styles.agentBubblePanel}>
+        <div className={`${styles.bubbleActions} ${styles.agentBubbleActions}`}>
+          <MessageCopyButton text={msg.text} label="Copy agent response" />
+        </div>
         {parts.map((part) => {
           if (part.type === 'markdown') {
             return (
@@ -294,6 +403,9 @@ function MessageBubble({
     return (
       <div className={styles.userRow}>
         <div className={styles.userBubble}>
+          <div className={styles.bubbleActions}>
+            <MessageCopyButton text={msg.text} label="Copy your message" inverted />
+          </div>
           <span>{msg.text}</span>
           {msg.attachments && msg.attachments.length > 0 && (
             <div className={styles.messageAttachments}>
@@ -318,6 +430,9 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
   const [threadId, setThreadId] = useState<string | null>(null);
   const [model, setModel] = useState(DEFAULT_MODEL_ID);
   const [isSending, setIsSending] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [speechError, setSpeechError] = useState<string | null>(null);
+  const [isSpeechSupported, setIsSpeechSupported] = useState(false);
   const [skillPickerOpen, setSkillPickerOpen] = useState(false);
   const [skillPickerIdx, setSkillPickerIdx] = useState(0);
   const [selectedSkillPath, setSelectedSkillPath] = useState<string | null>(null);
@@ -345,6 +460,8 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const skillPickerRef = useRef<HTMLDivElement>(null);
   const prdAutoOpenedRef = useRef(false);
+  const speechRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const speechInputBaseRef = useRef('');
 
   const {
     attachments,
@@ -458,6 +575,79 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
     }
   }, [prdReady]);
 
+  // Browser speech-to-text setup
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const speechWindow = window as Window & {
+      SpeechRecognition?: SpeechRecognitionCtor;
+      webkitSpeechRecognition?: SpeechRecognitionCtor;
+    };
+    const SpeechRecognitionClass = speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
+    if (!SpeechRecognitionClass) {
+      setIsSpeechSupported(false);
+      return;
+    }
+
+    setIsSpeechSupported(true);
+    const recognition = new SpeechRecognitionClass();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = navigator.language || 'en-US';
+
+    recognition.onstart = () => {
+      setIsListening(true);
+      setSpeechError(null);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    recognition.onerror = (event) => {
+      const code = event.error ?? 'unknown';
+      if (code === 'not-allowed') {
+        setSpeechError('Microphone access is blocked. Allow microphone permissions and try again.');
+        return;
+      }
+      if (code === 'no-speech') {
+        setSpeechError('No speech detected. Try again and speak closer to your microphone.');
+        return;
+      }
+      setSpeechError(`Speech recognition error: ${code}`);
+    };
+
+    recognition.onresult = (event) => {
+      let finalTranscript = '';
+      let interimTranscript = '';
+
+      for (let i = 0; i < event.results.length; i++) {
+        const result = event.results[i];
+        const text = result[0]?.transcript?.trim();
+        if (!text) continue;
+        if (result.isFinal) {
+          finalTranscript += `${text} `;
+        } else {
+          interimTranscript += `${text} `;
+        }
+      }
+
+      const base = speechInputBaseRef.current.trim();
+      const nextText = [base, finalTranscript.trim(), interimTranscript.trim()].filter(Boolean).join(' ');
+      setInput(nextText);
+    };
+
+    speechRecognitionRef.current = recognition;
+
+    return () => {
+      recognition.onstart = null;
+      recognition.onend = null;
+      recognition.onerror = null;
+      recognition.onresult = null;
+      recognition.stop();
+      speechRecognitionRef.current = null;
+    };
+  }, []);
+
   // ── Callbacks ────────────────────────────────────────────────────────────────
 
   const selectSkill = useCallback((skill: { name: string; path: string }) => {
@@ -489,6 +679,22 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
     fileInputRef.current?.click();
   }, []);
 
+  const toggleSpeechRecognition = useCallback(() => {
+    const recognition = speechRecognitionRef.current;
+    if (!recognition) return;
+    if (isListening) {
+      recognition.stop();
+      return;
+    }
+    speechInputBaseRef.current = input;
+    setSpeechError(null);
+    try {
+      recognition.start();
+    } catch {
+      setSpeechError('Could not start voice transcription. Please try again.');
+    }
+  }, [input, isListening]);
+
   // Used by AgentMessage choice block submissions (thread already exists)
   const doSend = useCallback(async (text: string) => {
     const trimmed = text.trim();
@@ -514,6 +720,10 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
     const text = input.trim();
     if ((!text && attachments.length === 0) || isRunning || isSending) return;
     if (!threadId && !defaultRepo) return;
+
+    if (isListening) {
+      speechRecognitionRef.current?.stop();
+    }
 
     setInput('');
     setSkillPickerOpen(false);
@@ -584,7 +794,7 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
     } finally {
       setIsSending(false);
     }
-  }, [input, attachments, isRunning, isSending, threadId, defaultRepo, startChat, selectedProject, defaultBranch, selectedSkillPath, selectedSkillName, model, clearAttachments]);
+  }, [input, attachments, isRunning, isSending, threadId, defaultRepo, startChat, selectedProject, defaultBranch, selectedSkillPath, selectedSkillName, model, clearAttachments, isListening]);
 
   const handleKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (skillPickerOpen && filteredSkills.length > 0) {
@@ -625,8 +835,12 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
 
   const handleNewSession = useCallback(() => {
     if (isRunning || isSending) return;
+    if (isListening) {
+      speechRecognitionRef.current?.stop();
+    }
     setThreadId(null);
     setInput('');
+    setSpeechError(null);
     setSkillPickerOpen(false);
     setSkillPickerIdx(0);
     setSelectedSkillPath(null);
@@ -640,7 +854,7 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
     prdAutoOpenedRef.current = false;
     const slug = selectedProject.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
     setWikiPageName(`${slug}-requirements`);
-  }, [isRunning, isSending, clearAttachments, selectedProject]);
+  }, [isRunning, isSending, clearAttachments, selectedProject, isListening]);
 
   const handleSaveToWiki = useCallback(async () => {
     if (!wikiProject || !wikiId || !wikiPageName.trim()) return;
@@ -737,6 +951,9 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
         {attachmentError && (
           <div className={styles.attachmentError}>{attachmentError}</div>
         )}
+        {speechError && (
+          <div className={styles.speechError}>{speechError}</div>
+        )}
         <div className={styles.inputActions}>
           <button
             className={styles.attachBtn}
@@ -748,6 +965,23 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
           >
             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <path d="M7 10.5l5.2-5.2a3 3 0 114.2 4.2l-6.7 6.7a5 5 0 01-7.1-7.1l6.4-6.4" />
+            </svg>
+          </button>
+          <button
+            className={`${styles.micBtn} ${isListening ? styles.micBtnActive : ''}`}
+            onClick={toggleSpeechRecognition}
+            type="button"
+            aria-label={isListening ? 'Stop voice transcription' : 'Start voice transcription'}
+            title={isSpeechSupported
+              ? (isListening ? 'Stop listening' : 'Talk to transcribe into chat')
+              : 'Speech recognition is not supported in this browser'}
+            disabled={!isSpeechSupported || isRunning || isSending}
+          >
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="7" y="2.5" width="6" height="10" rx="3" />
+              <path d="M4.5 9.5v0.5a5.5 5.5 0 0 0 11 0v-0.5" />
+              <path d="M10 15.5v2.5" />
+              <path d="M7.5 18h5" />
             </svg>
           </button>
           <select
@@ -785,6 +1019,9 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
             </button>
           )}
         </div>
+        {isListening && (
+          <div className={styles.speechStatus}>Listening... your speech is being transcribed into the draft.</div>
+        )}
       </div>
     </div>
   );

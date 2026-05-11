@@ -56,6 +56,114 @@ export class AzureDevOpsService {
     }));
   }
 
+  /**
+   * Run an arbitrary WIQL query and return hydrated work item details.
+   * Useful for MCP callers that need ad-hoc filtering and field selection.
+   */
+  async queryWorkItemsByWiql(params: {
+    wiql: string;
+    fields?: string[];
+    maxResults?: number;
+    includeRelations?: boolean;
+  }): Promise<{
+    totalMatched: number;
+    returned: number;
+    ids: number[];
+    items: Array<{
+      id: number;
+      rev?: number;
+      url?: string;
+      fields: Record<string, any>;
+      relations?: Array<{ rel?: string; url?: string; attributes?: Record<string, any> }>;
+    }>;
+  }> {
+    return retryWithBackoff(async () => {
+      const witApi = await this.connection.getWorkItemTrackingApi();
+      const queryResult = await witApi.queryByWiql(
+        { query: params.wiql },
+        { project: this.project },
+      );
+
+      const idSet = new Set<number>();
+      for (const wi of queryResult.workItems ?? []) {
+        if (typeof wi.id === 'number') idSet.add(wi.id);
+      }
+      for (const rel of queryResult.workItemRelations ?? []) {
+        if (typeof rel.target?.id === 'number') idSet.add(rel.target.id);
+        if (typeof rel.source?.id === 'number') idSet.add(rel.source.id);
+      }
+
+      const allIds = Array.from(idSet);
+      if (allIds.length === 0) {
+        return {
+          totalMatched: 0,
+          returned: 0,
+          ids: [],
+          items: [],
+        };
+      }
+
+      const boundedMax = Math.max(1, Math.min(params.maxResults ?? 200, 500));
+      const ids = allIds.slice(0, boundedMax);
+      const expand = params.includeRelations ? WorkItemExpand.Relations : undefined;
+      const fields = params.fields && params.fields.length > 0 ? params.fields : undefined;
+      const workItems = await witApi.getWorkItems(ids, fields, undefined, expand, undefined, this.project);
+
+      return {
+        totalMatched: allIds.length,
+        returned: workItems.length,
+        ids,
+        items: workItems
+          .filter((wi) => typeof wi.id === 'number')
+          .map((wi) => ({
+            id: wi.id!,
+            rev: wi.rev,
+            url: wi.url,
+            fields: (wi.fields ?? {}) as Record<string, any>,
+            relations: wi.relations?.map((rel) => ({
+              rel: rel.rel,
+              url: rel.url,
+              attributes: rel.attributes as Record<string, any> | undefined,
+            })),
+          })),
+      };
+    });
+  }
+
+  /**
+   * Return revision history for a work item so callers can inspect field changes over time.
+   */
+  async getWorkItemRevisionHistory(workItemId: number, limit = 100): Promise<Array<{
+    rev: number;
+    changedDate?: string;
+    changedBy?: string;
+    state?: string;
+    title?: string;
+    history?: string;
+    fields: Record<string, any>;
+  }>> {
+    return retryWithBackoff(async () => {
+      const witApi = await this.connection.getWorkItemTrackingApi();
+      const revisions = await witApi.getRevisions(workItemId, undefined, undefined, undefined, this.project);
+      if (!revisions || revisions.length === 0) return [];
+
+      const boundedLimit = Math.max(1, Math.min(limit, 500));
+      return revisions
+        .slice(-boundedLimit)
+        .map((revision) => ({
+          rev: revision.rev ?? 0,
+          changedDate: revision.fields?.['System.ChangedDate'],
+          changedBy: revision.fields?.['System.ChangedBy']?.displayName
+            || revision.fields?.['System.ChangedBy']?.uniqueName
+            || revision.fields?.['System.ChangedBy'],
+          state: revision.fields?.['System.State'],
+          title: revision.fields?.['System.Title'],
+          history: revision.fields?.['System.History'],
+          fields: (revision.fields ?? {}) as Record<string, any>,
+        }));
+    });
+  }
+
   async getWorkItems(from?: string, to?: string): Promise<WorkItem[]> {
     return retryWithBackoff(async () => {
       const witApi = await this.connection.getWorkItemTrackingApi();
@@ -1472,6 +1580,41 @@ export class AzureDevOpsService {
         console.error(`Error fetching comments for work item ${workItemId}:`, error);
         return '';
       }
+    });
+  }
+
+  /**
+   * Return structured comment history for a work item.
+   */
+  async getWorkItemCommentHistory(workItemId: number, limit = 200): Promise<Array<{
+    id: number;
+    text: string;
+    createdDate?: string;
+    modifiedDate?: string;
+    createdBy?: string;
+    modifiedBy?: string;
+    isDeleted?: boolean;
+    version?: number;
+  }>> {
+    return retryWithBackoff(async () => {
+      const witApi = await this.connection.getWorkItemTrackingApi();
+      const commentsResult = await witApi.getComments(this.project, workItemId);
+      const comments = commentsResult?.comments ?? [];
+      if (!comments.length) return [];
+
+      const boundedLimit = Math.max(1, Math.min(limit, 500));
+      return comments
+        .slice(-boundedLimit)
+        .map((comment) => ({
+          id: comment.id ?? 0,
+          text: comment.text ?? '',
+          createdDate: comment.createdDate ? new Date(comment.createdDate).toISOString() : undefined,
+          modifiedDate: comment.modifiedDate ? new Date(comment.modifiedDate).toISOString() : undefined,
+          createdBy: comment.createdBy?.displayName || comment.createdBy?.uniqueName,
+          modifiedBy: comment.modifiedBy?.displayName || comment.modifiedBy?.uniqueName,
+          isDeleted: comment.isDeleted,
+          version: comment.version,
+        }));
     });
   }
 

@@ -298,6 +298,59 @@
   height: 16px;
 }
 
+.micBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.micBtn:hover:not(:disabled) {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border-color: var(--accent-color);
+}
+
+.micBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.micBtn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.micBtnActive {
+  background: var(--accent-color);
+  border-color: var(--accent-color);
+  color: #fff;
+}
+
+.micBtnActive:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: #fff;
+}
+
+.speechError {
+  font-size: 0.75rem;
+  color: var(--error-color);
+}
+
+.speechStatus {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
 .modelSelect {
   height: 34px;
   padding: 0 10px;
@@ -519,6 +572,17 @@
   word-break: break-word;
 }
 
+.bubbleActions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 4px;
+}
+
+.agentBubbleActions {
+  padding: 8px 10px 0;
+  margin-bottom: 0;
+}
+
 .messageAttachments {
   display: flex;
   flex-wrap: wrap;
@@ -674,8 +738,13 @@
 }
 
 .agentBubbleMd a {
-  color: var(--accent-color);
+  color: var(--text-secondary);
   text-decoration: underline;
+  text-decoration-color: var(--text-muted);
+}
+
+.agentBubbleMd a:hover {
+  color: var(--text-primary);
 }
 
 .toolMsg {
@@ -755,6 +824,43 @@
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.messageCopyIconBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border-color);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--bg-primary) 88%, transparent);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.messageCopyIconBtn:hover {
+  border-color: var(--accent-color);
+  color: var(--text-primary);
+  background: var(--bg-primary);
+}
+
+.messageCopyIconBtn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.messageCopyIconBtnInverted {
+  border-color: rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.messageCopyIconBtnInverted:hover {
+  border-color: rgba(255, 255, 255, 0.75);
+  background: rgba(255, 255, 255, 0.24);
+  color: #fff;
 }
 
 .agentLabel {
@@ -852,6 +958,16 @@
   border: none;
   border-top: 1px solid var(--border-color-light);
   margin: 0.8em 0;
+}
+
+.markdownBody a {
+  color: var(--text-secondary);
+  text-decoration: underline;
+  text-decoration-color: var(--text-muted);
+}
+
+.markdownBody a:hover {
+  color: var(--text-primary);
 }
 
 .markdownBody table {
