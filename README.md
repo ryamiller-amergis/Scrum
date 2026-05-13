@@ -18,6 +18,7 @@ A web application for visualizing Azure DevOps Product Backlog Items (PBIs) on a
 
 - Node.js 18+
 - Azure DevOps Personal Access Token (PAT) with Work Items (Read, Write) permissions
+- PostgreSQL 14+ (for local development)
 
 ### Installation
 
@@ -48,6 +49,76 @@ Edit `.env` and set your Azure DevOps configuration:
 - `ADO_AREA_PATH`: (Optional) Area path to filter PBIs
 - `PORT`: Server port (default: 3001)
 - `POLL_INTERVAL`: Polling interval in seconds (default: 30)
+- `DATABASE_URL`: PostgreSQL connection string (see Database Setup below)
+
+### Database Setup
+
+This project uses PostgreSQL. There are two database targets: a **local** instance for development and a **cloud** instance (Azure PostgreSQL Flexible Server) deployed via Terraform.
+
+#### Local database (first-time setup)
+
+1. Create the local database:
+
+```bash
+createdb -U pgadmin aipilot
+# or in psql:
+# CREATE DATABASE aipilot;
+```
+
+2. Create `.env.local` (this file is git-ignored):
+
+```bash
+# .env.local
+DATABASE_URL=postgresql://pgadmin:yourpassword@localhost:5432/aipilot
+```
+
+Replace `yourpassword` with your local Postgres password.
+
+3. Apply all migrations to get your local schema up to date:
+
+```bash
+npm run migrate:local:up
+```
+
+#### Running migrations locally
+
+Always develop and test migrations against your local database first.
+
+| Command | What it does |
+|---|---|
+| `npm run migrate:local:create -- <name>` | Scaffold a new `.sql` migration file |
+| `npm run migrate:local:up` | Apply all pending migrations to local DB |
+| `npm run migrate:local:down` | Roll back the last migration on local DB |
+
+**Example workflow:**
+
+```bash
+# 1. Create a new migration
+npm run migrate:local:create -- add-users-table
+
+# 2. Edit the generated file in migrations/ — write your SQL
+# 3. Apply it locally and verify
+npm run migrate:local:up
+
+# 4. Roll back if something is wrong
+npm run migrate:local:down
+
+# 5. Once verified, apply to the cloud dev database
+npm run migrate:up
+```
+
+Migration files live in `migrations/` and are plain SQL with an up and down block.
+
+#### Applying migrations to the cloud database
+
+The cloud `DATABASE_URL` is set in `.env` (pointing to Azure PostgreSQL). Running without the `local:` prefix targets the cloud DB:
+
+```bash
+npm run migrate:up    # apply to cloud dev (reads DATABASE_URL from .env)
+npm run migrate:down  # roll back on cloud dev
+```
+
+In production, migrations run automatically as part of the CI/CD deploy pipeline before the app starts.
 
 ### Development
 
@@ -129,36 +200,6 @@ Health check endpoint.
 - PAT is stored server-side only and never exposed to the frontend
 - All API calls are proxied through the backend
 - CORS is configured for development
-
-## Icon Explaination
-
-1. Circular Red Arrow (Sprint Cycle)
-
-The continuous loop symbolizes the iterative nature of Scrum sprints
-Sprints are time-boxed cycles that repeat - plan, develop, review, repeat
-The arrow shows forward momentum and progress
-Red color (#ef4444) represents energy, action, and urgency - core to agile delivery
-
-2. Arrow Head Pointing Inward
-
-Represents the sprint starting fresh after each cycle
-Continuous improvement and refinement
-The feedback loop returning to planning
-
-3. White & Gray Task Cards
-
-Symbolize Product Backlog Items (PBIs) or user stories
-White card = high priority/current sprint work
-Gray card = lower priority/future sprint items
-Stacked vertically like cards on a Scrum board (To Do, In Progress, Done)
-
-4. Stylized 'S' Curve
-
-Stands for "Scrum" obviously
-The flowing, continuous line represents transparency and collaboration
-Integrated into the cycle, not separate - Scrum is part of the process, not just a methodology overlay
-
-The overall composition creates a sense of movement, iteration, and organized workflow - the essence of Scrum methodology where teams work in focused sprints, continuously deliver value, and improve incrementally.
 
 ## License
 MIT

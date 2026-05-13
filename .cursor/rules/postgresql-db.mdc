@@ -1,0 +1,66 @@
+---
+description: PostgreSQL connection and migration best practices for this project (pg driver + node-pg-migrate)
+globs: src/server/db.ts,src/server/routes/**/*.ts,migrations/**/*.{js,ts,sql}
+alwaysApply: false
+---
+
+# PostgreSQL Database Conventions
+
+## Connection — use the shared pool
+
+Always import the singleton pool from `src/server/db.ts`. Never create a new `Pool` or `Client` directly in route files.
+
+```typescript
+// ✅ GOOD
+import pool from '../db';
+const result = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
+
+// ❌ BAD — creates a new pool per request
+import { Pool } from 'pg';
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+```
+
+## SSL
+
+- Local dev (`NODE_ENV !== 'production'`): SSL is **off** — local PostgreSQL does not require it.
+- Production (Azure PostgreSQL Flexible Server): `ssl: { rejectUnauthorized: true }` — already configured in `src/server/db.ts`.
+- Never hard-code credentials. Always read from `DATABASE_URL` env var.
+
+## Parameterized queries — always use `$1, $2` placeholders
+
+```typescript
+// ✅ GOOD — safe from SQL injection
+await pool.query('SELECT * FROM items WHERE id = $1', [req.params.id]);
+
+// ❌ BAD — SQL injection risk
+await pool.query(`SELECT * FROM items WHERE id = '${req.params.id}'`);
+```
+
+## Migrations — use node-pg-migrate
+
+Migrations live in `migrations/`. Never run `CREATE TABLE` or `ALTER TABLE` directly in application startup code.
+
+| Command | What it does |
+|---|---|
+| `npm run migrate:create -- <name>` | Scaffold a new migration file |
+| `npm run migrate:up` | Apply all pending migrations |
+| `npm run migrate:down` | Roll back the last migration |
+
+`node-pg-migrate` reads `DATABASE_URL` from the environment automatically — no extra config needed.
+
+## Transaction pattern for multi-step writes
+
+```typescript
+const client = await pool.connect();
+try {
+  await client.query('BEGIN');
+  await client.query('INSERT INTO ...', [...]);
+  await client.query('UPDATE ...', [...]);
+  await client.query('COMMIT');
+} catch (e) {
+  await client.query('ROLLBACK');
+  throw e;
+} finally {
+  client.release();
+}
+```
