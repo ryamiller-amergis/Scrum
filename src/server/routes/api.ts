@@ -9,7 +9,8 @@ import { WorkItemsQuery, UpdateDueDateRequest, DeveloperDueDateStats, DueDateHit
 import { getFeatureAutoCompleteService } from '../services/featureAutoComplete';
 import { DeploymentTrackingService } from '../services/deploymentTracking';
 import { getPrResolutionMetricsStats } from '../services/agentEvalsPrResolutionService';
-import pool from '../db';
+import { sql } from 'drizzle-orm';
+import { db } from '../db/drizzle';
 
 const router = express.Router();
 
@@ -167,7 +168,7 @@ router.get('/health', async (req: Request, res: Response) => {
 // GET /api/health/db - Database connectivity check
 router.get('/health/db', async (_req: Request, res: Response) => {
   try {
-    const result = await pool.query<{ now: string }>('SELECT NOW() AS now');
+    const result = await db.execute<{ now: string }>(sql`SELECT NOW() AS now`);
     res.json({ healthy: true, timestamp: result.rows[0].now });
   } catch (error: any) {
     console.error('[db] Health check failed:', error);

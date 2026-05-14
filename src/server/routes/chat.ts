@@ -2,7 +2,8 @@ import { Router, Request, Response } from 'express';
 import {
   createThread,
   getThread,
-  listThreads,
+  getThreadAsync,
+  listThreadSummaries,
   sendMessage,
   subscribeToThread,
   cancelRun,
@@ -75,11 +76,19 @@ function readAttachments(raw: unknown): ChatAttachment[] {
 
 /**
  * GET /api/chat/threads
- * List all threads for the current user.
+ * List thread summaries for the current user.
+ * Query params: limit (default 50), offset (default 0)
  */
-router.get('/threads', (req: Request, res: Response) => {
-  const threads = listThreads(getUserId(req));
-  res.json(threads);
+router.get('/threads', async (req: Request, res: Response) => {
+  const limit = Math.min(Number(req.query.limit) || 50, 200);
+  const offset = Number(req.query.offset) || 0;
+  try {
+    const summaries = await listThreadSummaries(getUserId(req), { limit, offset });
+    res.json(summaries);
+  } catch (err: any) {
+    console.error('[chat] listThreadSummaries error:', err.message);
+    res.status(500).json({ error: err.message ?? 'Failed to list threads' });
+  }
 });
 
 /**
@@ -106,10 +115,10 @@ router.post('/threads', async (req: Request, res: Response) => {
 
 /**
  * GET /api/chat/threads/:id
- * Get thread metadata and message history.
+ * Get thread metadata and message history (falls back to Postgres for historical threads).
  */
-router.get('/threads/:id', (req: Request, res: Response) => {
-  const thread = getThread(req.params.id);
+router.get('/threads/:id', async (req: Request, res: Response) => {
+  const thread = await getThreadAsync(req.params.id);
   if (!thread) return res.status(404).json({ error: 'Thread not found' });
   res.json(thread);
 });
@@ -118,8 +127,8 @@ router.get('/threads/:id', (req: Request, res: Response) => {
  * GET /api/chat/threads/:id/stream
  * Server-Sent Events stream for real-time agent output.
  */
-router.get('/threads/:id/stream', (req: Request, res: Response) => {
-  const thread = getThread(req.params.id);
+router.get('/threads/:id/stream', async (req: Request, res: Response) => {
+  const thread = await getThreadAsync(req.params.id);
   if (!thread) return res.status(404).json({ error: 'Thread not found' });
 
   res.setHeader('Content-Type', 'text/event-stream');
@@ -132,7 +141,14 @@ router.get('/threads/:id/stream', (req: Request, res: Response) => {
     res.write(`data: ${JSON.stringify(event)}\n\n`);
   };
 
-  // Send current status immediately so client knows the thread state
+  // Replay all existing messages so late-joining subscribers (including
+  // the very first connect right after thread creation) never miss events.
+  for (const msg of thread.messages) {
+    sendEvent({ type: 'message', message: msg });
+  }
+
+  // Send current status after the message replay so the client can render
+  // the full history before seeing the running/idle indicator.
   sendEvent({ type: 'status', status: thread.status });
 
   const unsubscribe = subscribeToThread(req.params.id, sendEvent);
@@ -165,7 +181,7 @@ router.post('/threads/:id/messages', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'text or attachments are required' });
   }
 
-  const thread = getThread(req.params.id);
+  const thread = await getThreadAsync(req.params.id);
   if (!thread) return res.status(404).json({ error: 'Thread not found' });
   if (thread.status === 'running') return res.status(409).json({ error: 'Agent is already running' });
 

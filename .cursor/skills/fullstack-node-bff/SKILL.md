@@ -16,7 +16,10 @@ src/
     routes/     — Express routers mounted in index.ts
     services/   — Business logic (never import from client/)
     middleware/ — Auth, error handling
-    db.ts       — Singleton pg Pool
+    db.ts       — Singleton pg Pool (used by Drizzle internally; do not import directly)
+    db/
+      drizzle.ts  — Drizzle ORM instance (import this for all queries)
+      schema.ts   — pgTable definitions + relations (source of truth for DB shape)
   client/       — React + Vite (ESM, tsconfig.client.json)
     hooks/      — Data-fetching hooks (useQuery wrappers, EventSource)
     services/   — fetch() wrappers that call /api/*
@@ -52,8 +55,8 @@ Always pass `credentials: 'include'` for any session-authenticated endpoint.
 ## Rule: never import server code from the client (or vice versa)
 
 ```typescript
-// ❌ BAD — drags pg, passport, etc. into the Vite bundle
-import pool from '../../server/db';
+// ❌ BAD — drags pg, drizzle, passport, etc. into the Vite bundle
+import { db } from '../../server/db/drizzle';
 
 // ✅ GOOD — communicate via HTTP; share types via src/shared/
 import type { WorkItem } from '../../shared/types/workitem';

@@ -313,6 +313,7 @@ function App() {
           isOpen={chatOpen}
           onClose={() => setChatOpen(false)}
           onNewChat={handleStartPanelChat}
+          onSelectThread={(id) => setActiveThreadId(id || null)}
           canStartNewChat={!!defaultAgentRepo && !isLoadingSkillRepos && !startChat.isPending}
           isStartingNewChat={startChat.isPending}
           newChatError={startChat.error?.message}

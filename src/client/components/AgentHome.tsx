@@ -13,8 +13,9 @@ import { formatAttachmentSize, useChatAttachments } from '../hooks/useChatAttach
 import { parseAgentMessage } from '../utils/parseAgentMessage';
 import type { ChoiceBlock } from '../utils/parseAgentMessage';
 import { PRDPreviewDrawer } from './PRDPreviewDrawer';
+import { ThreadHistorySidebar } from './ThreadHistorySidebar';
 import { AGENT_MODELS, DEFAULT_MODEL_ID } from '../config/models';
-import type { ChatMessage } from '../../shared/types/chat';
+import type { ChatMessage, ChatThread } from '../../shared/types/chat';
 import styles from './AgentHome.module.css';
 
 interface AgentHomeProps {
@@ -428,6 +429,8 @@ function MessageBubble({
 export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
   const [input, setInput] = useState('');
   const [threadId, setThreadId] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const [seedMessages, setSeedMessages] = useState<ChatMessage[]>([]);
   const [model, setModel] = useState(DEFAULT_MODEL_ID);
   const [isSending, setIsSending] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -485,7 +488,9 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
   );
 
   const startChat = useStartChat();
-  const { messages, streamingText, status, prdReady } = useChatStream(threadId, {});
+  const { messages, streamingText, status, prdReady } = useChatStream(threadId, {
+    initialMessages: seedMessages,
+  });
   const isRunning = status === 'running';
 
   const saveToWiki = useSaveToWiki(threadId ?? '');
@@ -864,6 +869,7 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
     if (isListening) {
       speechRecognitionRef.current?.stop();
     }
+    setSeedMessages([]);
     setThreadId(null);
     setInput('');
     setSpeechError(null);
@@ -881,6 +887,22 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
     const slug = selectedProject.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
     setWikiPageName(`${slug}-requirements`);
   }, [isRunning, isSending, clearAttachments, selectedProject, isListening]);
+
+  const handleSelectThread = useCallback(async (id: string) => {
+    try {
+      const resp = await fetch(`/api/chat/threads/${id}`, { credentials: 'include' });
+      if (!resp.ok) return;
+      const thread: ChatThread = await resp.json();
+      setSeedMessages(thread.messages ?? []);
+      setThreadId(id);
+      setShowHistory(false);
+      setSavedWikiMeta(null);
+      setShowPrdPreview(false);
+      setShowSaveWiki(false);
+    } catch {
+      // non-fatal
+    }
+  }, []);
 
   const handleSaveToWiki = useCallback(async () => {
     if (!wikiProject || !wikiId || !wikiPageName.trim()) return;
@@ -1054,8 +1076,23 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
 
   return (
     <div className={styles.page}>
+      {showHistory && (
+        <ThreadHistorySidebar
+          activeThreadId={threadId}
+          onSelectThread={handleSelectThread}
+          onDeleteThread={(id) => { if (id === threadId) { setSeedMessages([]); setThreadId(null); } }}
+          onClose={() => setShowHistory(false)}
+        />
+      )}
       {isCompose ? (
         <div className={styles.compose}>
+          <button
+            className={styles.historyToggleBtn}
+            onClick={() => setShowHistory((v) => !v)}
+            type="button"
+          >
+            {showHistory ? '← Hide History' : '⏱ History'}
+          </button>
           <div className={styles.composeInner}>
             <div className={styles.composeLogo}>
               <svg viewBox="0 0 154 63" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1113,6 +1150,13 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
               <div className={styles.chatSubtitle}>{selectedProject} · {defaultRepo?.name ?? 'workspace'}</div>
             </div>
             <div className={styles.chatHeaderActions}>
+              <button
+                className={styles.historyToggleBtn}
+                onClick={() => setShowHistory((v) => !v)}
+                type="button"
+              >
+                {showHistory ? '← Hide' : '⏱ History'}
+              </button>
               <div
                 className={styles.contextMeter}
                 style={{ '--context-percent': `${contextPercent}%` } as React.CSSProperties}

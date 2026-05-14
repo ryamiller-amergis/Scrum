@@ -13,6 +13,14 @@ import type {
   SseEvent,
 } from '../../shared/types/chat';
 import { isAzureWwwroot, resolveDataRoot } from '../utils/dataDir';
+import {
+  upsertThread as pgUpsertThread,
+  insertMessage as pgInsertMessage,
+  listThreadsByUser as pgListThreadsByUser,
+  loadFullThread as pgLoadFullThread,
+  deleteThread as pgDeleteThread,
+} from './chatThreadRepository';
+import type { ChatThreadSummary } from '../../shared/types/chat';
 
 const DATA_ROOT = resolveDataRoot();
 const WORKSPACE_BASE = process.env.AI_PILOT_WORKSPACE_DIR
@@ -65,6 +73,10 @@ function persistThread(thread: ChatThread) {
   ensureDirs();
   const file = path.join(THREADS_DIR, `${thread.id}.json`);
   fs.writeFileSync(file, JSON.stringify(thread, null, 2), 'utf-8');
+  // Dual-write to Postgres — fire-and-forget (JSON file is the sync fallback)
+  pgUpsertThread(thread).catch((err: Error) =>
+    console.error('[chat] pg upsertThread failed:', err.message),
+  );
 }
 
 function loadThread(threadId: string): ChatThread | null {
@@ -316,6 +328,28 @@ function ensureThreadState(threadId: string): ThreadState | null {
   return state;
 }
 
+/**
+ * Async variant: falls back to Postgres when not in memory and not on disk.
+ * Used by getThreadAsync for historical thread loading.
+ */
+async function ensureThreadStateAsync(threadId: string): Promise<ThreadState | null> {
+  const sync = ensureThreadState(threadId);
+  if (sync) return sync;
+
+  const thread = await pgLoadFullThread(threadId);
+  if (!thread) return null;
+
+  const state: ThreadState = {
+    thread,
+    subscribers: new Set(),
+    agent: null,
+    idleTimer: null,
+  };
+  threads.set(threadId, state);
+  resetIdleTimer(state);
+  return state;
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 export async function createThread(
@@ -374,6 +408,17 @@ export async function createThread(
 
 export function getThread(threadId: string): ChatThread | null {
   return ensureThreadState(threadId)?.thread ?? null;
+}
+
+export async function getThreadAsync(threadId: string): Promise<ChatThread | null> {
+  return (await ensureThreadStateAsync(threadId))?.thread ?? null;
+}
+
+export async function listThreadSummaries(
+  userId: string,
+  opts?: { limit?: number; offset?: number },
+): Promise<ChatThreadSummary[]> {
+  return pgListThreadsByUser(userId, opts);
 }
 
 export function listThreads(userId: string): ChatThread[] {
@@ -461,6 +506,9 @@ export async function sendMessage(
   state.thread.messages.push(userMsg);
   state.thread.lastActivityAt = userMsg.ts;
   broadcast(state, { type: 'message', message: userMsg });
+  pgInsertMessage(threadId, userMsg).catch((err: Error) =>
+    console.error('[chat] pg insertMessage (user) failed:', err.message),
+  );
 
   // Update status
   state.thread.status = 'running';
@@ -554,6 +602,9 @@ export async function sendMessage(
         };
         state.thread.messages.push(agentMsg);
         broadcast(state, { type: 'message', message: agentMsg });
+        pgInsertMessage(threadId, agentMsg).catch((err: Error) =>
+          console.error('[chat] pg insertMessage (agent) failed:', err.message),
+        );
       }
 
       state.thread.status = 'idle';
@@ -635,17 +686,22 @@ export async function closeThread(threadId: string): Promise<void> {
     state.agent = null;
   }
 
-  state.thread.status = 'closed';
-  broadcast(state, { type: 'status', status: 'closed' });
-  persistThread(state.thread);
   threads.delete(threadId);
 
-  // Remove workspace directory
+  // Remove JSON file and workspace directory from disk
+  try {
+    fs.rmSync(path.join(THREADS_DIR, `${threadId}.json`), { force: true });
+    fs.rmSync(path.join(THREADS_DIR, `${threadId}.prd.md`), { force: true });
+    fs.rmSync(path.join(THREADS_DIR, `${threadId}.backlog.json`), { force: true });
+  } catch { /* non-fatal */ }
   try {
     fs.rmSync(state.thread.workspaceDir, { recursive: true, force: true });
-  } catch {
-    // Non-fatal
-  }
+  } catch { /* non-fatal */ }
+
+  // Delete from Postgres (cascades to messages + attachments)
+  pgDeleteThread(threadId).catch((err: Error) =>
+    console.error('[chat] pg deleteThread failed:', err.message),
+  );
 }
 
 function resolveOutputDir(threadId: string): string | null {

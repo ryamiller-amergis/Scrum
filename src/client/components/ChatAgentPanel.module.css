@@ -181,6 +181,13 @@
   color: var(--text-muted);
 }
 
+/* ── Thread history inside the panel (overrides sidebar's default 260px width) ── */
+.historySidebarInPanel {
+  width: 100%;
+  border-right: none;
+  flex: 1;
+}
+
 /* ── Empty / new thread pane ── */
 .emptyPane {
   flex: 1;

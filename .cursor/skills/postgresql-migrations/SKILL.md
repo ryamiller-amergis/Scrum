@@ -64,6 +64,38 @@ npm run migrate:local:down
 npm run migrate:up
 ```
 
+## After the migration — update the Drizzle schema
+
+This project uses Drizzle ORM as the query layer. After writing a migration, **always update `src/server/db/schema.ts`** to match — Drizzle does not own or generate migrations here; it only reads the schema definitions for type safety.
+
+**New table example:**
+```typescript
+// src/server/db/schema.ts
+export const workItems = pgTable('work_items', {
+  id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+  adoId: integer('ado_id').notNull().unique(),
+  title: text('title').notNull(),
+  state: text('state').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
+});
+```
+
+**New column example** (after `ALTER TABLE … ADD COLUMN`):
+```typescript
+// Add the new field to the existing pgTable definition in schema.ts
+assignedTo: text('assigned_to'),
+```
+
+**Add a relation** whenever there is a FK — this enables `db.query.*` eager loading:
+```typescript
+export const workItemsRelations = relations(workItems, ({ one }) => ({
+  sprint: one(sprints, { fields: [workItems.sprintId], references: [sprints.id] }),
+}));
+```
+
+Then run `npx tsc -p tsconfig.server.json --noEmit` to verify no type errors before committing.
+
 `.env.local` is git-ignored. If it doesn't exist, create it:
 ```
 DATABASE_URL=postgresql://pgadmin:yourpassword@localhost:5432/aipilot

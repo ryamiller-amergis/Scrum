@@ -1,9 +1,37 @@
 .page {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   flex: 1;
   overflow: hidden;
   background: var(--bg-primary);
+}
+
+.historyToggleBtn {
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.historyToggleBtn:hover {
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+  background: var(--bg-tertiary);
+
+}
+
+/* In compose mode the button sits in the top-left corner */
+.compose > .historyToggleBtn {
+  position: absolute;
+  top: 12px;
+  left: 16px;
 }
 
 /* ── Compose state ─────────────────────────────────────────────────────────── */
@@ -13,7 +41,9 @@
   align-items: center;
   justify-content: center;
   flex: 1;
+  min-width: 0;
   padding: 24px;
+  position: relative;
 }
 
 .composeInner {
@@ -421,6 +451,7 @@
   display: flex;
   flex-direction: column;
   flex: 1;
+  min-width: 0;
   overflow: hidden;
 }
 

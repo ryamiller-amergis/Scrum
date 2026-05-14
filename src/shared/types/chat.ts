@@ -117,6 +117,18 @@ export type SseEvent =
   | SseErrorEvent
   | SseDoneEvent;
 
+// ── Thread summary (lightweight, no messages) ─────────────────────────────────
+
+export interface ChatThreadSummary {
+  id: string;
+  userId: string;
+  title: string;
+  status: ChatThreadStatus;
+  kickoff: Pick<ChatThreadKickoff, 'project' | 'repo' | 'skillPath'>;
+  createdAt: string;
+  lastActivityAt: string;
+}
+
 // ── REST request/response shapes ──────────────────────────────────────────────
 
 export interface StartChatRequest {

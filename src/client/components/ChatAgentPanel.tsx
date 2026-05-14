@@ -14,6 +14,7 @@ import { AGENT_MODELS, DEFAULT_MODEL_ID, modelBadge } from '../config/models';
 import { formatAttachmentSize, useChatAttachments } from '../hooks/useChatAttachments';
 import type { ChatAttachment, ChatThread, ChatMessage } from '../../shared/types/chat';
 import { PRDPreviewDrawer } from './PRDPreviewDrawer';
+import { ThreadHistorySidebar } from './ThreadHistorySidebar';
 import { parseAgentMessage } from '../utils/parseAgentMessage';
 import type { ChoiceBlock } from '../utils/parseAgentMessage';
 import styles from './ChatAgentPanel.module.css';
@@ -270,6 +271,7 @@ interface ChatAgentPanelProps {
   isOpen: boolean;
   onClose: () => void;
   onNewChat: () => void | Promise<void>;
+  onSelectThread?: (threadId: string) => void;
   canStartNewChat?: boolean;
   isStartingNewChat?: boolean;
   newChatError?: string;
@@ -280,11 +282,13 @@ export const ChatAgentPanel: React.FC<ChatAgentPanelProps> = ({
   isOpen,
   onClose,
   onNewChat,
+  onSelectThread,
   canStartNewChat = true,
   isStartingNewChat = false,
   newChatError,
 }) => {
   const [input, setInput] = useState('');
+  const [showHistory, setShowHistory] = useState(false);
   const [skillPickerOpen, setSkillPickerOpen] = useState(false);
   const [skillPickerIdx, setSkillPickerIdx] = useState(0);
   const [showSaveWiki, setShowSaveWiki] = useState(false);
@@ -587,6 +591,15 @@ export const ChatAgentPanel: React.FC<ChatAgentPanelProps> = ({
           </div>
         </div>
         <div className={styles.headerActions}>
+          {onSelectThread && (
+            <button
+              className={styles.iconBtn}
+              onClick={() => setShowHistory((v) => !v)}
+              title="Thread history"
+            >
+              {showHistory ? '← Back' : '⏱ History'}
+            </button>
+          )}
           <button
             className={styles.iconBtn}
             onClick={onNewChat}
@@ -608,7 +621,15 @@ export const ChatAgentPanel: React.FC<ChatAgentPanelProps> = ({
         </div>
       )}
 
-      {!thread ? (
+      {showHistory && onSelectThread ? (
+        <ThreadHistorySidebar
+          activeThreadId={thread?.id ?? null}
+          onSelectThread={(id) => { onSelectThread(id); setShowHistory(false); }}
+          onDeleteThread={(id) => { if (id === thread?.id) onSelectThread(''); }}
+          onClose={() => setShowHistory(false)}
+          className={styles.historySidebarInPanel}
+        />
+      ) : !thread ? (
         <div className={styles.emptyPane}>
           <span className={styles.emptyIcon}>AI</span>
           <h3 className={styles.emptyTitle}>No active chat</h3>

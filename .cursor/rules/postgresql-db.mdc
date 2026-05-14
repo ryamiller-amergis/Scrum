@@ -1,61 +1,90 @@
 ---
-description: PostgreSQL connection and migration best practices for this project (pg driver + node-pg-migrate)
-globs: src/server/db.ts,src/server/routes/**/*.ts,migrations/**/*.{js,ts,sql}
+description: PostgreSQL query, transaction, and migration conventions for this project (Drizzle ORM + node-pg-migrate)
+globs: src/server/db/**/*.ts,src/server/services/**/*.ts,src/server/routes/**/*.ts,migrations/**/*.{js,ts,sql}
 alwaysApply: false
 ---
 
 # PostgreSQL Database Conventions
 
-## Connection — use the shared pool
+## Query layer — use Drizzle ORM
 
-Always import the singleton pool from `src/server/db.ts`. Never create a new `Pool` or `Client` directly in route files.
+All database queries must go through the Drizzle instance exported from `src/server/db/drizzle.ts`. Do **not** import `pool` from `src/server/db.ts` directly in routes or services — the pool is an implementation detail owned by Drizzle.
 
 ```typescript
-// ✅ GOOD
+// ✅ GOOD — Drizzle fluent API
+import { eq, desc } from 'drizzle-orm';
+import { db } from '../db/drizzle';
+import { chatThreads } from '../db/schema';
+
+const rows = await db
+  .select()
+  .from(chatThreads)
+  .where(eq(chatThreads.userId, userId))
+  .orderBy(desc(chatThreads.lastActivityAt));
+
+// ❌ BAD — raw pool query
 import pool from '../db';
-const result = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
-
-// ❌ BAD — creates a new pool per request
-import { Pool } from 'pg';
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const result = await pool.query('SELECT * FROM chat_threads WHERE user_id = $1', [userId]);
 ```
 
-## SSL
+## Schema definitions — src/server/db/schema.ts
 
-- Local dev (`NODE_ENV !== 'production'`): SSL is **off** — local PostgreSQL does not require it.
-- Production (Azure PostgreSQL Flexible Server): `ssl: { rejectUnauthorized: true }` — already configured in `src/server/db.ts`.
-- Never hard-code credentials. Always read from `DATABASE_URL` env var.
+Table shapes live in `src/server/db/schema.ts` as Drizzle `pgTable` definitions. Always update this file when the database schema changes (after writing a migration).
 
-## Parameterized queries — always use `$1, $2` placeholders
+- Use `timestamp('col', { withTimezone: true, mode: 'string' })` for all timestamp columns so values round-trip as ISO strings matching the shared TypeScript types.
+- Use `jsonb('col').$type<YourType>()` to add compile-time typing to JSONB columns.
+- Define `relations()` exports for any FK relationships — this enables the `db.query.*` relational API.
+
+## Relational queries — prefer db.query.* for nested reads
+
+When loading a parent row with its related children, use the relational query API instead of multiple round-trips:
 
 ```typescript
-// ✅ GOOD — safe from SQL injection
-await pool.query('SELECT * FROM items WHERE id = $1', [req.params.id]);
+// ✅ GOOD — single query, typed result with nested relations
+const result = await db.query.chatThreads.findFirst({
+  where: eq(chatThreads.id, threadId),
+  with: {
+    messages: {
+      orderBy: asc(chatMessages.ts),
+      with: { attachments: true },
+    },
+  },
+});
 
-// ❌ BAD — SQL injection risk
-await pool.query(`SELECT * FROM items WHERE id = '${req.params.id}'`);
+// ❌ BAD — three separate queries and manual grouping with Map
+const threadResult = await pool.query(`SELECT ... FROM chat_threads WHERE id = $1`, [threadId]);
+const msgResult   = await pool.query(`SELECT ... FROM chat_messages WHERE thread_id = $1`, [threadId]);
+const attResult   = await pool.query(`SELECT ... FROM chat_message_attachments WHERE message_id = ANY($1)`, [ids]);
 ```
 
-## Migrations — use node-pg-migrate
-
-Migrations live in `migrations/`. Never run `CREATE TABLE` or `ALTER TABLE` directly in application startup code.
-
-| Command | What it does |
-|---|---|
-| `npm run migrate:create -- <name>` | Scaffold a new migration file |
-| `npm run migrate:up` | Apply all pending migrations |
-| `npm run migrate:down` | Roll back the last migration |
-
-`node-pg-migrate` reads `DATABASE_URL` from the environment automatically — no extra config needed.
-
-## Transaction pattern for multi-step writes
+## Upserts
 
 ```typescript
+await db
+  .insert(chatThreads)
+  .values({ id, userId, ... })
+  .onConflictDoUpdate({
+    target: chatThreads.id,
+    set: { status, lastActivityAt, ... },
+  });
+```
+
+## Transactions — use db.transaction()
+
+```typescript
+// ✅ GOOD — Drizzle manages BEGIN / COMMIT / ROLLBACK automatically
+await db.transaction(async (tx) => {
+  await tx.insert(chatMessages).values({ ... }).onConflictDoNothing();
+  for (const att of attachments) {
+    await tx.insert(chatMessageAttachments).values({ ... }).onConflictDoNothing();
+  }
+});
+
+// ❌ BAD — manual transaction with pool.connect()
 const client = await pool.connect();
 try {
   await client.query('BEGIN');
-  await client.query('INSERT INTO ...', [...]);
-  await client.query('UPDATE ...', [...]);
+  ...
   await client.query('COMMIT');
 } catch (e) {
   await client.query('ROLLBACK');
@@ -64,3 +93,35 @@ try {
   client.release();
 }
 ```
+
+## Raw SQL — use the sql template tag
+
+For the rare case where you need SQL Drizzle can't express (e.g. a health check), use the `sql` template tag rather than importing the raw pool:
+
+```typescript
+import { sql } from 'drizzle-orm';
+import { db } from '../db/drizzle';
+
+const result = await db.execute<{ now: string }>(sql`SELECT NOW() AS now`);
+```
+
+## SSL
+
+- Local dev (`NODE_ENV !== 'production'`): SSL is off — local PostgreSQL does not require it.
+- Production (Azure PostgreSQL Flexible Server): `ssl: { rejectUnauthorized: true }` — already configured in `src/server/db.ts`.
+- Never hard-code credentials. Always read from `DATABASE_URL` env var.
+
+## Migrations — use node-pg-migrate
+
+Schema changes are managed with `node-pg-migrate` SQL files in `migrations/`. Never run `CREATE TABLE` or `ALTER TABLE` directly in application startup code.
+
+| Command | What it does |
+|---|---|
+| `npm run migrate:create -- <name>` | Scaffold a new SQL migration file |
+| `npm run migrate:up` | Apply all pending migrations |
+| `npm run migrate:down` | Roll back the last migration |
+| `npm run migrate:local:up` | Apply migrations against `.env.local` DB |
+
+`node-pg-migrate` reads `DATABASE_URL` from the environment automatically.
+
+**After writing a migration**, update `src/server/db/schema.ts` to match — Drizzle's schema definitions must stay in sync with the actual database schema. Drizzle does **not** own or generate migrations in this project.
