@@ -1,0 +1,61 @@
+---
+description: Evaluate every UI feature change for RBAC impact -- add, modify, or remove permission keys and client-side can() guards as needed
+globs: src/client/**/*.tsx,src/client/**/*.module.css,src/client/hooks/**/*.ts,src/client/App.tsx
+alwaysApply: false
+---
+
+# RBAC Governance
+
+For every UI feature being **added**, **modified**, or **removed**, work through the checklist below before writing any code.
+
+## Evaluation Checklist
+
+**Adding or modifying a feature:**
+
+1. Does the feature expose a capability that should be access-controlled (e.g. a new page, action button, data view, or admin function)?
+2. Is there already a matching key in the permission catalog below that covers it?
+   - Yes → wire the existing key via `can('key')` in the component; no migration needed.
+   - No → load the `rbac-management` skill and follow the **Add a Permission** workflow.
+3. Does the feature belong to an existing category (`admin`, `chat`, `deployments`, `workitems`, `wiki`, `skills`, `cost`)?
+   - No → the new permission likely needs a new category; flag this when loading the skill.
+
+**Removing a feature:**
+
+1. Does the removed UI code contain a `can('...')` call or reference a permission key?
+2. If yes, search for ALL other usages of that key: `requirePermission`, `requireAnyPermission`, `can(` across the entire codebase.
+3. If **zero usages remain** after removal → load the `rbac-management` skill and follow the **Remove a Permission** workflow.
+
+## Current Permission Catalog
+
+| Key | Category | Roles |
+|-----|----------|-------|
+| `admin:roles` | admin | admin |
+| `admin:users` | admin | admin |
+| `chat:create` | chat | admin, member |
+| `chat:view_all` | chat | admin |
+| `deployments:create` | deployments | admin, member |
+| `deployments:manage` | deployments | admin |
+| `workitems:write` | workitems | admin, member |
+| `wiki:write` | wiki | admin, member |
+| `skills:manage` | skills | admin |
+| `cost:view` | cost | admin, viewer |
+
+## Client Gating Pattern
+
+```tsx
+// Pull can() from useAppShell — no separate import needed
+const { can } = useAppShell();
+
+// Gate rendering
+{can('skills:manage') && <ManageSkillsButton />}
+
+// Gate navigation
+if (!can('admin:roles')) return <Navigate to="/" />;
+```
+
+## When to Load the Skill
+
+Load the `rbac-management` skill (`.cursor/skills/rbac-management/SKILL.md`) when:
+- A new permission key must be added (migration + middleware + client wiring)
+- An orphaned key must be removed (migration + cleanup)
+- Role-permission assignments need updating
