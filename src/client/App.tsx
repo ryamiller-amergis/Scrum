@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ErrorBoundary } from 'react-error-boundary';
 import { DndProvider } from 'react-dnd';
@@ -111,6 +111,15 @@ function App() {
     if (currentView === 'cloudcost' && !can('cost:view'))     navigate('/home');
     if (currentView === 'backlog'   && !can('backlog:view'))  navigate('/home');
   }, [currentView, permissionsLoaded, can, navigate]);
+
+  // Auto-show changelog once per session when the user lands on /home with an unread version.
+  const hasAutoShownChangelog = useRef(false);
+  useEffect(() => {
+    if (currentView === 'home' && hasUnreadChangelog && !hasAutoShownChangelog.current) {
+      hasAutoShownChangelog.current = true;
+      setShowChangelog(true);
+    }
+  }, [currentView, hasUnreadChangelog, setShowChangelog]);
 
   const { data: skillRepos = [], isLoading: isLoadingSkillRepos } = useSkillRepos(selectedProject || null);
   const startChat = useStartChat();

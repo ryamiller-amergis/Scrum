@@ -1,5 +1,24 @@
 [
   {
+    "version": "1.12.1",
+    "date": "2026-05-15",
+    "title": "What's New Auto-Launch & Theming",
+    "changes": [
+      {
+        "type": "improvement",
+        "description": "What's New modal now opens automatically when landing on the home page if there is a new release you haven't seen — no need to open the profile menu to discover updates"
+      },
+      {
+        "type": "improvement",
+        "description": "Dismissing the What's New modal now immediately clears the red indicator on the profile icon"
+      },
+      {
+        "type": "improvement",
+        "description": "What's New header title color now follows the app theme — green in dark mode, blue in light mode"
+      }
+    ]
+  },
+  {
     "version": "1.12.0",
     "date": "2026-05-14",
     "title": "Role-Based Access Control (RBAC)",

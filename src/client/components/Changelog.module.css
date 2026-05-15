@@ -60,11 +60,7 @@
   margin: 0;
   font-size: 28px;
   font-weight: 700;
-  color: var(--text-primary);
-  background: linear-gradient(135deg, var(--accent-color), #7B68EE);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--accent-color);
 }
 
 .changelog-subtitle {

@@ -7,7 +7,7 @@ import { env } from '../config/env';
 import type { WorkItem } from '../types/workitem';
 import type { MyPermissionsResponse } from '../../shared/types/rbac';
 
-const CURRENT_VERSION = '1.12.0';
+const CURRENT_VERSION = '1.12.1';
 
 interface DueDateChange {
   workItemId: number;
