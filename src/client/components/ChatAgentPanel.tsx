@@ -646,9 +646,31 @@ export const ChatAgentPanel: React.FC<ChatAgentPanelProps> = ({
       ) : (
         <>
           <div className={styles.messages}>
-            {visibleMessages.map((msg) => {
+            {visibleMessages.map((msg, idx) => {
               if (msg.role === 'tool') return <ToolCallBubble key={msg.id} msg={msg} />;
               if (msg.role === 'user') return <UserBubble key={msg.id} msg={msg} />;
+              if (msg.role === 'system') {
+                const isError = msg.text.startsWith('Error:');
+                const lastUserText = isError
+                  ? visibleMessages.slice(0, idx).reverse().find((m) => m.role === 'user')?.text ?? null
+                  : null;
+                if (isError && lastUserText) {
+                  return (
+                    <div key={msg.id} className={styles.systemErrorMsg}>
+                      <span className={styles.systemErrorText}>{msg.text}</span>
+                      <button
+                        className={styles.retryBtn}
+                        onClick={() => doSend(lastUserText)}
+                        disabled={isRunning}
+                        type="button"
+                      >
+                        ↺ Try again
+                      </button>
+                    </div>
+                  );
+                }
+                return <div key={msg.id} className={styles.systemMsg}>{msg.text}</div>;
+              }
               return <AgentMessage key={msg.id} msg={msg} onSend={doSend} isRunning={isRunning} />;
             })}
 

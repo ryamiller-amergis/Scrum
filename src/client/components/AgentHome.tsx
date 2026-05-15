@@ -382,11 +382,13 @@ const AgentMessage: React.FC<AgentMessageProps> = ({ msg, onSend, isRunning, que
 function MessageBubble({
   msg,
   onSend,
+  onRetry,
   isRunning,
   questionOffset,
 }: {
   msg: ChatMessage;
   onSend: (text: string) => void;
+  onRetry?: () => void;
   isRunning: boolean;
   questionOffset: number;
 }) {
@@ -399,6 +401,17 @@ function MessageBubble({
     );
   }
   if (msg.role === 'system') {
+    const isError = msg.text.startsWith('Error:');
+    if (isError && onRetry) {
+      return (
+        <div className={styles.systemErrorMsg}>
+          <span className={styles.systemErrorText}>{msg.text}</span>
+          <button className={styles.retryBtn} onClick={onRetry} disabled={isRunning} type="button">
+            ↺ Try again
+          </button>
+        </div>
+      );
+    }
     return <div className={styles.systemMsg}>{msg.text}</div>;
   }
   if (msg.role === 'user') {
@@ -1220,13 +1233,23 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
           <div className={styles.messages}>
             {(() => {
               let qOffset = 0;
-              return visibleMessages.map((msg) => {
+              return visibleMessages.map((msg, idx) => {
                 const offset = qOffset;
                 if (msg.role === 'agent') {
                   qOffset += parseAgentMessage(msg.text).filter((p) => p.type === 'choices').length;
                 }
+                const lastUserText = msg.role === 'system' && msg.text.startsWith('Error:')
+                  ? visibleMessages.slice(0, idx).reverse().find((m) => m.role === 'user')?.text ?? null
+                  : null;
                 return (
-                  <MessageBubble key={msg.id} msg={msg} onSend={doSend} isRunning={isRunning} questionOffset={offset} />
+                  <MessageBubble
+                    key={msg.id}
+                    msg={msg}
+                    onSend={doSend}
+                    onRetry={lastUserText ? () => doSend(lastUserText) : undefined}
+                    isRunning={isRunning}
+                    questionOffset={offset}
+                  />
                 );
               });
             })()}

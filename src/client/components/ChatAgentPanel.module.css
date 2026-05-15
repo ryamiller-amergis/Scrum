@@ -242,6 +242,58 @@
   line-height: 1.4;
 }
 
+.systemMsg {
+  text-align: center;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  padding: 2px 0;
+}
+
+.systemErrorMsg {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 4px 0;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--error-color) 35%, var(--border-color));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--error-color) 8%, var(--bg-secondary));
+  color: var(--error-color);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.systemErrorText {
+  flex: 1;
+  min-width: 0;
+}
+
+.retryBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, var(--error-color) 40%, var(--border-color));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--error-color) 12%, var(--bg-primary));
+  color: var(--error-color);
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.retryBtn:hover {
+  background: color-mix(in srgb, var(--error-color) 20%, var(--bg-primary));
+  border-color: var(--error-color);
+}
+
+.retryBtn:active {
+  transform: scale(0.97);
+}
+
 .btnPrimary {
   padding: 9px 20px;
   background: var(--accent-color);

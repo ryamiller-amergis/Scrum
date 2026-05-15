@@ -6,7 +6,11 @@ disable-model-invocation: true
 
 # Kick-off Orchestration
 
-Run this workflow top-to-bottom when the user invokes `/kick-off`. Do not skip phases. Each phase gates the next.
+**Before doing anything else:**
+1. Call `SwitchMode` with `target_mode_id: "plan"` — this session is planning-only until the user approves the design doc.
+2. Use model `claude-4.6-opus-high-thinking` (Opus 4.6) for all reasoning in this workflow. If a subagent is dispatched, pass `model: "claude-4.6-opus-high-thinking"` in the Task tool call.
+
+Run this workflow top-to-bottom. Do not skip phases. Each phase gates the next.
 
 ---
 
