@@ -43,30 +43,38 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
       >
         Home
       </button>
-      <button
-        className={`view-btn ${currentView === 'calendar' ? 'active' : ''}`}
-        onClick={onNavigateCalendar}
-      >
-        Calendar
-      </button>
-      <button
-        className={`view-btn ${currentView === 'planning' ? 'active' : ''}`}
-        onClick={onNavigatePlanning}
-      >
-        Planning
-      </button>
-      <button
-        className={`view-btn ${currentView === 'cloudcost' ? 'active' : ''}`}
-        onClick={onNavigateCloudCost}
-      >
-        Cloud Cost
-      </button>
-      <button
-        className={`view-btn ${currentView === 'backlog' ? 'active' : ''}`}
-        onClick={onNavigateBacklog}
-      >
-        Backlog
-      </button>
+      {can('calendar:view') && (
+        <button
+          className={`view-btn ${currentView === 'calendar' ? 'active' : ''}`}
+          onClick={onNavigateCalendar}
+        >
+          Calendar
+        </button>
+      )}
+      {can('planning:view') && (
+        <button
+          className={`view-btn ${currentView === 'planning' ? 'active' : ''}`}
+          onClick={onNavigatePlanning}
+        >
+          Planning
+        </button>
+      )}
+      {can('cost:view') && (
+        <button
+          className={`view-btn ${currentView === 'cloudcost' ? 'active' : ''}`}
+          onClick={onNavigateCloudCost}
+        >
+          Cloud Cost
+        </button>
+      )}
+      {can('backlog:view') && (
+        <button
+          className={`view-btn ${currentView === 'backlog' ? 'active' : ''}`}
+          onClick={onNavigateBacklog}
+        >
+          Backlog
+        </button>
+      )}
       {can('admin:roles') && (
         <button
           className={`view-btn ${currentView === 'admin' ? 'active' : ''}`}
@@ -77,7 +85,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
       )}
     </div>
     <div className="header-controls">
-      {onOpenAgentChat && (
+      {onOpenAgentChat && can('chat:view') && (
         <button
           className="agent-launch-btn"
           onClick={onOpenAgentChat}

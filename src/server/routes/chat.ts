@@ -17,8 +17,11 @@ import { toggleFlag } from '../services/chatThreadRepository';
 import { getUserId } from '../utils/requestUser';
 import type { ChatAttachment, ChatThread, StartChatRequest, SendMessageRequest } from '../../shared/types/chat';
 import type { SaveWikiPageRequest } from '../../shared/types/skills';
+import { requirePermission } from '../middleware/rbac';
 
 const router = Router();
+
+router.use(requirePermission('chat:view'));
 const MAX_CHAT_ATTACHMENTS = 5;
 const MAX_CHAT_ATTACHMENT_BYTES = 1024 * 1024;
 const MAX_CHAT_ATTACHMENT_TOTAL_BYTES = 4 * 1024 * 1024;

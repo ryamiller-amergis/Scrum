@@ -1,7 +1,10 @@
 import { Router } from 'express';
 import { AzureCostService } from '../services/azureCost';
+import { requirePermission } from '../middleware/rbac';
 
 const router = Router();
+
+router.use(requirePermission('cost:view'));
 
 // Initialize Azure Cost Service
 let azureCostService: AzureCostService;

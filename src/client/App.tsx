@@ -101,12 +101,15 @@ function App() {
     handleFieldUpdate,
   } = useAppShell();
 
-  // Guard admin routes: redirect to home if user lacks admin:roles permission.
-  // Wait for permissionsLoaded to avoid redirecting before the fetch completes.
+  // Guard all gated routes: redirect to /home if the user lacks the required permission.
+  // Wait for permissionsLoaded to avoid redirecting before the permissions fetch completes.
   useEffect(() => {
-    if (currentView === 'admin' && permissionsLoaded && !can('admin:roles')) {
-      navigate('/home');
-    }
+    if (!permissionsLoaded) return;
+    if (currentView === 'admin'     && !can('admin:roles'))   navigate('/home');
+    if (currentView === 'calendar'  && !can('calendar:view')) navigate('/home');
+    if (currentView === 'planning'  && !can('planning:view')) navigate('/home');
+    if (currentView === 'cloudcost' && !can('cost:view'))     navigate('/home');
+    if (currentView === 'backlog'   && !can('backlog:view'))  navigate('/home');
   }, [currentView, permissionsLoaded, can, navigate]);
 
   const { data: skillRepos = [], isLoading: isLoadingSkillRepos } = useSkillRepos(selectedProject || null);
@@ -116,6 +119,7 @@ function App() {
   ) ?? skillRepos[0];
 
   const handleStartPanelChat = useCallback(async () => {
+    if (!can('chat:view')) return;
     setChatOpen(true);
     if (!defaultAgentRepo || startChat.isPending) return;
     setActiveThreadId(null);

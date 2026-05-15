@@ -16,14 +16,18 @@ This skill is loaded when the `rbac-governance` rule determines that an add, rem
 |-----|----------|-------------|-------|--------|--------|
 | `admin:roles` | admin | Manage roles and permissions | ✓ | | |
 | `admin:users` | admin | Manage user role assignments | ✓ | | |
+| `backlog:view` | backlog | View backlog page | ✓ | ✓ | |
+| `calendar:view` | calendar | View calendar page | ✓ | ✓ | |
 | `chat:create` | chat | Create new chat threads | ✓ | ✓ | |
+| `chat:view` | chat | Access Agent Studio chat | ✓ | ✓ | |
 | `chat:view_all` | chat | View all users' chat threads | ✓ | | |
+| `cost:view` | cost | View cost and usage data | ✓ | | ✓ |
 | `deployments:create` | deployments | Create deployments | ✓ | ✓ | |
 | `deployments:manage` | deployments | Manage existing deployments | ✓ | | |
-| `workitems:write` | workitems | Create and edit work items | ✓ | ✓ | |
-| `wiki:write` | wiki | Create and edit wiki pages | ✓ | ✓ | |
+| `planning:view` | planning | View planning analytics pages | ✓ | ✓ | ✓ |
 | `skills:manage` | skills | Manage agent skills | ✓ | | |
-| `cost:view` | cost | View cost and usage data | ✓ | | ✓ |
+| `wiki:write` | wiki | Create and edit wiki pages | ✓ | ✓ | |
+| `workitems:write` | workitems | Create and edit work items | ✓ | ✓ | |
 
 **Roles:** `admin` (all permissions), `member` (default role — create/write subset), `viewer` (read-only subset).
 
