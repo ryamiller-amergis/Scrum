@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useAppShell } from '../hooks/useAppShell';
-import { useStartChat, useSkillList, useSkillRepos } from '../hooks/useChatThreads';
+import { useStartChat, useChatThread, useSkillList, useSkillRepos } from '../hooks/useChatThreads';
 import { useProjectSkillConfig } from '../hooks/useProjectSkillConfig';
 import { useChatStream } from '../hooks/useChatStream';
 import { useChatAttachments, formatAttachmentSize } from '../hooks/useChatAttachments';
@@ -285,6 +285,7 @@ const NewInterviewCompose: React.FC = () => {
           repo: resolvedRepoName,
           branch: resolvedBranch,
           skillPath: grillSkill?.path,
+          model,
         },
         skipAutoKickoff: true,
       });
@@ -307,7 +308,7 @@ const NewInterviewCompose: React.FC = () => {
       setSendError(msg);
       setIsSending(false);
     }
-  }, [input, title, attachments, isSending, resolvedRepoName, resolvedBranch, selectedProject, grillSkill, startChat, createInterview, navigate, clearAttachments, speech]);
+  }, [input, title, attachments, isSending, resolvedRepoName, resolvedBranch, selectedProject, grillSkill, startChat, createInterview, navigate, clearAttachments, speech, model]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -540,11 +541,19 @@ const ExistingInterviewView: React.FC<{ id: string }> = ({ id }) => {
 
   const speech = useSpeechInput(useCallback((text: string) => setInput(text), []));
 
+  const { data: chatThread } = useChatThread(interview?.chatThreadId ?? null);
+
   const { messages, streamingText, status: threadStatus } = useChatStream(
     interview?.chatThreadId ?? null,
   );
 
   const isRunning = threadStatus === 'running';
+
+  useEffect(() => {
+    if (chatThread) {
+      setModel(chatThread.kickoff.model ?? DEFAULT_MODEL_ID);
+    }
+  }, [chatThread?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });

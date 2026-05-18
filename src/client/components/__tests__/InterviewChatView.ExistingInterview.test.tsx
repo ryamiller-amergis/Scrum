@@ -30,6 +30,7 @@ jest.mock('../../hooks/useChatThreads', () => ({
     ],
   })),
   useStartChat: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
+  useChatThread: jest.fn(() => ({ data: null })),
 }));
 
 jest.mock('../../hooks/useProjectSkillConfig', () => ({

@@ -26,6 +26,7 @@ jest.mock('../../hooks/useChatThreads', () => ({
     ],
   })),
   useStartChat: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
+  useChatThread: jest.fn(() => ({ data: null })),
 }));
 
 jest.mock('../../hooks/useProjectSkillConfig', () => ({
@@ -241,5 +242,33 @@ describe('NewInterviewCompose — title required', () => {
     expect(messageCall).toBeDefined();
     const body = JSON.parse(messageCall![1].body);
     expect(body.text).toBe('Tell me about the architecture');
+  });
+
+  it('passes the selected model into the chat thread kickoff and first message', async () => {
+    renderCompose();
+    fireEvent.change(screen.getByLabelText(/title/i), {
+      target: { value: 'Model Test Interview' },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/describe what you'd like/i), {
+      target: { value: 'Scope the feature' },
+    });
+    fireEvent.change(screen.getByRole('combobox'), {
+      target: { value: 'claude-opus-4-6' },
+    });
+    fireEvent.click(screen.getByLabelText('Start interview'));
+
+    await waitFor(() => expect(startChatMutateAsync).toHaveBeenCalled());
+
+    expect(startChatMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kickoff: expect.objectContaining({ model: 'claude-opus-4-6' }),
+        skipAutoKickoff: true,
+      }),
+    );
+
+    const messageCall = (global.fetch as jest.Mock).mock.calls.find((c) =>
+      String(c[0]).includes('/api/chat/threads/thread-abc/messages'),
+    );
+    expect(JSON.parse(messageCall![1].body).model).toBe('claude-opus-4-6');
   });
 });
