@@ -68,4 +68,5 @@ export interface UpdateRoleRequest {
 export interface MyPermissionsResponse {
   permissions: string[];
   roles: string[];
+  userId: string;
 }

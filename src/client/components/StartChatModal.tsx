@@ -5,6 +5,7 @@ import {
   useSkillList,
   useStartChat,
 } from '../hooks/useChatThreads';
+import { useProjectSkillConfig } from '../hooks/useProjectSkillConfig';
 import { AGENT_MODELS, DEFAULT_MODEL_ID, getDefaultModelForSkill } from '../config/models';
 import styles from './StartChatModal.module.css';
 
@@ -15,21 +16,26 @@ interface StartChatModalProps {
 
 export const StartChatModal: React.FC<StartChatModalProps> = ({ onClose, onStarted }) => {
   const [project, setProject] = useState('');
-  const [repo, setRepo] = useState('');
-  const [branch, setBranch] = useState('');
   const [skillPath, setSkillPath] = useState('');
   const [model, setModel] = useState(DEFAULT_MODEL_ID);
   const [transcript, setTranscript] = useState('');
   const [freeformContext, setFreeformContext] = useState('');
 
   const { data: projects = [], isLoading: loadingProjects } = useSkillProjects();
+  const { data: skillConfig, isLoading: loadingConfig } = useProjectSkillConfig(project || null);
   const { data: repos = [], isLoading: loadingRepos } = useSkillRepos(project || null);
   const { data: skills = [], isLoading: loadingSkills } = useSkillList(
     project || null,
-    repo || null,
-    branch || undefined,
+    skillConfig?.skillRepo ?? repos.find((r) => r.name.toLowerCase() === project.toLowerCase())?.name ?? repos[0]?.name ?? null,
+    skillConfig?.skillBranch ?? undefined,
   );
   const startChat = useStartChat();
+
+  // Resolve repo + branch from admin config, falling back to heuristic
+  const fallbackRepo = repos.find((r) => r.name.toLowerCase() === project.toLowerCase()) ?? repos[0];
+  const resolvedRepo = skillConfig?.skillRepo ?? fallbackRepo?.name ?? null;
+  const resolvedBranch = skillConfig?.skillBranch ?? fallbackRepo?.defaultBranch ?? 'main';
+  const hasConfig = !!skillConfig;
 
   // When skill selection changes, apply the skill's declared model if present
   const selectedSkill = skills.find((s) => s.path === skillPath);
@@ -39,31 +45,20 @@ export const StartChatModal: React.FC<StartChatModalProps> = ({ onClose, onStart
     }
   }, [skillPath]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const selectedRepo = repos.find((r) => r.name === repo);
-  const resolvedBranch = branch || selectedRepo?.defaultBranch || 'main';
-
-  const canStart = !!project && !!repo && !startChat.isPending;
+  const canStart = !!project && !!resolvedRepo && !startChat.isPending && !loadingConfig && !loadingRepos;
 
   const handleProjectChange = (val: string) => {
     setProject(val);
-    setRepo('');
-    setBranch('');
-    setSkillPath('');
-  };
-
-  const handleRepoChange = (val: string) => {
-    setRepo(val);
-    setBranch('');
     setSkillPath('');
   };
 
   const handleStart = async () => {
-    if (!canStart) return;
+    if (!canStart || !resolvedRepo) return;
     try {
       const result = await startChat.mutateAsync({
         kickoff: {
           project,
-          repo,
+          repo: resolvedRepo,
           branch: resolvedBranch,
           skillPath,
           model,
@@ -109,42 +104,24 @@ export const StartChatModal: React.FC<StartChatModalProps> = ({ onClose, onStart
             </select>
           </div>
 
-          {/* Repo */}
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="sc-repo">Repository</label>
-            <select
-              id="sc-repo"
-              className={styles.select}
-              value={repo}
-              onChange={(e) => handleRepoChange(e.target.value)}
-              disabled={!project || loadingRepos}
-            >
-              <option value="">
-                {loadingRepos ? 'Loading…' : '— Select repo —'}
-              </option>
-              {repos.map((r) => (
-                <option key={r.id} value={r.name}>{r.name}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Branch (optional override) */}
-          {repo && selectedRepo && (
+          {/* Resolved repo + branch (read-only info) */}
+          {project && (
             <div className={styles.field}>
-              <label className={styles.label} htmlFor="sc-branch">
-                Branch <span style={{ fontWeight: 400 }}>(default: {selectedRepo.defaultBranch})</span>
-              </label>
-              <select
-                id="sc-branch"
-                className={styles.select}
-                value={branch}
-                onChange={(e) => { setBranch(e.target.value); setSkillPath(''); }}
-              >
-                <option value="">Use default ({selectedRepo.defaultBranch})</option>
-                {selectedRepo.defaultBranch !== 'tbi/refine-sdlc' && (
-                  <option value="tbi/refine-sdlc">tbi/refine-sdlc (test)</option>
-                )}
-              </select>
+              <label className={styles.label}>Repository &amp; Branch</label>
+              {loadingConfig || loadingRepos ? (
+                <p className={styles.hint}>Resolving…</p>
+              ) : resolvedRepo ? (
+                <p className={styles.hint}>
+                  <strong>{resolvedRepo}</strong> @ <code style={{ fontFamily: 'monospace', background: 'var(--bg-secondary)', padding: '1px 5px', borderRadius: 3, border: '1px solid var(--border-color-light)' }}>{resolvedBranch}</code>
+                  {hasConfig
+                    ? <span style={{ color: 'var(--success-color)', marginLeft: 8 }}>✓ admin config</span>
+                    : <span style={{ color: 'var(--text-muted)', marginLeft: 8 }}>(auto-detected)</span>}
+                </p>
+              ) : (
+                <p className={styles.hint} style={{ color: 'var(--error-color)' }}>
+                  No skill config found for this project. Contact an admin.
+                </p>
+              )}
             </div>
           )}
 
@@ -158,10 +135,10 @@ export const StartChatModal: React.FC<StartChatModalProps> = ({ onClose, onStart
               className={styles.select}
               value={skillPath}
               onChange={(e) => setSkillPath(e.target.value)}
-              disabled={!repo || loadingSkills}
+              disabled={!resolvedRepo || loadingSkills}
             >
               <option value="">
-                {loadingSkills ? 'Loading skills…' : skills.length === 0 && repo ? 'No skills found' : '— Free chat (no skill) —'}
+                {loadingSkills ? 'Loading skills…' : skills.length === 0 && resolvedRepo ? 'No skills found' : '— Free chat (no skill) —'}
               </option>
               {skills.map((s) => (
                 <option key={s.id} value={s.path} title={s.description}>
@@ -174,7 +151,7 @@ export const StartChatModal: React.FC<StartChatModalProps> = ({ onClose, onStart
                 {skills.find((s) => s.path === skillPath)!.description}
               </p>
             )}
-            {!skillPath && repo && (
+            {!skillPath && resolvedRepo && (
               <p className={styles.hint}>
                 Starts an open-ended chat. Type <code style={{ fontFamily: 'monospace', background: 'var(--bg-secondary)', padding: '1px 5px', borderRadius: 3, border: '1px solid var(--border-color-light)' }}>/</code> in the chat input at any time to invoke a skill.
               </p>

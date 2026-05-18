@@ -1,0 +1,1068 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 56px);
+  background: var(--bg-primary);
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+  gap: 12px;
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.backBtn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.backBtn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.backBtn:hover {
+  border-color: var(--text-secondary);
+  color: var(--text-primary);
+}
+
+.titleBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.titleMeta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.titleMetaSep {
+  opacity: 0.5;
+}
+
+.title {
+  font-size: 0.97rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+
+.title:hover {
+  color: var(--accent-color);
+}
+
+.titleInput {
+  font-size: 0.97rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--accent-color);
+  border-radius: 5px;
+  padding: 3px 8px;
+  outline: none;
+  min-width: 200px;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.badgeInProgress {
+  background: rgba(59, 130, 246, 0.12);
+  color: #3b82f6;
+}
+
+.badgeComplete {
+  background: rgba(34, 197, 94, 0.12);
+  color: var(--success-color);
+}
+
+.badgeArchived {
+  background: rgba(107, 114, 128, 0.12);
+  color: var(--text-muted);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.actionBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.actionBtn svg {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+
+.actionBtn:hover:not(:disabled) {
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+}
+
+.actionBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.actionBtnPrimary {
+  composes: actionBtn;
+  background: var(--accent-color);
+  color: #fff;
+  border-color: var(--accent-color);
+}
+
+.actionBtnPrimary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: #fff;
+}
+
+.actionBtnDanger {
+  composes: actionBtn;
+  border-color: color-mix(in srgb, var(--error-color) 60%, var(--border-color));
+  color: var(--error-color);
+}
+
+.actionBtnDanger:hover:not(:disabled) {
+  background: var(--error-color);
+  border-color: var(--error-color);
+  color: #fff;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.spinIcon {
+  animation: spin 1s linear infinite;
+}
+
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 24px;
+}
+
+.messageList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.messageBubble {
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 0.88rem;
+  line-height: 1.6;
+  max-width: 75%;
+}
+
+.messageBubbleUser {
+  align-self: flex-end;
+  background: var(--accent-color);
+  color: #fff;
+  border-bottom-right-radius: 3px;
+}
+
+.messageBubbleAssistant {
+  align-self: flex-start;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-bottom-left-radius: 3px;
+}
+
+.messageBubbleTool {
+  align-self: flex-start;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-style: italic;
+  padding: 4px 0;
+}
+
+.messageBubbleSystem {
+  align-self: center;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-style: italic;
+  border-radius: 6px;
+}
+
+.streamingBubble {
+  composes: messageBubbleAssistant;
+}
+
+.typingIndicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 10px 16px;
+}
+
+.typingDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  animation: typing 1.2s infinite;
+}
+
+.typingDot:nth-child(2) { animation-delay: 0.2s; }
+.typingDot:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes typing {
+  0%, 60%, 100% { opacity: 0.3; transform: scale(0.9); }
+  30% { opacity: 1; transform: scale(1); }
+}
+
+.inputArea {
+  flex-shrink: 0;
+  padding: 12px 24px 16px;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+}
+
+.fileInput {
+  display: none;
+}
+
+.inputBox {
+  width: 100%;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  padding: 12px 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-shadow: 0 2px 8px var(--shadow-sm);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.inputBox:focus-within {
+  border-color: var(--accent-color);
+  box-shadow: 0 2px 12px var(--shadow-md);
+}
+
+.inputField {
+  width: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  font-family: inherit;
+  font-size: 0.95rem;
+  color: var(--text-primary);
+  line-height: 1.5;
+  min-height: 24px;
+  max-height: 120px;
+}
+
+.inputField::placeholder {
+  color: var(--text-muted);
+}
+
+.attachmentList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.attachmentChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 6px 4px 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+}
+
+.attachmentName {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+
+.attachmentSize {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.attachmentRemove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.attachmentRemove:hover:not(:disabled) {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.attachmentError,
+.speechError {
+  font-size: 0.75rem;
+  color: var(--error-color);
+}
+
+.inputActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.attachBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.attachBtn:hover:not(:disabled) {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border-color: var(--accent-color);
+}
+
+.attachBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.attachBtn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.micBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.micBtn:hover:not(:disabled) {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border-color: var(--accent-color);
+}
+
+.micBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.micBtn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.micBtnActive {
+  background: var(--accent-color);
+  border-color: var(--accent-color);
+  color: #fff;
+}
+
+.micBtnActive:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: #fff;
+}
+
+.modelSelect {
+  height: 34px;
+  padding: 0 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.modelSelect:hover:not(:disabled),
+.modelSelect:focus {
+  background: var(--bg-primary);
+  border-color: var(--accent-color);
+  color: var(--text-primary);
+}
+
+.modelSelect:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.modelSelect option {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.sendBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent-color);
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.2s ease, opacity 0.2s ease;
+  flex-shrink: 0;
+}
+
+.sendBtn:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.sendBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.sendBtn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.stopBtn {
+  background: var(--error-color);
+}
+
+.stopBtn:hover:not(:disabled) {
+  background: var(--error-color);
+  opacity: 0.85;
+}
+
+.speechStatus {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.loadingState,
+.errorState {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+/* ── Compose (new interview) state ─────────────────────────────────────────── */
+
+.composeContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  height: calc(100vh - 56px);
+  padding: 24px;
+  position: relative;
+  background: var(--bg-primary);
+}
+
+.composeContainer > .backBtn {
+  position: absolute;
+  top: 16px;
+  left: 24px;
+}
+
+.composeInner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  width: 100%;
+  max-width: 680px;
+}
+
+.composeHeading {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-align: center;
+  letter-spacing: -0.3px;
+}
+
+.composePills {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.composePill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 20px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.composePill svg {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+}
+
+.composePillSelect {
+  position: relative;
+  cursor: pointer;
+  gap: 5px;
+  padding-right: 8px;
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+
+.composePillSelect:hover {
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+}
+
+.composePillSelect:hover .composePillSelectEl {
+  color: var(--accent-color);
+}
+
+.composePillSelectLabel {
+  font-size: 0.78rem;
+  color: inherit;
+  pointer-events: none;
+}
+
+.composePillSelectEl {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+.composePillSelectEl option {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.composePillChevron {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+.composePillSkill {
+  background: color-mix(in srgb, var(--accent-color) 10%, var(--bg-secondary));
+  border-color: color-mix(in srgb, var(--accent-color) 30%, var(--border-color));
+  color: var(--accent-color);
+  font-weight: 600;
+}
+
+.composeInputBox {
+  width: 100%;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  padding: 12px 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-shadow: 0 2px 8px var(--shadow-sm);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.composeInputBox:focus-within {
+  border-color: var(--accent-color);
+  box-shadow: 0 2px 12px var(--shadow-md);
+}
+
+.composeTextarea {
+  width: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  font-family: inherit;
+  font-size: 0.95rem;
+  color: var(--text-primary);
+  line-height: 1.5;
+  min-height: 24px;
+  max-height: 200px;
+}
+
+.composeTextarea::placeholder {
+  color: var(--text-muted);
+}
+
+.composeError {
+  font-size: 0.8rem;
+  color: var(--error-color);
+  padding: 0 2px;
+}
+
+.composeActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 2px;
+}
+
+
+.composeHint {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* ── Title input row (compose view) ─────────────────────────────────────────── */
+
+.composeTitleRow {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  width: 100%;
+}
+
+.composeTitleLabel {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.composeTitleRequired {
+  color: var(--error-color);
+  margin-left: 1px;
+}
+
+.composeTitleInput {
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  padding: 0 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 0.88rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+
+.composeTitleInput:focus {
+  border-color: var(--accent-color);
+}
+
+.composeTitleInput::placeholder {
+  color: var(--text-muted);
+}
+
+.composeTitleInputError {
+  border-color: var(--error-color) !important;
+}
+
+.composeTitleErrorMsg {
+  width: 100%;
+  font-size: 0.75rem;
+  color: var(--error-color);
+  padding-left: 2px;
+}
+
+/* ── Choice / interactive blocks (interview chat view) ───────────────────────── */
+
+.assistantBubble {
+  align-self: flex-start;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  border-bottom-left-radius: 3px;
+  padding: 10px 14px;
+  font-size: 0.88rem;
+  line-height: 1.6;
+  max-width: 75%;
+}
+
+.choiceBlock {
+  margin-top: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--bg-primary);
+}
+
+.choiceBlock + .choiceBlock {
+  margin-top: 12px;
+}
+
+.choiceBlockLocked {
+  opacity: 0.72;
+}
+
+.choiceQuestion {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid var(--border-color-light);
+  background: var(--bg-secondary);
+}
+
+.choiceQNum {
+  flex-shrink: 0;
+  background: var(--accent-color);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-top: 2px;
+  letter-spacing: 0.04em;
+}
+
+.choiceOptions {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.choiceOption {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border-color-light);
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: background 0.15s ease;
+  color: var(--text-primary);
+}
+
+.choiceOption:last-child {
+  border-bottom: none;
+}
+
+.choiceOption:hover:not(:disabled) {
+  background: rgba(99, 102, 241, 0.06);
+}
+
+.choiceOption:disabled {
+  cursor: default;
+}
+
+.choiceOptionSelected {
+  background: rgba(99, 102, 241, 0.1) !important;
+}
+
+.choiceOptionLetter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-color);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.choiceOptionSelected .choiceOptionLetter {
+  background: var(--accent-color);
+  border-color: var(--accent-color);
+  color: #fff;
+}
+
+.choiceOptionText {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-primary);
+}
+
+.choiceFreeform {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 12px;
+  border: none;
+  border-top: 1px solid var(--border-color-light);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+  resize: none;
+  line-height: 1.5;
+}
+
+.choiceFreeform:focus {
+  outline: none;
+  background: var(--bg-primary);
+}
+
+.choiceFreeformLocked {
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-style: italic;
+  border-top: 1px solid var(--border-color-light);
+  background: var(--bg-secondary);
+}
+
+.choiceSendBtn {
+  display: block;
+  width: calc(100% - 24px);
+  margin: 10px 12px 12px;
+  padding: 9px 16px;
+  background: var(--accent-color);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.choiceSendBtn:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.choiceSendBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.choiceSentLabel {
+  padding: 6px 12px 10px;
+  font-size: 12px;
+  color: var(--success-color);
+  font-weight: 500;
+}
+
+/* ── PRD link chips (interview header) ───────────────────────────────────────── */
+
+.titlePrdLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 3px;
+}
+
+.prdLinkChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px 2px 6px;
+  background: color-mix(in srgb, var(--accent-color) 8%, var(--bg-secondary));
+  border: 1px solid color-mix(in srgb, var(--accent-color) 30%, var(--border-color));
+  border-radius: 20px;
+  color: var(--accent-color);
+  font-size: 0.72rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.prdLinkChip svg {
+  width: 11px;
+  height: 11px;
+  flex-shrink: 0;
+}
+
+.prdLinkChip:hover {
+  background: color-mix(in srgb, var(--accent-color) 16%, var(--bg-secondary));
+  border-color: var(--accent-color);
+}
+
+/* ── Locked notice (replaces input when interview is complete/archived) ──────── */
+
+.lockedNotice {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  font-size: 0.83rem;
+}
+
+.lockedNotice svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.lockedReopenBtn {
+  margin-left: 4px;
+  padding: 4px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.lockedReopenBtn:hover:not(:disabled) {
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+}
+
+.lockedReopenBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.markdownBody p { margin: 0 0 0.5em; }
+.markdownBody p:last-child { margin-bottom: 0; }
+.markdownBody ul, .markdownBody ol { padding-left: 1.4em; margin: 0.4em 0; }
+.markdownBody code {
+  background: var(--bg-tertiary);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 0.85em;
+}

@@ -1,0 +1,567 @@
+/**
+ * Integration-style tests for the /api/interviews routes.
+ *
+ * - interviewService and prdService are fully mocked.
+ * - RBAC middleware is mocked to pass-through.
+ * - requestUser.getUserId is mocked to return a fixed user ID.
+ */
+import request from 'supertest';
+import express from 'express';
+import interviewRouter from '../routes/interviews';
+import * as interviewService from '../services/interviewService';
+import * as prdService from '../services/prdService';
+
+// ── Mocks ──────────────────────────────────────────────────────────────────────
+
+jest.mock('../services/interviewService');
+jest.mock('../services/prdService');
+jest.mock('../services/chatAgentService', () => ({
+  readOutputPrd: jest.fn().mockReturnValue(null),
+  readOutputBacklog: jest.fn().mockReturnValue(null),
+}));
+
+jest.mock('../middleware/rbac', () => ({
+  requirePermission: (..._keys: string[]) =>
+    (_req: any, _res: any, next: any) => next(),
+  requireAnyPermission: (..._keys: string[]) =>
+    (_req: any, _res: any, next: any) => next(),
+  attachPermissions: (_req: any, _res: any, next: any) => next(),
+}));
+
+jest.mock('../utils/requestUser', () => ({
+  getUserId: jest.fn().mockReturnValue('user-test'),
+}));
+
+const mockInterviewService = interviewService as jest.Mocked<typeof interviewService>;
+const mockPrdService = prdService as jest.Mocked<typeof prdService>;
+
+const { readOutputPrd: mockReadOutputPrd, readOutputBacklog: mockReadOutputBacklog } =
+  jest.requireMock('../services/chatAgentService') as { readOutputPrd: jest.Mock; readOutputBacklog: jest.Mock };
+
+// ── App factory ────────────────────────────────────────────────────────────────
+
+function buildApp() {
+  const app = express();
+  app.use(express.json());
+  app.use('/api/interviews', interviewRouter);
+  app.use((err: any, _req: any, res: any, _next: any) => {
+    const status = err.status ?? 500;
+    res.status(status).json({ error: err.message ?? 'Internal server error' });
+  });
+  return app;
+}
+
+// ── Fixtures ───────────────────────────────────────────────────────────────────
+
+const interviewSummary = {
+  id: 'interview-1',
+  chatThreadId: 'thread-1',
+  authorId: 'user-test',
+  title: 'Sprint Review',
+  project: 'proj-alpha',
+  repo: 'org/repo',
+  status: 'in_progress' as const,
+  prdCount: 1,
+  createdAt: '2026-01-01T00:00:00Z',
+  updatedAt: '2026-01-02T00:00:00Z',
+};
+
+const interview = { ...interviewSummary, prds: [] };
+
+const prdSummary = {
+  id: 'prd-1',
+  interviewId: 'interview-1',
+  chatThreadId: 'thread-2',
+  authorId: 'user-test',
+  title: 'Feature PRD',
+  status: 'draft' as const,
+  createdAt: '2026-01-01T00:00:00Z',
+  updatedAt: '2026-01-02T00:00:00Z',
+};
+
+const prd = { ...prdSummary, content: 'PRD content', backlogJson: null };
+
+// ── GET /api/interviews ────────────────────────────────────────────────────────
+
+describe('GET /api/interviews', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('returns 200 with interview list', async () => {
+    mockInterviewService.listInterviews.mockResolvedValue([interviewSummary]);
+
+    const res = await request(buildApp()).get('/api/interviews');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0]).toMatchObject({ id: 'interview-1', title: 'Sprint Review' });
+  });
+
+  it('passes status filter to the service', async () => {
+    mockInterviewService.listInterviews.mockResolvedValue([]);
+
+    await request(buildApp()).get('/api/interviews?status=complete');
+
+    expect(mockInterviewService.listInterviews).toHaveBeenCalledWith('user-test', { status: 'complete' });
+  });
+
+  it('passes project filter to the service', async () => {
+    mockInterviewService.listInterviews.mockResolvedValue([]);
+
+    await request(buildApp()).get('/api/interviews?project=proj-alpha');
+
+    expect(mockInterviewService.listInterviews).toHaveBeenCalledWith('user-test', { project: 'proj-alpha' });
+  });
+
+  it('passes both project and status filters to the service', async () => {
+    mockInterviewService.listInterviews.mockResolvedValue([]);
+
+    await request(buildApp()).get('/api/interviews?project=proj-alpha&status=complete');
+
+    expect(mockInterviewService.listInterviews).toHaveBeenCalledWith('user-test', {
+      project: 'proj-alpha',
+      status: 'complete',
+    });
+  });
+
+  it('returns only interviews for the requested project', async () => {
+    const alphaInterview = { ...interviewSummary, project: 'proj-alpha' };
+    mockInterviewService.listInterviews.mockResolvedValue([alphaInterview]);
+
+    const res = await request(buildApp()).get('/api/interviews?project=proj-alpha');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].project).toBe('proj-alpha');
+  });
+
+  it('returns 500 when service throws', async () => {
+    mockInterviewService.listInterviews.mockRejectedValue(new Error('DB error'));
+
+    const res = await request(buildApp()).get('/api/interviews');
+
+    expect(res.status).toBe(500);
+  });
+});
+
+// ── POST /api/interviews ───────────────────────────────────────────────────────
+
+describe('POST /api/interviews', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('returns 201 with the created interview identifiers', async () => {
+    mockInterviewService.createInterview.mockResolvedValue({
+      interviewId: 'interview-new',
+      threadId: 'thread-new',
+    });
+
+    const res = await request(buildApp())
+      .post('/api/interviews')
+      .send({ project: 'proj', repo: 'org/repo', chatThreadId: 'thread-x' });
+
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({ interviewId: 'interview-new', threadId: 'thread-new' });
+    expect(mockInterviewService.createInterview).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'user-test', project: 'proj', repo: 'org/repo' }),
+    );
+  });
+
+  it('returns 400 when project is missing', async () => {
+    const res = await request(buildApp())
+      .post('/api/interviews')
+      .send({ repo: 'org/repo', chatThreadId: 'thread-x' });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ error: expect.stringContaining('project') });
+    expect(mockInterviewService.createInterview).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 when repo is missing', async () => {
+    const res = await request(buildApp())
+      .post('/api/interviews')
+      .send({ project: 'proj', chatThreadId: 'thread-x' });
+
+    expect(res.status).toBe(400);
+    expect(mockInterviewService.createInterview).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 when chatThreadId is missing', async () => {
+    const res = await request(buildApp())
+      .post('/api/interviews')
+      .send({ project: 'proj', repo: 'org/repo' });
+
+    expect(res.status).toBe(400);
+    expect(mockInterviewService.createInterview).not.toHaveBeenCalled();
+  });
+});
+
+// ── GET /api/interviews/:id ────────────────────────────────────────────────────
+
+describe('GET /api/interviews/:id', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('returns 200 with the interview', async () => {
+    mockInterviewService.getInterview.mockResolvedValue(interview);
+
+    const res = await request(buildApp()).get('/api/interviews/interview-1');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ id: 'interview-1' });
+  });
+
+  it('returns 404 when the interview does not exist', async () => {
+    mockInterviewService.getInterview.mockResolvedValue(null);
+
+    const res = await request(buildApp()).get('/api/interviews/interview-missing');
+
+    expect(res.status).toBe(404);
+    expect(res.body).toMatchObject({ error: 'Interview not found' });
+  });
+});
+
+// ── PATCH /api/interviews/:id ──────────────────────────────────────────────────
+
+describe('PATCH /api/interviews/:id', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('updates the status and returns { ok: true }', async () => {
+    mockInterviewService.updateInterviewStatus.mockResolvedValue(undefined);
+
+    const res = await request(buildApp())
+      .patch('/api/interviews/interview-1')
+      .send({ status: 'complete' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ok: true });
+    expect(mockInterviewService.updateInterviewStatus).toHaveBeenCalledWith('interview-1', 'user-test', 'complete');
+  });
+
+  it('updates the title and returns { ok: true }', async () => {
+    mockInterviewService.updateInterviewTitle.mockResolvedValue(undefined);
+
+    const res = await request(buildApp())
+      .patch('/api/interviews/interview-1')
+      .send({ title: 'New Title' });
+
+    expect(res.status).toBe(200);
+    expect(mockInterviewService.updateInterviewTitle).toHaveBeenCalledWith('interview-1', 'user-test', 'New Title');
+  });
+
+  it('propagates service errors as HTTP errors', async () => {
+    const err = Object.assign(new Error('Interview not found'), { status: 404 });
+    mockInterviewService.updateInterviewStatus.mockRejectedValue(err);
+
+    const res = await request(buildApp())
+      .patch('/api/interviews/interview-1')
+      .send({ status: 'complete' });
+
+    expect(res.status).toBe(404);
+  });
+});
+
+// ── DELETE /api/interviews/:id ─────────────────────────────────────────────────
+
+describe('DELETE /api/interviews/:id', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('returns 204 on successful delete', async () => {
+    mockInterviewService.deleteInterview.mockResolvedValue(undefined);
+
+    const res = await request(buildApp()).delete('/api/interviews/interview-1');
+
+    expect(res.status).toBe(204);
+    expect(mockInterviewService.deleteInterview).toHaveBeenCalledWith('interview-1', 'user-test');
+  });
+
+  it('propagates service errors (e.g. 403)', async () => {
+    const err = Object.assign(new Error('Only the author can delete the interview'), { status: 403 });
+    mockInterviewService.deleteInterview.mockRejectedValue(err);
+
+    const res = await request(buildApp()).delete('/api/interviews/interview-1');
+
+    expect(res.status).toBe(403);
+  });
+});
+
+// ── GET /api/interviews/prds ───────────────────────────────────────────────────
+
+describe('GET /api/interviews/prds', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('returns 200 with the PRD list', async () => {
+    mockPrdService.listPrds.mockResolvedValue([prdSummary]);
+
+    const res = await request(buildApp()).get('/api/interviews/prds');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0]).toMatchObject({ id: 'prd-1' });
+  });
+
+  it('passes status filter to listPrds', async () => {
+    mockPrdService.listPrds.mockResolvedValue([]);
+
+    await request(buildApp()).get('/api/interviews/prds?status=approved');
+
+    expect(mockPrdService.listPrds).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'approved' }),
+    );
+  });
+
+  it('passes project filter to listPrds', async () => {
+    mockPrdService.listPrds.mockResolvedValue([]);
+
+    await request(buildApp()).get('/api/interviews/prds?project=proj-alpha');
+
+    expect(mockPrdService.listPrds).toHaveBeenCalledWith(
+      expect.objectContaining({ project: 'proj-alpha' }),
+    );
+  });
+
+  it('passes both project and status filters to listPrds', async () => {
+    mockPrdService.listPrds.mockResolvedValue([]);
+
+    await request(buildApp()).get('/api/interviews/prds?project=proj-alpha&status=draft');
+
+    expect(mockPrdService.listPrds).toHaveBeenCalledWith(
+      expect.objectContaining({ project: 'proj-alpha', status: 'draft' }),
+    );
+  });
+
+  it('returns only PRDs for the requested project', async () => {
+    const alphaPrd = { ...prdSummary, id: 'prd-alpha' };
+    mockPrdService.listPrds.mockResolvedValue([alphaPrd]);
+
+    const res = await request(buildApp()).get('/api/interviews/prds?project=proj-alpha');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].id).toBe('prd-alpha');
+  });
+});
+
+// ── GET /api/interviews/prds/:prdId ───────────────────────────────────────────
+
+describe('GET /api/interviews/prds/:prdId', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('returns 200 with the PRD', async () => {
+    mockPrdService.getPrd.mockResolvedValue(prd);
+
+    const res = await request(buildApp()).get('/api/interviews/prds/prd-1');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ id: 'prd-1', content: 'PRD content' });
+  });
+
+  it('returns 404 when the PRD does not exist', async () => {
+    mockPrdService.getPrd.mockResolvedValue(null);
+
+    const res = await request(buildApp()).get('/api/interviews/prds/prd-missing');
+
+    expect(res.status).toBe(404);
+    expect(res.body).toMatchObject({ error: 'PRD not found' });
+  });
+});
+
+// ── DELETE /api/interviews/prds/:prdId ────────────────────────────────────────
+
+describe('DELETE /api/interviews/prds/:prdId', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('returns 204 on successful delete', async () => {
+    mockPrdService.deletePrd.mockResolvedValue(undefined);
+
+    const res = await request(buildApp()).delete('/api/interviews/prds/prd-1');
+
+    expect(res.status).toBe(204);
+    expect(mockPrdService.deletePrd).toHaveBeenCalledWith('prd-1', 'user-test');
+  });
+});
+
+// ── PUT /api/interviews/prds/:prdId/content ───────────────────────────────────
+
+describe('PUT /api/interviews/prds/:prdId/content', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('returns 200 { ok: true } on success', async () => {
+    mockPrdService.updatePrdContent.mockResolvedValue(undefined);
+
+    const res = await request(buildApp())
+      .put('/api/interviews/prds/prd-1/content')
+      .send({ content: 'Updated content' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ok: true });
+    expect(mockPrdService.updatePrdContent).toHaveBeenCalledWith('prd-1', 'user-test', 'Updated content');
+  });
+
+  it('returns 400 when content is not a string', async () => {
+    const res = await request(buildApp())
+      .put('/api/interviews/prds/prd-1/content')
+      .send({ content: 123 });
+
+    expect(res.status).toBe(400);
+    expect(mockPrdService.updatePrdContent).not.toHaveBeenCalled();
+  });
+
+  it('propagates service errors', async () => {
+    const err = Object.assign(new Error('Approved PRDs cannot be edited'), { status: 409 });
+    mockPrdService.updatePrdContent.mockRejectedValue(err);
+
+    const res = await request(buildApp())
+      .put('/api/interviews/prds/prd-1/content')
+      .send({ content: 'x' });
+
+    expect(res.status).toBe(409);
+  });
+});
+
+// ── POST /api/interviews/prds/:prdId/submit ───────────────────────────────────
+
+describe('POST /api/interviews/prds/:prdId/submit', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('returns 200 { ok: true } on success', async () => {
+    mockPrdService.submitForReview.mockResolvedValue(undefined);
+
+    const res = await request(buildApp()).post('/api/interviews/prds/prd-1/submit');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ok: true });
+    expect(mockPrdService.submitForReview).toHaveBeenCalledWith('prd-1', 'user-test');
+  });
+
+  it('propagates 409 conflict from service', async () => {
+    const err = Object.assign(new Error('PRD content must be non-empty before submitting for review'), { status: 409 });
+    mockPrdService.submitForReview.mockRejectedValue(err);
+
+    const res = await request(buildApp()).post('/api/interviews/prds/prd-1/submit');
+
+    expect(res.status).toBe(409);
+  });
+});
+
+// ── POST /api/interviews/prds/:prdId/withdraw ─────────────────────────────────
+
+describe('POST /api/interviews/prds/:prdId/withdraw', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('returns 200 { ok: true } on success', async () => {
+    mockPrdService.withdrawFromReview.mockResolvedValue(undefined);
+
+    const res = await request(buildApp()).post('/api/interviews/prds/prd-1/withdraw');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ok: true });
+  });
+});
+
+// ── POST /api/interviews/prds/:prdId/review ───────────────────────────────────
+
+describe('POST /api/interviews/prds/:prdId/review', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('returns 200 { ok: true } on approve', async () => {
+    mockPrdService.reviewPrd.mockResolvedValue(undefined);
+
+    const res = await request(buildApp())
+      .post('/api/interviews/prds/prd-1/review')
+      .send({ action: 'approve' });
+
+    expect(res.status).toBe(200);
+    expect(mockPrdService.reviewPrd).toHaveBeenCalledWith('prd-1', 'user-test', { action: 'approve' });
+  });
+
+  it('propagates 403 when author tries to self-review', async () => {
+    const err = Object.assign(new Error('You cannot review your own PRD'), { status: 403 });
+    mockPrdService.reviewPrd.mockRejectedValue(err);
+
+    const res = await request(buildApp())
+      .post('/api/interviews/prds/prd-1/review')
+      .send({ action: 'approve' });
+
+    expect(res.status).toBe(403);
+  });
+});
+
+// ── POST /api/interviews/prds/:prdId/sync ─────────────────────────────────────
+
+describe('POST /api/interviews/prds/:prdId/sync', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('returns 200 with content when output files are ready', async () => {
+    mockPrdService.getPrd.mockResolvedValue(prd);
+    mockReadOutputPrd.mockReturnValue('# Generated PRD');
+    mockReadOutputBacklog.mockReturnValue({ items: [] });
+    mockPrdService.syncPrdContent.mockResolvedValue(undefined);
+
+    const res = await request(buildApp()).post('/api/interviews/prds/prd-1/sync');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ ok: true, content: '# Generated PRD' });
+    expect(mockPrdService.syncPrdContent).toHaveBeenCalledWith('prd-1', '# Generated PRD', { items: [] });
+  });
+
+  it('returns 404 when PRD does not exist', async () => {
+    mockPrdService.getPrd.mockResolvedValue(null);
+
+    const res = await request(buildApp()).post('/api/interviews/prds/prd-missing/sync');
+
+    expect(res.status).toBe(404);
+    expect(res.body).toMatchObject({ error: 'PRD not found' });
+  });
+
+  it('returns 404 when PRD output is not yet available', async () => {
+    mockPrdService.getPrd.mockResolvedValue(prd);
+    mockReadOutputPrd.mockReturnValue(null);
+
+    const res = await request(buildApp()).post('/api/interviews/prds/prd-1/sync');
+
+    expect(res.status).toBe(404);
+    expect(res.body).toMatchObject({ error: 'PRD output not yet available from generation thread' });
+  });
+
+  it('returns 400 when PRD has no associated chat thread', async () => {
+    mockPrdService.getPrd.mockResolvedValue({ ...prd, chatThreadId: '' });
+
+    const res = await request(buildApp()).post('/api/interviews/prds/prd-1/sync');
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ error: 'PRD has no associated chat thread' });
+  });
+});
+
+// ── POST /api/interviews/:interviewId/prds ────────────────────────────────────
+
+describe('POST /api/interviews/:interviewId/prds', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('returns 201 with prdId and threadId and starts the watcher', async () => {
+    mockPrdService.createPrd.mockResolvedValue({ prdId: 'prd-new', threadId: 'thread-new' });
+    mockPrdService.startPrdWatcher.mockReturnValue(undefined);
+
+    const res = await request(buildApp())
+      .post('/api/interviews/interview-1/prds')
+      .send({ chatThreadId: 'thread-new', title: 'My PRD' });
+
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({ prdId: 'prd-new' });
+    expect(mockPrdService.createPrd).toHaveBeenCalledWith({
+      interviewId: 'interview-1',
+      userId: 'user-test',
+      chatThreadId: 'thread-new',
+      title: 'My PRD',
+    });
+    expect(mockPrdService.startPrdWatcher).toHaveBeenCalledWith('prd-new', 'thread-new');
+  });
+
+  it('returns 400 when chatThreadId is missing', async () => {
+    const res = await request(buildApp())
+      .post('/api/interviews/interview-1/prds')
+      .send({ title: 'My PRD' });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ error: 'chatThreadId is required' });
+    expect(mockPrdService.createPrd).not.toHaveBeenCalled();
+  });
+});

@@ -49,6 +49,7 @@ export function useAppShell() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [permissions, setPermissions] = useState<string[]>([]);
   const [roles, setRoles] = useState<string[]>([]);
+  const [userId, setUserId] = useState<string>('');
   const [permissionsLoaded, setPermissionsLoaded] = useState(false);
   const [selectedItem, setSelectedItem] = useState<WorkItem | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => (localStorage.getItem('theme') as 'light' | 'dark') || 'dark');
@@ -84,6 +85,7 @@ export function useAppShell() {
         if (d) {
           setPermissions(d.permissions);
           setRoles(d.roles);
+          setUserId(d.userId ?? '');
         }
       })
       .catch(() => { /* ignore */ })
@@ -214,6 +216,7 @@ export function useAppShell() {
     isAuthenticated,
     permissions,
     roles,
+    userId,
     permissionsLoaded,
     can,
     isAdmin: roles.includes('admin'),

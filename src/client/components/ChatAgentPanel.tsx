@@ -6,8 +6,6 @@ import {
   useSendMessage,
   useCancelRun,
   useCloseThread,
-  useSaveToWiki,
-  useWikiList,
   useSkillList,
 } from '../hooks/useChatThreads';
 import { AGENT_MODELS, DEFAULT_MODEL_ID, modelBadge } from '../config/models';
@@ -291,19 +289,7 @@ export const ChatAgentPanel: React.FC<ChatAgentPanelProps> = ({
   const [showHistory, setShowHistory] = useState(false);
   const [skillPickerOpen, setSkillPickerOpen] = useState(false);
   const [skillPickerIdx, setSkillPickerIdx] = useState(0);
-  const [showSaveWiki, setShowSaveWiki] = useState(false);
   const [showPrdPreview, setShowPrdPreview] = useState(false);
-  const [wikiProject, setWikiProject] = useState(thread?.kickoff.project ?? '');
-  const [wikiId, setWikiId] = useState('');
-  const WIKI_PARENT = '/scrum-app-requirement';
-  const [wikiPageName, setWikiPageName] = useState('prd');
-  const [wikiComment, setWikiComment] = useState('');
-  const [savedWikiMeta, setSavedWikiMeta] = useState<{
-    url: string;
-    project: string;
-    wikiName: string;
-    path: string;
-  } | null>(null);
   const [panelWidth, setPanelWidth] = useState<number>(loadStoredWidth);
   const [selectedModel, setSelectedModel] = useState<string>(
     thread?.kickoff.model ?? DEFAULT_MODEL_ID,
@@ -328,16 +314,12 @@ export const ChatAgentPanel: React.FC<ChatAgentPanelProps> = ({
 
   const { messages, streamingText, status, isConnected, prdReady } = useChatStream(
     thread?.id ?? null,
-    { initialMessages: thread?.messages, initialStatus: thread?.status },
+    { initialMessages: thread?.messages, initialStatus: thread?.status, initialPrdReady: thread?.prdReady },
   );
 
   const sendMessage = useSendMessage(thread?.id ?? '');
   const cancelRun = useCancelRun(thread?.id ?? '');
   const closeThread = useCloseThread();
-  const saveToWiki = useSaveToWiki(thread?.id ?? '');
-
-  // Fetch wiki list eagerly so it's ready when the save panel opens
-  const { data: wikis = [] } = useWikiList(wikiProject || null);
 
   // Skills for the current thread (used by the / picker)
   const { data: threadSkills = [] } = useSkillList(
@@ -363,14 +345,7 @@ export const ChatAgentPanel: React.FC<ChatAgentPanelProps> = ({
   }, [slashQuery, threadSkills]);
 
   const isRunning = status === 'running';
-  const hasPrd =
-    prdReady ||
-    messages.some(
-      (m) =>
-        m.role === 'agent' &&
-        m.text.toLowerCase().includes('.ai-pilot/output/') &&
-        m.text.toLowerCase().includes('.prd.md'),
-    );
+  const hasPrd = prdReady;
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -378,27 +353,12 @@ export const ChatAgentPanel: React.FC<ChatAgentPanelProps> = ({
 
   useEffect(() => {
     if (thread) {
-      setWikiProject(thread.kickoff.project);
-      // Consistent naming: lowercase repo slug + "-requirements"
-      // e.g. "MyApp" → "myapp-requirements", "scrum-app" → "scrum-app-requirements"
-      const repoSlug = thread.kickoff.repo
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '');
-      setWikiPageName(`${repoSlug}-requirements`);
       // Sync the model dropdown to whatever the thread was started with
       setSelectedModel(thread.kickoff.model ?? DEFAULT_MODEL_ID);
       // Reset auto-open guard for the new thread
       prdAutoOpenedRef.current = false;
     }
   }, [thread?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Auto-select the wiki once the list loads (pick the project's default wiki)
-  useEffect(() => {
-    if (wikis.length > 0 && !wikiId) {
-      setWikiId(wikis[0].id);
-    }
-  }, [wikis, wikiId]);
 
   // Auto-open PRD preview the first time the server signals prdReady
   useEffect(() => {
@@ -524,18 +484,6 @@ export const ChatAgentPanel: React.FC<ChatAgentPanelProps> = ({
       e.preventDefault();
       doSend(input, attachments);
     }
-  };
-
-  const wikiFullPath = `${WIKI_PARENT}/${wikiPageName.trim().replace(/^\/+/, '')}`;
-
-  const handleSaveToWiki = async () => {
-    if (!wikiProject || !wikiId || !wikiPageName.trim()) return;
-    try {
-      const result = await saveToWiki.mutateAsync({ project: wikiProject, wikiId, path: wikiFullPath, comment: wikiComment || undefined });
-      const wikiName = wikis.find((w) => w.id === wikiId)?.name ?? wikiId;
-      setSavedWikiMeta({ url: result.url, project: wikiProject, wikiName, path: wikiFullPath });
-      setShowSaveWiki(false);
-    } catch { /* shown via saveToWiki.error */ }
   };
 
   const handleClose = async () => {
@@ -709,85 +657,11 @@ export const ChatAgentPanel: React.FC<ChatAgentPanelProps> = ({
             <div ref={messagesEndRef} />
           </div>
 
-          {hasPrd && !savedWikiMeta && (
+          {hasPrd && (
             <div className={styles.prdBanner}>
               <span className={styles.prdBannerText}>📄 PRD is ready for review</span>
               <div className={styles.prdActions}>
                 <button className={styles.btnSecondary} onClick={() => setShowPrdPreview(true)}>Preview</button>
-                <button className={styles.btnSuccess} onClick={() => setShowSaveWiki(true)}>Save to Wiki</button>
-              </div>
-            </div>
-          )}
-
-          {savedWikiMeta && (
-            <div className={styles.wikiSuccessCard}>
-              <div className={styles.wikiSuccessHeader}>
-                <span className={styles.wikiSuccessIcon}>✓</span>
-                <span className={styles.wikiSuccessTitle}>PRD saved to wiki</span>
-              </div>
-              <div className={styles.wikiSuccessMeta}>
-                <span className={styles.wikiSuccessCrumb}>{savedWikiMeta.project}</span>
-                <span className={styles.wikiSuccessSep}>›</span>
-                <span className={styles.wikiSuccessCrumb}>{savedWikiMeta.wikiName}</span>
-                <span className={styles.wikiSuccessSep}>›</span>
-                <span className={styles.wikiSuccessCrumb}>{savedWikiMeta.path}</span>
-              </div>
-              <div className={styles.wikiSuccessActions}>
-                <button className={styles.btnSecondary} onClick={() => setShowPrdPreview(true)}>Preview</button>
-                <a
-                  className={styles.wikiSuccessOpenBtn}
-                  href={savedWikiMeta.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  Open in ADO ↗
-                </a>
-              </div>
-            </div>
-          )}
-
-          {showSaveWiki && (
-            <div className={styles.saveWikiForm}>
-              <p className={styles.saveWikiTitle}>Save PRD to ADO Wiki</p>
-              <div className={styles.saveWikiFields}>
-                <div className={styles.saveWikiField}>
-                  <label className={styles.saveWikiLabel} htmlFor="sw-project">Project</label>
-                  <input id="sw-project" className={styles.saveWikiInput} value={wikiProject} onChange={(e) => { setWikiProject(e.target.value); setWikiId(''); }} />
-                </div>
-                <div className={styles.saveWikiField}>
-                  <label className={styles.saveWikiLabel} htmlFor="sw-wiki">Wiki</label>
-                  <select id="sw-wiki" className={styles.saveWikiSelect} value={wikiId} onChange={(e) => setWikiId(e.target.value)}>
-                    {wikis.length === 0 && <option value="">— loading wikis… —</option>}
-                    {wikis.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
-                  </select>
-                </div>
-                <div className={styles.saveWikiField} style={{ gridColumn: '1 / -1' }}>
-                  <label className={styles.saveWikiLabel} htmlFor="sw-pagename">Page name</label>
-                  <div className={styles.wikiPathRow}>
-                    <span className={styles.wikiPathPrefix}>{WIKI_PARENT}/</span>
-                    <input
-                      id="sw-pagename"
-                      className={styles.wikiPathInput}
-                      value={wikiPageName}
-                      onChange={(e) => setWikiPageName(e.target.value)}
-                      placeholder="e.g. sprint-planning-requirements"
-                    />
-                  </div>
-                  <div className={styles.wikiPathPreview}>
-                    Full path: <code>{wikiFullPath}</code>
-                  </div>
-                </div>
-                <div className={styles.saveWikiField} style={{ gridColumn: '1 / -1' }}>
-                  <label className={styles.saveWikiLabel} htmlFor="sw-comment">Commit comment (optional)</label>
-                  <input id="sw-comment" className={styles.saveWikiInput} value={wikiComment} onChange={(e) => setWikiComment(e.target.value)} placeholder="AI-Pilot: PRD generated via agent chat" />
-                </div>
-              </div>
-              {saveToWiki.error && <span className={styles.saveWikiError}>{saveToWiki.error.message}</span>}
-              <div className={styles.saveWikiActions}>
-                <button className={styles.btnSecondary} onClick={() => setShowSaveWiki(false)}>Cancel</button>
-                <button className={styles.btnSuccess} onClick={handleSaveToWiki} disabled={!wikiProject || !wikiId || !wikiPageName.trim() || saveToWiki.isPending}>
-                  {saveToWiki.isPending ? 'Saving…' : 'Save'}
-                </button>
               </div>
             </div>
           )}

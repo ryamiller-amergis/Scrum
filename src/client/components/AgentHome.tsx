@@ -6,9 +6,8 @@ import {
   useSkillRepos,
   useStartChat,
   useSkillList,
-  useSaveToWiki,
-  useWikiList,
 } from '../hooks/useChatThreads';
+import { useProjectSkillConfig } from '../hooks/useProjectSkillConfig';
 import { useChatStream } from '../hooks/useChatStream';
 import { formatAttachmentSize, useChatAttachments } from '../hooks/useChatAttachments';
 import { parseAgentMessage } from '../utils/parseAgentMessage';
@@ -87,8 +86,6 @@ const MODEL_CONTEXT_TOKEN_LIMITS: Record<string, number> = {
   'gpt-5.5': 200_000,
   'gemini-3.1-pro': 1_000_000,
 };
-
-const WIKI_PARENT = '/scrum-app-requirement';
 
 // ── ToolIcon ───────────────────────────────────────────────────────────────────
 
@@ -460,22 +457,9 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
   const [selectedSkillPath, setSelectedSkillPath] = useState<string | null>(null);
   const [selectedSkillName, setSelectedSkillName] = useState<string | null>(null);
 
-  // PRD / wiki state
-  const [showSaveWiki, setShowSaveWiki] = useState(false);
+  // PRD state
   const [showPrdPreview, setShowPrdPreview] = useState(false);
-  const [wikiProject, setWikiProject] = useState(selectedProject);
-  const [wikiId, setWikiId] = useState('');
-  const [wikiPageName, setWikiPageName] = useState(() => {
-    const slug = selectedProject.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-    return `${slug}-requirements`;
-  });
-  const [wikiComment, setWikiComment] = useState('');
-  const [savedWikiMeta, setSavedWikiMeta] = useState<{
-    url: string;
-    project: string;
-    wikiName: string;
-    path: string;
-  } | null>(null);
+  const [initialPrdReady, setInitialPrdReady] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -495,40 +479,31 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
   } = useChatAttachments();
 
   const { data: repos = [] } = useSkillRepos(selectedProject || null);
+  const { data: skillConfig } = useProjectSkillConfig(selectedProject || null);
 
-  const defaultRepo = repos.find(
-    (r) => r.name.toLowerCase() === selectedProject.toLowerCase()
-  ) ?? repos[0];
-  const defaultBranch = defaultRepo?.defaultBranch ?? 'main';
+  // Prefer admin-configured repo/branch; fall back to heuristic (match project name, then first repo)
+  const defaultRepo = skillConfig
+    ? (repos.find((r) => r.name === skillConfig.skillRepo) ?? { name: skillConfig.skillRepo, defaultBranch: skillConfig.skillBranch, id: skillConfig.skillRepo })
+    : (repos.find((r) => r.name.toLowerCase() === selectedProject.toLowerCase()) ?? repos[0]);
+  const defaultBranch = skillConfig?.skillBranch ?? defaultRepo?.defaultBranch ?? 'main';
+  const resolvedRepoName = skillConfig?.skillRepo ?? defaultRepo?.name ?? null;
 
   const { data: skills = [] } = useSkillList(
     selectedProject || null,
-    defaultRepo?.name ?? null,
+    resolvedRepoName,
     defaultBranch,
   );
 
   const startChat = useStartChat();
   const { messages, streamingText, status, prdReady } = useChatStream(threadId, {
     initialMessages: seedMessages,
+    initialPrdReady,
   });
   const isRunning = status === 'running';
 
-  const saveToWiki = useSaveToWiki(threadId ?? '');
-  const { data: wikis = [] } = useWikiList(wikiProject || null);
-
   const visibleMessages = messages.filter((m) => !(m.role === 'user' && m.text === 'Begin.'));
 
-  const hasPrd = useMemo(
-    () =>
-      prdReady ||
-      visibleMessages.some(
-        (m) =>
-          m.role === 'agent' &&
-          m.text.toLowerCase().includes('.ai-pilot/output/') &&
-          m.text.toLowerCase().includes('.prd.md'),
-      ),
-    [prdReady, visibleMessages],
-  );
+  const hasPrd = prdReady;
 
   const contextTokenLimit = MODEL_CONTEXT_TOKEN_LIMITS[model] ?? DEFAULT_CONTEXT_TOKEN_LIMIT;
   const estimatedTokens = useMemo(() => {
@@ -563,8 +538,6 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
     );
   }, [slashQuery, skills]);
 
-  const wikiFullPath = `${WIKI_PARENT}/${wikiPageName.trim().replace(/^\/+/, '')}`;
-
   // Scroll messages to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -584,13 +557,6 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
     const active = skillPickerRef.current.querySelector<HTMLElement>('[data-picker-active="true"]');
     active?.scrollIntoView({ block: 'nearest' });
   }, [skillPickerIdx, skillPickerOpen]);
-
-  // Auto-select the first wiki once the list loads
-  useEffect(() => {
-    if (wikis.length > 0 && !wikiId) {
-      setWikiId(wikis[0].id);
-    }
-  }, [wikis, wikiId]);
 
   // Auto-open PRD preview the first time the server signals prdReady
   useEffect(() => {
@@ -698,6 +664,7 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
           return;
         }
         setSeedMessages(thread.messages ?? []);
+        setInitialPrdReady(thread.prdReady ?? false);
       })
       .catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps -- intentional mount-only
@@ -773,7 +740,7 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
   const handleSend = useCallback(async () => {
     const text = input.trim();
     if ((!text && attachments.length === 0) || isRunning || isSending) return;
-    if (!threadId && !defaultRepo) return;
+    if (!threadId && !resolvedRepoName) return;
 
     if (isListening) {
       speechRecognitionRef.current?.stop();
@@ -805,7 +772,7 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
         const result = await startChat.mutateAsync({
           kickoff: {
             project: selectedProject,
-            repo: defaultRepo!.name,
+            repo: resolvedRepoName!,
             branch: defaultBranch,
             skillPath: selectedSkillPath ?? undefined,
             freeformContext,
@@ -874,7 +841,7 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
     } finally {
       setIsSending(false);
     }
-  }, [input, attachments, isRunning, isSending, threadId, defaultRepo, startChat, selectedProject, defaultBranch, selectedSkillPath, selectedSkillName, model, clearAttachments, isListening]);
+  }, [input, attachments, isRunning, isSending, threadId, resolvedRepoName, startChat, selectedProject, defaultBranch, selectedSkillPath, selectedSkillName, model, clearAttachments, isListening]);
 
   const handleKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (skillPickerOpen && filteredSkills.length > 0) {
@@ -927,15 +894,10 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
     setSelectedSkillPath(null);
     setSelectedSkillName(null);
     clearAttachments();
-    setSavedWikiMeta(null);
     setShowPrdPreview(false);
-    setShowSaveWiki(false);
-    setWikiId('');
-    setWikiComment('');
+    setInitialPrdReady(false);
     prdAutoOpenedRef.current = false;
-    const slug = selectedProject.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-    setWikiPageName(`${slug}-requirements`);
-  }, [isRunning, isSending, clearAttachments, selectedProject, isListening]);
+  }, [isRunning, isSending, clearAttachments, isListening]);
 
   const handleSelectThread = useCallback(async (id: string) => {
     try {
@@ -943,33 +905,17 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
       if (!resp.ok) return;
       const thread: ChatThread = await resp.json();
       setSeedMessages(thread.messages ?? []);
+      setInitialPrdReady(thread.prdReady ?? false);
       setThreadId(id);
       setShowHistory(false);
-      setSavedWikiMeta(null);
       setShowPrdPreview(false);
-      setShowSaveWiki(false);
     } catch {
       // non-fatal
     }
   }, []);
 
-  const handleSaveToWiki = useCallback(async () => {
-    if (!wikiProject || !wikiId || !wikiPageName.trim()) return;
-    try {
-      const result = await saveToWiki.mutateAsync({
-        project: wikiProject,
-        wikiId,
-        path: wikiFullPath,
-        comment: wikiComment || undefined,
-      });
-      const wikiName = wikis.find((w) => w.id === wikiId)?.name ?? wikiId;
-      setSavedWikiMeta({ url: result.url, project: wikiProject, wikiName, path: wikiFullPath });
-      setShowSaveWiki(false);
-    } catch { /* shown via saveToWiki.error */ }
-  }, [wikiProject, wikiId, wikiPageName, wikiComment, wikiFullPath, saveToWiki, wikis]);
-
   const isCompose = !threadId;
-  const canSend = (input.trim().length > 0 || attachments.length > 0) && !isRunning && !isSending && (!!threadId || !!defaultRepo);
+  const canSend = (input.trim().length > 0 || attachments.length > 0) && !isRunning && !isSending && (!!threadId || !!resolvedRepoName);
 
   // ── Shared input area ────────────────────────────────────────────────────────
 
@@ -1196,7 +1142,7 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
           <div className={styles.chatHeader}>
             <div>
               <div className={styles.chatTitle}>Agent session</div>
-              <div className={styles.chatSubtitle}>{selectedProject} · {defaultRepo?.name ?? 'workspace'}</div>
+              <div className={styles.chatSubtitle}>{selectedProject} · {resolvedRepoName ?? 'workspace'}</div>
             </div>
             <div className={styles.chatHeaderActions}>
               <button
@@ -1277,117 +1223,12 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
           </div>
 
           {/* PRD ready banner */}
-          {hasPrd && !savedWikiMeta && (
+          {hasPrd && (
             <div className={styles.prdBanner}>
               <span className={styles.prdBannerText}>PRD is ready for review</span>
               <div className={styles.prdActions}>
                 <button className={styles.btnSecondary} onClick={() => setShowPrdPreview(true)} type="button">
                   Preview
-                </button>
-                <button className={styles.btnSuccess} onClick={() => setShowSaveWiki(true)} type="button">
-                  Save to Wiki
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Wiki saved success card */}
-          {savedWikiMeta && (
-            <div className={styles.wikiSuccessCard}>
-              <div className={styles.wikiSuccessHeader}>
-                <span className={styles.wikiSuccessIcon}>✓</span>
-                <span className={styles.wikiSuccessTitle}>PRD saved to wiki</span>
-              </div>
-              <div className={styles.wikiSuccessMeta}>
-                <span className={styles.wikiSuccessCrumb}>{savedWikiMeta.project}</span>
-                <span className={styles.wikiSuccessSep}>›</span>
-                <span className={styles.wikiSuccessCrumb}>{savedWikiMeta.wikiName}</span>
-                <span className={styles.wikiSuccessSep}>›</span>
-                <span className={styles.wikiSuccessCrumb}>{savedWikiMeta.path}</span>
-              </div>
-              <div className={styles.wikiSuccessActions}>
-                <button className={styles.btnSecondary} onClick={() => setShowPrdPreview(true)} type="button">
-                  Preview
-                </button>
-                <a
-                  className={styles.wikiSuccessOpenBtn}
-                  href={savedWikiMeta.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  Open in ADO ↗
-                </a>
-              </div>
-            </div>
-          )}
-
-          {/* Save to wiki form */}
-          {showSaveWiki && (
-            <div className={styles.saveWikiForm}>
-              <p className={styles.saveWikiTitle}>Save PRD to ADO Wiki</p>
-              <div className={styles.saveWikiFields}>
-                <div className={styles.saveWikiField}>
-                  <label className={styles.saveWikiLabel} htmlFor="ah-sw-project">Project</label>
-                  <input
-                    id="ah-sw-project"
-                    className={styles.saveWikiInput}
-                    value={wikiProject}
-                    onChange={(e) => { setWikiProject(e.target.value); setWikiId(''); }}
-                  />
-                </div>
-                <div className={styles.saveWikiField}>
-                  <label className={styles.saveWikiLabel} htmlFor="ah-sw-wiki">Wiki</label>
-                  <select
-                    id="ah-sw-wiki"
-                    className={styles.saveWikiSelect}
-                    value={wikiId}
-                    onChange={(e) => setWikiId(e.target.value)}
-                  >
-                    {wikis.length === 0 && <option value="">— loading wikis… —</option>}
-                    {wikis.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
-                  </select>
-                </div>
-                <div className={styles.saveWikiField} style={{ gridColumn: '1 / -1' }}>
-                  <label className={styles.saveWikiLabel} htmlFor="ah-sw-pagename">Page name</label>
-                  <div className={styles.wikiPathRow}>
-                    <span className={styles.wikiPathPrefix}>{WIKI_PARENT}/</span>
-                    <input
-                      id="ah-sw-pagename"
-                      className={styles.wikiPathInput}
-                      value={wikiPageName}
-                      onChange={(e) => setWikiPageName(e.target.value)}
-                      placeholder="e.g. sprint-planning-requirements"
-                    />
-                  </div>
-                  <div className={styles.wikiPathPreview}>
-                    Full path: <code>{wikiFullPath}</code>
-                  </div>
-                </div>
-                <div className={styles.saveWikiField} style={{ gridColumn: '1 / -1' }}>
-                  <label className={styles.saveWikiLabel} htmlFor="ah-sw-comment">Commit comment (optional)</label>
-                  <input
-                    id="ah-sw-comment"
-                    className={styles.saveWikiInput}
-                    value={wikiComment}
-                    onChange={(e) => setWikiComment(e.target.value)}
-                    placeholder="AI-Pilot: PRD generated via agent chat"
-                  />
-                </div>
-              </div>
-              {saveToWiki.error && (
-                <span className={styles.saveWikiError}>{saveToWiki.error.message}</span>
-              )}
-              <div className={styles.saveWikiActions}>
-                <button className={styles.btnSecondary} onClick={() => setShowSaveWiki(false)} type="button">
-                  Cancel
-                </button>
-                <button
-                  className={styles.btnSuccess}
-                  onClick={handleSaveToWiki}
-                  disabled={!wikiProject || !wikiId || !wikiPageName.trim() || saveToWiki.isPending}
-                  type="button"
-                >
-                  {saveToWiki.isPending ? 'Saving…' : 'Save'}
                 </button>
               </div>
             </div>

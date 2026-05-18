@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import {
   listProjects,
   listRepos,
+  listBranches,
   listSkills,
   getSkill,
   getSkillFile,
@@ -39,6 +40,24 @@ router.get('/repos', async (req: Request, res: Response) => {
   } catch (err: any) {
     console.error('[skills] listRepos error:', err.message);
     res.status(500).json({ error: err.message ?? 'Failed to list repos' });
+  }
+});
+
+/**
+ * GET /api/skills/branches?project=<name>&repo=<name>
+ * List branch names for a repo, sorted with defaultBranch first.
+ */
+router.get('/branches', async (req: Request, res: Response) => {
+  const { project, repo } = req.query as { project?: string; repo?: string };
+  if (!project) return res.status(400).json({ error: 'project is required' });
+  if (!repo) return res.status(400).json({ error: 'repo is required' });
+
+  try {
+    const branches = await listBranches(project, repo);
+    res.json(branches);
+  } catch (err: any) {
+    console.error('[skills] listBranches error:', err.message);
+    res.status(500).json({ error: err.message ?? 'Failed to list branches' });
   }
 });
 

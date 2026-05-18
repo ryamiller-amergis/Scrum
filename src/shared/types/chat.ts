@@ -66,6 +66,8 @@ export interface ChatThread {
   flagged: boolean;
   /** ISO timestamp of when the thread was flagged (undefined when not flagged) */
   flaggedAt?: string;
+  /** Computed at request time: true when a durable PRD output file exists for this thread */
+  prdReady?: boolean;
   createdAt: string;
   lastActivityAt: string;
 }

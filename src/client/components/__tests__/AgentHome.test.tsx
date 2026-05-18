@@ -14,8 +14,6 @@ import {
   useSkillList,
   useSkillRepos,
   useStartChat,
-  useSaveToWiki,
-  useWikiList,
 } from '../../hooks/useChatThreads';
 import { useChatAttachments } from '../../hooks/useChatAttachments';
 
@@ -23,8 +21,6 @@ jest.mock('../../hooks/useChatThreads', () => ({
   useSkillRepos: jest.fn(),
   useStartChat: jest.fn(),
   useSkillList: jest.fn(),
-  useSaveToWiki: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false, error: null })),
-  useWikiList: jest.fn(() => ({ data: [] })),
 }));
 
 jest.mock('react-markdown', () => ({
@@ -45,6 +41,10 @@ jest.mock('../../hooks/useChatStream', () => ({
 jest.mock('../../hooks/useChatAttachments', () => ({
   formatAttachmentSize: jest.fn((size: number) => `${size} bytes`),
   useChatAttachments: jest.fn(),
+}));
+
+jest.mock('../../hooks/useProjectSkillConfig', () => ({
+  useProjectSkillConfig: jest.fn(() => ({ data: null })),
 }));
 
 jest.mock('../PRDPreviewDrawer', () => ({
@@ -68,7 +68,6 @@ const idleStream = {
 
 describe('AgentHome', () => {
   const mutateAsync = jest.fn();
-  const saveToWikiMutateAsync = jest.fn();
   const clearAttachments = jest.fn();
   const addFiles = jest.fn();
   const removeAttachment = jest.fn();
@@ -104,14 +103,6 @@ describe('AgentHome', () => {
       ],
     });
     (useStartChat as jest.Mock).mockReturnValue({ mutateAsync, isPending: false });
-    (useSaveToWiki as jest.Mock).mockReturnValue({
-      mutateAsync: saveToWikiMutateAsync,
-      isPending: false,
-      error: null,
-    });
-    (useWikiList as jest.Mock).mockReturnValue({
-      data: [{ id: 'wiki-1', name: 'Engineering Wiki', type: 'projectWiki' }],
-    });
     (useChatAttachments as jest.Mock).mockReturnValue({
       attachments: [],
       attachmentError: null,
@@ -120,11 +111,6 @@ describe('AgentHome', () => {
       clearAttachments,
     });
     mutateAsync.mockResolvedValue({ threadId: 'thread-123' });
-    saveToWikiMutateAsync.mockResolvedValue({
-      path: '/AI-Pilot/Generated Requirements/maxview-requirements',
-      url: 'https://example.test/wiki',
-      version: 'abc123',
-    });
   });
 
   // ── Compose (no active thread) ──────────────────────────────────────────────
@@ -478,38 +464,6 @@ describe('AgentHome', () => {
       expect(screen.getByTestId('prd-preview-drawer')).toBeInTheDocument();
     });
 
-    it('saves the PRD to the selected wiki path', async () => {
-      mockUseChatStream.mockReturnValue({
-        ...idleStream,
-        messages: [{ id: 'm1', role: 'agent' as const, text: 'Done', ts: '2026-01-01T00:00:00Z' }],
-        prdReady: true,
-      });
-      renderAgentHome({ selectedProject: "MaxView" });
-
-      fireEvent.change(screen.getByPlaceholderText(/Ask me anything/i), {
-        target: { value: 'write a PRD' },
-      });
-      fireEvent.click(screen.getByLabelText('Send'));
-      await screen.findByPlaceholderText(/Continue the conversation/i);
-
-      fireEvent.click(await screen.findByText('Save to Wiki'));
-      fireEvent.change(screen.getByLabelText('Page name'), {
-        target: { value: 'custom-page' },
-      });
-      fireEvent.change(screen.getByLabelText(/Commit comment/i), {
-        target: { value: 'publish generated PRD' },
-      });
-      fireEvent.click(screen.getByText('Save'));
-
-      await waitFor(() => {
-        expect(saveToWikiMutateAsync).toHaveBeenCalledWith({
-          project: 'MaxView',
-          wikiId: 'wiki-1',
-          path: '/scrum-app-requirement/custom-page',
-          comment: 'publish generated PRD',
-        });
-      });
-    });
   });
 
   // ── Streaming indicator ─────────────────────────────────────────────────────

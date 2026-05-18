@@ -20,6 +20,9 @@ import {
   loadFullThread as pgLoadFullThread,
   deleteThread as pgDeleteThread,
 } from './chatThreadRepository';
+import { db } from '../db/drizzle';
+import { eq } from 'drizzle-orm';
+import { interviews } from '../db/schema';
 import type { ChatThreadSummary } from '../../shared/types/chat';
 
 const DATA_ROOT = resolveDataRoot();
@@ -710,10 +713,21 @@ export async function closeThread(threadId: string): Promise<void> {
     fs.rmSync(state.thread.workspaceDir, { recursive: true, force: true });
   } catch { /* non-fatal */ }
 
-  // Delete from Postgres (cascades to messages + attachments)
-  pgDeleteThread(threadId).catch((err: Error) =>
-    console.error('[chat] pg deleteThread failed:', err.message),
-  );
+  // Only delete from Postgres if the thread is not backing an interview.
+  // Interview threads use ON DELETE CASCADE, so deleting the chat_thread row
+  // would silently wipe the interview record. Leave the DB row intact; the
+  // in-memory state and workspace have already been cleaned up above.
+  db.query.interviews
+    .findFirst({ where: eq(interviews.chatThreadId, threadId) })
+    .then((linked) => {
+      if (linked) return; // interview-backed thread — keep the DB row
+      pgDeleteThread(threadId).catch((err: Error) =>
+        console.error('[chat] pg deleteThread failed:', err.message),
+      );
+    })
+    .catch((err: Error) =>
+      console.error('[chat] interview lookup before deleteThread failed:', err.message),
+    );
 }
 
 function resolveOutputDir(threadId: string): string | null {
@@ -739,6 +753,19 @@ export function readOutputPrd(threadId: string): string | null {
   if (named) return fs.readFileSync(named, 'utf-8');
   const legacy = path.join(outputDir, 'PRD.md');
   return fs.existsSync(legacy) ? fs.readFileSync(legacy, 'utf-8') : null;
+}
+
+/**
+ * Returns true if a PRD output file exists for the thread (durable or ephemeral).
+ * Cheaper than readOutputPrd — does not read file contents.
+ */
+export function isPrdReady(threadId: string): boolean {
+  if (fs.existsSync(path.join(THREADS_DIR, `${threadId}.prd.md`))) return true;
+  const outputDir = resolveOutputDir(threadId);
+  if (!outputDir) return false;
+  const named = findOutputFile(outputDir, /\.prd\.md$/i);
+  if (named) return true;
+  return fs.existsSync(path.join(outputDir, 'PRD.md'));
 }
 
 /**

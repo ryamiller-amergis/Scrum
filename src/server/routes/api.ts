@@ -11,6 +11,7 @@ import { DeploymentTrackingService } from '../services/deploymentTracking';
 import { getPrResolutionMetricsStats } from '../services/agentEvalsPrResolutionService';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/drizzle';
+import { getSkillConfig } from '../services/projectSettingsService';
 
 const router = express.Router();
 
@@ -3633,7 +3634,30 @@ router.get('/me/permissions', attachPermissions, async (req: Request, res: Respo
       getUserPermissions(userId),
       getUserRoleNames(userId),
     ]);
-    res.json({ permissions: [...permSet], roles });
+    res.json({ permissions: [...permSet], roles, userId });
+  } catch {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/skill-config?project=<name> — resolve project skill settings
+router.get('/skill-config', async (req: Request, res: Response) => {
+  try {
+    const project = req.query.project as string | undefined;
+    if (!project) {
+      res.status(400).json({ error: 'project query parameter is required' });
+      return;
+    }
+    const config = await getSkillConfig(project);
+    if (!config) {
+      res.status(404).json({ error: 'No skill config found for this project' });
+      return;
+    }
+    res.json({
+      project: config.project,
+      skillRepo: config.skillRepo,
+      skillBranch: config.skillBranch,
+    });
   } catch {
     res.status(500).json({ error: 'Internal server error' });
   }

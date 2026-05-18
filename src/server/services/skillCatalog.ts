@@ -39,6 +39,7 @@ function makeCache<T>() {
 
 const projectCache = makeCache<AdoProject[]>();
 const repoCache = makeCache<AdoRepo[]>();
+const branchCache = makeCache<string[]>();
 const skillListCache = makeCache<SkillEntry[]>();
 const skillDetailCache = makeCache<SkillDetail>();
 const fileContentCache = makeCache<string>();
@@ -122,6 +123,31 @@ export async function listRepos(project: string): Promise<AdoRepo[]> {
   }));
 
   repoCache.set(cacheKey, result);
+  return result;
+}
+
+export async function listBranches(project: string, repo: string): Promise<string[]> {
+  const cacheKey = `branches:${project}:${repo}`;
+  const cached = branchCache.get(cacheKey);
+  if (cached) return cached;
+
+  const conn = getConnection();
+  const gitApi = await conn.getGitApi();
+  const repos = await listRepos(project);
+  const repoObj = repos.find((r) => r.name.toLowerCase() === repo.toLowerCase());
+  if (!repoObj) return [];
+
+  const branches = await gitApi.getBranches(repoObj.id);
+  const result = (branches ?? [])
+    .map((b) => b.name ?? '')
+    .filter(Boolean)
+    .sort((a, b) => {
+      if (a === repoObj.defaultBranch) return -1;
+      if (b === repoObj.defaultBranch) return 1;
+      return a.localeCompare(b);
+    });
+
+  branchCache.set(cacheKey, result);
   return result;
 }
 

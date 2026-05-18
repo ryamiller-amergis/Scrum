@@ -15,6 +15,8 @@ interface UseChatStreamOptions {
   /** Initial messages to seed from the persisted thread */
   initialMessages?: ChatMessage[];
   initialStatus?: ChatThreadStatus;
+  /** Set to true when the thread was loaded and a durable PRD file already exists */
+  initialPrdReady?: boolean;
 }
 
 export function useChatStream(
@@ -25,7 +27,7 @@ export function useChatStream(
   const [streamingText, setStreamingText] = useState('');
   const [status, setStatus] = useState<ChatThreadStatus>(options.initialStatus ?? 'idle');
   const [isConnected, setIsConnected] = useState(false);
-  const [prdReady, setPrdReady] = useState(false);
+  const [prdReady, setPrdReady] = useState(options.initialPrdReady ?? false);
   const [backlogReady, setBacklogReady] = useState(false);
 
   const esRef = useRef<EventSource | null>(null);
@@ -37,10 +39,10 @@ export function useChatStream(
     setStreamingText('');
     setStatus(options.initialStatus ?? 'idle');
     setIsConnected(false);
-    setPrdReady(false);
+    setPrdReady(options.initialPrdReady ?? false);
     setBacklogReady(false);
     streamBufferRef.current = '';
-  }, [options.initialMessages, options.initialStatus]);
+  }, [options.initialMessages, options.initialStatus, options.initialPrdReady]);
 
   useEffect(() => {
     // Always reset derived state (streaming buffer, prdReady, backlogReady) when

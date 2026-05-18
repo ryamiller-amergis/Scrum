@@ -1,6 +1,6 @@
-import { asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import { db } from '../db/drizzle';
-import { chatMessageAttachments, chatMessages, chatThreads } from '../db/schema';
+import { chatMessageAttachments, chatMessages, chatThreads, interviews, prds } from '../db/schema';
 import type {
   ChatMessage,
   ChatThread,
@@ -99,7 +99,11 @@ export async function listThreadsByUser(
       lastActivityAt: chatThreads.lastActivityAt,
     })
     .from(chatThreads)
-    .where(eq(chatThreads.userId, userId))
+    .where(and(
+      eq(chatThreads.userId, userId),
+      sql`NOT EXISTS (SELECT 1 FROM interviews WHERE interviews.chat_thread_id = ${chatThreads.id})`,
+      sql`NOT EXISTS (SELECT 1 FROM prds WHERE prds.chat_thread_id = ${chatThreads.id})`,
+    ))
     .orderBy(desc(chatThreads.lastActivityAt))
     .limit(limit)
     .offset(offset);

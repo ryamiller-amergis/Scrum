@@ -1,0 +1,537 @@
+/* Re-uses the same design tokens and patterns as AdminRoles.module.css */
+
+.page {
+  flex: 1;
+  overflow-y: auto;
+  background: var(--bg-primary);
+  padding: 32px 24px;
+}
+
+.container {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+/* ── Page header ─────────────────────────────────────────────────────────── */
+
+.pageHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.pageTitle {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 4px;
+  letter-spacing: -0.3px;
+}
+
+.pageSubtitle {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* ── Loading / empty / error states ─────────────────────────────────────── */
+
+.loading {
+  padding: 48px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.empty {
+  padding: 64px 24px;
+  text-align: center;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.empty p { margin: 0; }
+
+.error {
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--error-color) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--error-color) 30%, transparent);
+  border-radius: 6px;
+  color: var(--error-color);
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+
+/* ── Table ───────────────────────────────────────────────────────────────── */
+
+.tableWrapper {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 24px;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.th {
+  padding: 12px 16px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--bg-tertiary, var(--bg-secondary));
+  border-bottom: 1px solid var(--border-color);
+  white-space: nowrap;
+}
+
+.tr {
+  transition: background 0.15s ease;
+}
+
+.tr:not(:last-child) {
+  border-bottom: 1px solid var(--border-color-light);
+}
+
+.tr:hover {
+  background: color-mix(in srgb, var(--accent-color) 4%, var(--bg-secondary));
+}
+
+.td {
+  padding: 14px 16px;
+  color: var(--text-primary);
+  vertical-align: middle;
+}
+
+.repoText {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.branchText {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 13px;
+  color: var(--accent-color);
+}
+
+.metaText {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ── Row action buttons ──────────────────────────────────────────────────── */
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btnAction {
+  padding: 5px 12px;
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.btnAction:hover:not(:disabled) {
+  background: var(--bg-primary);
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+}
+
+.btnAction:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.btnActionDanger:hover:not(:disabled) {
+  border-color: var(--error-color);
+  color: var(--error-color);
+  background: color-mix(in srgb, var(--error-color) 6%, var(--bg-primary));
+}
+
+/* ── Primary / cancel buttons ────────────────────────────────────────────── */
+
+.btnPrimary {
+  padding: 9px 20px;
+  background: var(--accent-color);
+  color: #fff;
+  border: none;
+  border-radius: 7px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.btnPrimary:hover:not(:disabled) { background: var(--accent-hover); }
+.btnPrimary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btnCancel {
+  padding: 8px 16px;
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: 7px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btnCancel:hover { background: var(--bg-secondary); }
+
+/* ── Inline add/edit form ────────────────────────────────────────────────── */
+
+.formCard {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 20px 24px;
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 24px;
+  overflow: visible;
+}
+
+.formTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 16px;
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 16px;
+  overflow: visible;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  overflow: visible;
+  position: relative;
+}
+
+.label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.input {
+  padding: 8px 10px;
+  height: 38px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: inherit;
+  transition: border-color 0.2s ease;
+  box-sizing: border-box;
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--accent-color);
+}
+
+.input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.select {
+  padding: 8px 10px;
+  height: 38px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: inherit;
+  transition: border-color 0.2s ease;
+  cursor: pointer;
+  appearance: auto;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.select:focus {
+  outline: none;
+  border-color: var(--accent-color);
+}
+
+.select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.formActions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+/* ── Branch combobox ──────────────────────────────────────────────────────── */
+
+.branchComboWrap {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+/* Trigger button (closed state) */
+.branchComboTrigger {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  height: 38px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-muted);
+  font-size: 14px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.branchComboTrigger:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent-color) 50%, var(--border-color));
+}
+
+.branchComboTriggerOpen {
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-color) 12%, transparent);
+}
+
+.branchComboTriggerHasValue {
+  color: var(--text-primary);
+}
+
+.branchComboTrigger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.branchComboTriggerIcon {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  color: var(--accent-color);
+  opacity: 0.7;
+}
+
+.branchComboTriggerIcon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.branchComboTriggerLabel {
+  flex: 1;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.branchComboTriggerPlaceholder {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.branchComboChevron {
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  color: var(--text-muted);
+  transition: transform 0.2s ease, color 0.2s ease;
+  margin-left: auto;
+}
+
+.branchComboChevronOpen {
+  transform: rotate(180deg);
+  color: var(--accent-color);
+}
+
+/* Dropdown panel */
+.branchComboDropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px var(--shadow-md), 0 2px 6px var(--shadow-sm);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 220px;
+}
+
+/* Search row inside dropdown */
+.branchComboSearchRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-color-light);
+  background: var(--bg-secondary);
+}
+
+.branchComboSearchIcon {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  color: var(--text-muted);
+}
+
+.branchComboSearch {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  min-width: 0;
+}
+
+.branchComboSearch::placeholder {
+  color: var(--text-muted);
+}
+
+.branchComboClear {
+  flex-shrink: 0;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 1px 4px;
+  border-radius: 3px;
+  transition: color 0.15s ease, background 0.15s ease;
+  line-height: 1;
+}
+
+.branchComboClear:hover {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+}
+
+/* Result count hint */
+.branchComboMeta {
+  padding: 4px 12px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color-light);
+}
+
+/* Scrollable list */
+.branchComboList {
+  overflow-y: auto;
+  max-height: 220px;
+  padding: 4px 0;
+}
+
+.branchComboEmpty {
+  padding: 14px 12px;
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.branchComboItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  padding: 7px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  cursor: pointer;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.branchComboItemLabel {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.branchComboItemActive {
+  background: color-mix(in srgb, var(--accent-color) 8%, var(--bg-secondary));
+  color: var(--accent-color);
+}
+
+.branchComboItemSelected {
+  color: var(--accent-color);
+  font-weight: 500;
+}
+
+.branchComboCheck {
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  color: var(--accent-color);
+}
+
+.formError {
+  font-size: 12px;
+  color: var(--error-color);
+  margin-bottom: 8px;
+}
+
+@media (max-width: 768px) {
+  .page { padding: 20px 16px; }
+  .pageHeader { flex-direction: column; align-items: stretch; }
+  .formGrid { grid-template-columns: 1fr; }
+  .tableWrapper { overflow-x: auto; }
+  .table { min-width: 600px; }
+}

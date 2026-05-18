@@ -1,12 +1,14 @@
 import { Router, type Request, type Response } from 'express';
 import { requirePermission } from '../middleware/rbac';
 import * as rbacService from '../services/rbacService';
+import * as projectSettingsService from '../services/projectSettingsService';
 import type {
   CreateRoleRequest,
   UpdateRoleRequest,
   UpdateRolePermissionsRequest,
   AssignRoleRequest,
 } from '../../shared/types/rbac';
+import type { UpsertProjectSkillConfigRequest } from '../../shared/types/projectSettings';
 
 const router = Router();
 
@@ -126,6 +128,43 @@ router.delete('/users/:oid/roles/:roleId', async (req: Request, res: Response): 
   try {
     const { oid, roleId } = req.params;
     await rbacService.removeRole(oid, roleId);
+    res.status(204).send();
+  } catch {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── Project Skill Settings ────────────────────────────────────────────────────
+
+router.get('/project-settings', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const configs = await projectSettingsService.listSkillConfigs();
+    res.json(configs);
+  } catch {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.put('/project-settings/:project', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { project } = req.params;
+    const { skillRepo, skillBranch } = req.body as UpsertProjectSkillConfigRequest;
+    if (!skillRepo || !skillBranch) {
+      res.status(400).json({ error: 'skillRepo and skillBranch are required' });
+      return;
+    }
+    const updatedBy = (req.user as any)?.profile?.displayName ?? (req.user as any)?.profile?.upn ?? undefined;
+    const config = await projectSettingsService.upsertSkillConfig(project, skillRepo, skillBranch, updatedBy);
+    res.json(config);
+  } catch {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.delete('/project-settings/:project', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { project } = req.params;
+    await projectSettingsService.deleteSkillConfig(project);
     res.status(204).send();
   } catch {
     res.status(500).json({ error: 'Internal server error' });

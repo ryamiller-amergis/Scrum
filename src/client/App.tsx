@@ -29,9 +29,12 @@ const RoadmapView = lazy(() => import('./components/RoadmapView').then(m => ({ d
 const ReleaseView = lazy(() => import('./components/ReleaseView'));
 const CloudCost = lazy(() => import('./components/CloudCost').then(m => ({ default: m.CloudCost })));
 const AIAnalysis = lazy(() => import('./components/AIAnalysis').then(m => ({ default: m.AIAnalysis })));
-const BacklogView = lazy(() => import('./components/BacklogView'));
+const InterviewsDashboard = lazy(() => import('./components/InterviewsDashboard'));
+const InterviewChatView = lazy(() => import('./components/InterviewChatView'));
+const PrdReviewView = lazy(() => import('./components/PrdReviewView'));
 const AdminRoles = lazy(() => import('./components/AdminRoles').then(m => ({ default: m.AdminRoles })));
 const AdminUsers = lazy(() => import('./components/AdminUsers').then(m => ({ default: m.AdminUsers })));
+const AdminProjectSettings = lazy(() => import('./components/AdminProjectSettings').then(m => ({ default: m.AdminProjectSettings })));
 
 type PlanningTab = 'cycle-time' | 'dev-stats' | 'qa' | 'ai-analysis' | 'roadmap' | 'releases';
 
@@ -90,6 +93,7 @@ function App() {
     handleLogout,
     selectedProject,
     selectedAreaPath,
+    availableProjects,
     changeProject,
     changeAreaPath,
     scheduledItems,
@@ -109,7 +113,7 @@ function App() {
     if (currentView === 'calendar'  && !can('calendar:view')) navigate('/home');
     if (currentView === 'planning'  && !can('planning:view')) navigate('/home');
     if (currentView === 'cloudcost' && !can('cost:view'))     navigate('/home');
-    if (currentView === 'backlog'   && !can('backlog:view'))  navigate('/home');
+    if (currentView === 'backlog'   && !can('interviews:view'))  navigate('/home');
   }, [currentView, permissionsLoaded, can, navigate]);
 
   // Auto-show changelog once per session when the user lands on /home with an unread version.
@@ -270,7 +274,13 @@ function App() {
             <ErrorBoundary FallbackComponent={ViewErrorFallback}>
               <Suspense fallback={<ViewSkeleton />}>
                 <div className="backlog-view">
-                  <BacklogView project={selectedProject} areaPath={selectedAreaPath} />
+                  {location.pathname.startsWith('/backlog/interview/') ? (
+                    <InterviewChatView />
+                  ) : location.pathname.startsWith('/backlog/prd/') ? (
+                    <PrdReviewView />
+                  ) : (
+                    <InterviewsDashboard />
+                  )}
                 </div>
               </Suspense>
             </ErrorBoundary>
@@ -278,8 +288,33 @@ function App() {
             <ErrorBoundary FallbackComponent={ViewErrorFallback}>
               <Suspense fallback={<ViewSkeleton />}>
                 <div className="admin-container">
+                  <div className="admin-tabs">
+                    <button
+                      className={`admin-tab${location.pathname.startsWith('/admin/roles') || location.pathname === '/admin' ? ' admin-tab-active' : ''}`}
+                      onClick={() => navigate('/admin/roles')}
+                      type="button"
+                    >
+                      Roles
+                    </button>
+                    <button
+                      className={`admin-tab${location.pathname === '/admin/users' ? ' admin-tab-active' : ''}`}
+                      onClick={() => navigate('/admin/users')}
+                      type="button"
+                    >
+                      Users
+                    </button>
+                    <button
+                      className={`admin-tab${location.pathname === '/admin/project-settings' ? ' admin-tab-active' : ''}`}
+                      onClick={() => navigate('/admin/project-settings')}
+                      type="button"
+                    >
+                      Project Settings
+                    </button>
+                  </div>
                   {location.pathname === '/admin/users' ? (
                     <AdminUsers />
+                  ) : location.pathname === '/admin/project-settings' ? (
+                    <AdminProjectSettings selectedProject={selectedProject} availableProjects={availableProjects} />
                   ) : (
                     <AdminRoles />
                   )}

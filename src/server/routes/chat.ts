@@ -11,12 +11,11 @@ import {
   readOutputPrd,
   writeOutputPrd,
   readOutputBacklog,
+  isPrdReady,
 } from '../services/chatAgentService';
-import { saveWikiPage } from '../services/wikiCatalog';
 import { toggleFlag } from '../services/chatThreadRepository';
 import { getUserId } from '../utils/requestUser';
 import type { ChatAttachment, ChatThread, StartChatRequest, SendMessageRequest } from '../../shared/types/chat';
-import type { SaveWikiPageRequest } from '../../shared/types/skills';
 import { requirePermission } from '../middleware/rbac';
 
 const router = Router();
@@ -135,9 +134,11 @@ router.post('/threads', async (req: Request, res: Response) => {
 /**
  * GET /api/chat/threads/:id
  * Get thread metadata and message history (falls back to Postgres for historical threads).
+ * Augments the response with a computed `prdReady` flag based on file existence.
  */
 router.get('/threads/:id', requireThreadOwner, (req: Request, res: Response) => {
-  res.json((req as any).thread as ChatThread);
+  const thread = (req as any).thread as ChatThread;
+  res.json({ ...thread, prdReady: isPrdReady(thread.id) });
 });
 
 /**
@@ -253,29 +254,6 @@ router.put('/threads/:id/prd', requireThreadOwner, (req: Request, res: Response)
     res.json({ ok: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message ?? 'Failed to write PRD' });
-  }
-});
-
-/**
- * POST /api/chat/threads/:id/save-to-wiki
- * Save the agent's output PRD to an ADO wiki page.
- * Body: { project, wikiId, path, comment? }
- */
-router.post('/threads/:id/save-to-wiki', requireThreadOwner, async (req: Request, res: Response) => {
-  const prdContent = readOutputPrd(req.params.id);
-  if (!prdContent) return res.status(404).json({ error: 'PRD not yet generated' });
-
-  const { project, wikiId, path, comment, version } = req.body as Partial<SaveWikiPageRequest>;
-  if (!project) return res.status(400).json({ error: 'project is required' });
-  if (!wikiId) return res.status(400).json({ error: 'wikiId is required' });
-  if (!path) return res.status(400).json({ error: 'path is required' });
-
-  try {
-    const result = await saveWikiPage({ project, wikiId, path, content: prdContent, comment, version });
-    res.json(result);
-  } catch (err: any) {
-    console.error('[chat] save-to-wiki error:', err.message);
-    res.status(500).json({ error: err.message ?? 'Failed to save to wiki' });
   }
 });
 

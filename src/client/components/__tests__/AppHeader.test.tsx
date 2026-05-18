@@ -46,9 +46,9 @@ describe('AppHeader — viewer permissions (planning:view only)', () => {
     expect(screen.queryByRole('button', { name: 'Cloud Cost' })).not.toBeInTheDocument();
   });
 
-  it('does NOT render the Backlog button', () => {
+  it('does NOT render the Interviews button', () => {
     render(<AppHeader {...baseProps} can={can} />);
-    expect(screen.queryByRole('button', { name: 'Backlog' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Interview' })).not.toBeInTheDocument();
   });
 
   it('does NOT render the Agent Studio button', () => {
@@ -87,9 +87,9 @@ describe('AppHeader — full permissions (all keys)', () => {
     expect(screen.getByRole('button', { name: 'Cloud Cost' })).toBeInTheDocument();
   });
 
-  it('renders the Backlog button', () => {
+  it('renders the Interviews button', () => {
     render(<AppHeader {...baseProps} can={can} />);
-    expect(screen.getByRole('button', { name: 'Backlog' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Interview' })).toBeInTheDocument();
   });
 
   it('renders the Agent Studio button when onOpenAgentChat is provided', () => {

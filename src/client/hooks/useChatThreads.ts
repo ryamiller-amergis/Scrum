@@ -136,21 +136,6 @@ export function useFlagThread() {
   });
 }
 
-export function useSaveToWiki(threadId: string) {
-  return useMutation<
-    { path: string; url: string; version: string },
-    Error,
-    { project: string; wikiId: string; path: string; comment?: string }
-  >({
-    mutationFn: (body) =>
-      apiFetch(`/api/chat/threads/${threadId}/save-to-wiki`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      }),
-  });
-}
-
 export function useSkillProjects() {
   return useQuery<{ id: string; name: string }[]>({
     queryKey: ['skill-projects'],
@@ -164,6 +149,15 @@ export function useSkillRepos(project: string | null) {
     queryKey: ['skill-repos', project],
     queryFn: () => apiFetch(`/api/skills/repos?project=${encodeURIComponent(project!)}`),
     enabled: !!project,
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useSkillBranches(project: string | null, repo: string | null) {
+  return useQuery<string[]>({
+    queryKey: ['skill-branches', project, repo],
+    queryFn: () => apiFetch(`/api/skills/branches?project=${encodeURIComponent(project!)}&repo=${encodeURIComponent(repo!)}`),
+    enabled: !!project && !!repo,
     staleTime: 5 * 60_000,
   });
 }
@@ -183,11 +177,3 @@ export function useSkillList(project: string | null, repo: string | null, branch
   });
 }
 
-export function useWikiList(project: string | null) {
-  return useQuery<{ id: string; name: string; type: string }[]>({
-    queryKey: ['wiki-list', project],
-    queryFn: () => apiFetch(`/api/wiki/wikis?project=${encodeURIComponent(project!)}`),
-    enabled: !!project,
-    staleTime: 5 * 60_000,
-  });
-}

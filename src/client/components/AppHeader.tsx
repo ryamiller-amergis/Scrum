@@ -67,12 +67,12 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
           Cloud Cost
         </button>
       )}
-      {can('backlog:view') && (
+      {can('interviews:view') && (
         <button
           className={`view-btn ${currentView === 'backlog' ? 'active' : ''}`}
           onClick={onNavigateBacklog}
         >
-          Backlog
+          Interview
         </button>
       )}
       {can('admin:roles') && (

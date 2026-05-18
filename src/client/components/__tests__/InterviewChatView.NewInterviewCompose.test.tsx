@@ -1,0 +1,245 @@
+import type { ReactNode } from 'react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import { InterviewChatView } from '../InterviewChatView';
+
+// ── Module mocks ───────────────────────────────────────────────────────────────
+
+jest.mock('../../hooks/useAppShell', () => ({
+  useAppShell: jest.fn(() => ({
+    selectedProject: 'MaxView',
+    can: jest.fn(() => true),
+  })),
+}));
+
+jest.mock('../../hooks/useChatThreads', () => ({
+  useSkillRepos: jest.fn(() => ({
+    data: [{ id: 'repo-1', name: 'MaxView', defaultBranch: 'main' }],
+  })),
+  useSkillList: jest.fn(() => ({
+    data: [
+      {
+        id: 'skill-1',
+        name: 'grill-with-docs',
+        path: '.cursor/skills/grill-with-docs/SKILL.md',
+      },
+    ],
+  })),
+  useStartChat: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
+}));
+
+jest.mock('../../hooks/useProjectSkillConfig', () => ({
+  useProjectSkillConfig: jest.fn(() => ({ data: null })),
+}));
+
+jest.mock('../../hooks/useInterviews', () => ({
+  useCreateInterview: jest.fn(),
+  useInterview: jest.fn(() => ({ data: null, isLoading: true, isError: false })),
+  useUpdateInterviewStatus: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
+  useUpdateInterviewTitle: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
+  useCreatePrd: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
+  useDeleteInterview: jest.fn(() => ({ mutate: jest.fn(), isPending: false })),
+}));
+
+jest.mock('../../hooks/useChatStream', () => ({
+  useChatStream: jest.fn(() => ({
+    messages: [],
+    streamingText: '',
+    status: 'idle',
+  })),
+}));
+
+jest.mock('../../hooks/useChatAttachments', () => ({
+  useChatAttachments: jest.fn(() => ({
+    attachments: [],
+    attachmentError: null,
+    addFiles: jest.fn(),
+    removeAttachment: jest.fn(),
+    clearAttachments: jest.fn(),
+  })),
+  formatAttachmentSize: jest.fn((s: number) => `${s}B`),
+}));
+
+jest.mock('../../hooks/useSpeechInput', () => ({
+  useSpeechInput: jest.fn(() => ({
+    isListening: false,
+    isSpeechSupported: false,
+    speechError: null,
+    toggle: jest.fn(),
+    stop: jest.fn(),
+  })),
+}));
+
+jest.mock('react-markdown', () => ({
+  __esModule: true,
+  default: ({ children }: { children: ReactNode }) => <>{children}</>,
+}));
+
+jest.mock('remark-gfm', () => ({ __esModule: true, default: jest.fn() }));
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+import { useCreateInterview } from '../../hooks/useInterviews';
+import { useStartChat } from '../../hooks/useChatThreads';
+
+function renderCompose() {
+  return render(
+    <MemoryRouter initialEntries={['/backlog/interview/new']}>
+      <InterviewChatView />
+    </MemoryRouter>,
+  );
+}
+
+// ── Tests ──────────────────────────────────────────────────────────────────────
+
+describe('NewInterviewCompose — title required', () => {
+  let startChatMutateAsync: jest.Mock;
+  let createInterviewMutateAsync: jest.Mock;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+
+    startChatMutateAsync = jest.fn().mockResolvedValue({ threadId: 'thread-abc' });
+    (useStartChat as jest.Mock).mockReturnValue({
+      mutateAsync: startChatMutateAsync,
+      isPending: false,
+    });
+
+    createInterviewMutateAsync = jest.fn().mockResolvedValue({ interviewId: 'iv-1' });
+    (useCreateInterview as jest.Mock).mockReturnValue({
+      mutateAsync: createInterviewMutateAsync,
+      isPending: false,
+    });
+
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ ok: true }),
+    }) as jest.Mock;
+  });
+
+  it('renders a required title field and message textarea', () => {
+    renderCompose();
+    expect(screen.getByLabelText(/title/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/describe what you'd like/i)).toBeInTheDocument();
+  });
+
+  it('title field is marked required with an asterisk', () => {
+    renderCompose();
+    expect(screen.getByText('*')).toBeInTheDocument();
+  });
+
+  it('send button is disabled when title is empty even if message is filled', () => {
+    renderCompose();
+    fireEvent.change(screen.getByPlaceholderText(/describe what you'd like/i), {
+      target: { value: 'A very detailed feature request for the whole system' },
+    });
+    expect(screen.getByLabelText('Start interview')).toBeDisabled();
+  });
+
+  it('does not show the error message before the user touches the title field', () => {
+    renderCompose();
+    expect(screen.queryByText(/title is required/i)).not.toBeInTheDocument();
+  });
+
+  it('shows "A title is required" error after the title field is blurred empty', () => {
+    renderCompose();
+    const titleInput = screen.getByLabelText(/title/i);
+    fireEvent.blur(titleInput);
+    expect(screen.getByText(/a title is required/i)).toBeInTheDocument();
+  });
+
+  it('shows error and keeps focus on title field when Send is clicked without a title', async () => {
+    renderCompose();
+    fireEvent.change(screen.getByPlaceholderText(/describe what you'd like/i), {
+      target: { value: 'Some request text' },
+    });
+    // Manually fire click on a disabled send button won't call handleSend,
+    // so we trigger the keyboard shortcut from the textarea instead
+    fireEvent.keyDown(screen.getByPlaceholderText(/describe what you'd like/i), {
+      key: 'Enter',
+      shiftKey: false,
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/a title is required/i)).toBeInTheDocument();
+    });
+    expect(startChatMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it('send button becomes enabled when both title and message are filled', () => {
+    renderCompose();
+    fireEvent.change(screen.getByLabelText(/title/i), {
+      target: { value: 'Email Resend Feature' },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/describe what you'd like/i), {
+      target: { value: 'Add ability to resend notification emails' },
+    });
+    expect(screen.getByLabelText('Start interview')).not.toBeDisabled();
+  });
+
+  it('error message disappears once the user types a title', () => {
+    renderCompose();
+    const titleInput = screen.getByLabelText(/title/i);
+    fireEvent.blur(titleInput);
+    expect(screen.getByText(/a title is required/i)).toBeInTheDocument();
+
+    fireEvent.change(titleInput, { target: { value: 'My feature' } });
+    expect(screen.queryByText(/a title is required/i)).not.toBeInTheDocument();
+  });
+
+  it('creates the interview using the exact title the user entered', async () => {
+    renderCompose();
+    fireEvent.change(screen.getByLabelText(/title/i), {
+      target: { value: 'Email Resend Feature' },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/describe what you'd like/i), {
+      target: {
+        value: 'As a user I want to be able to resend notification emails that may have been missed or lost in spam so that I never miss an important system communication',
+      },
+    });
+    fireEvent.click(screen.getByLabelText('Start interview'));
+
+    await waitFor(() => expect(createInterviewMutateAsync).toHaveBeenCalled());
+
+    expect(createInterviewMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Email Resend Feature' }),
+    );
+  });
+
+  it('does NOT truncate or auto-derive the title from the message body', async () => {
+    const longMessage = 'A'.repeat(200);
+    renderCompose();
+    fireEvent.change(screen.getByLabelText(/title/i), {
+      target: { value: 'Short Title' },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/describe what you'd like/i), {
+      target: { value: longMessage },
+    });
+    fireEvent.click(screen.getByLabelText('Start interview'));
+
+    await waitFor(() => expect(createInterviewMutateAsync).toHaveBeenCalled());
+
+    const { title } = createInterviewMutateAsync.mock.calls[0][0];
+    expect(title).toBe('Short Title');
+    expect(title).not.toContain('A'.repeat(60));
+  });
+
+  it('posts the user message to the chat thread after creating the interview', async () => {
+    renderCompose();
+    fireEvent.change(screen.getByLabelText(/title/i), {
+      target: { value: 'My Interview' },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/describe what you'd like/i), {
+      target: { value: 'Tell me about the architecture' },
+    });
+    fireEvent.click(screen.getByLabelText('Start interview'));
+
+    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+
+    const messageCall = (global.fetch as jest.Mock).mock.calls.find((c) =>
+      String(c[0]).includes('/api/chat/threads/thread-abc/messages'),
+    );
+    expect(messageCall).toBeDefined();
+    const body = JSON.parse(messageCall![1].body);
+    expect(body.text).toBe('Tell me about the architecture');
+  });
+});

@@ -9,10 +9,12 @@ import request from 'supertest';
 import express from 'express';
 import adminRouter from '../routes/admin';
 import * as rbacService from '../services/rbacService';
+import * as projectSettingsService from '../services/projectSettingsService';
 
 // ── Mocks ──────────────────────────────────────────────────────────────────────
 
 jest.mock('../services/rbacService');
+jest.mock('../services/projectSettingsService');
 
 // Default: all permission checks pass. Tests that verify auth behaviour
 // re-configure these mocks per test.
@@ -25,6 +27,7 @@ jest.mock('../middleware/rbac', () => ({
 }));
 
 const mockService = rbacService as jest.Mocked<typeof rbacService>;
+const mockProjectSettings = projectSettingsService as jest.Mocked<typeof projectSettingsService>;
 
 // ── App factory ────────────────────────────────────────────────────────────────
 
@@ -374,6 +377,167 @@ describe('DELETE /api/admin/users/:oid/roles/:roleId', () => {
     mockService.removeRole.mockRejectedValue(new Error('DB error'));
 
     const res = await request(buildApp()).delete('/api/admin/users/user-1/roles/role-admin');
+
+    expect(res.status).toBe(500);
+  });
+});
+
+// ── GET /api/admin/project-settings ──────────────────────────────────────────
+
+describe('GET /api/admin/project-settings', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  const configs = [
+    { project: 'proj-alpha', skillRepo: 'org/skills', skillBranch: 'main', updatedBy: 'alice', createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-02T00:00:00Z' },
+    { project: 'proj-beta', skillRepo: 'org/skills', skillBranch: 'develop', updatedBy: null, createdAt: '2026-01-03T00:00:00Z', updatedAt: '2026-01-04T00:00:00Z' },
+  ];
+
+  it('returns 200 with the list of project skill configs', async () => {
+    mockProjectSettings.listSkillConfigs.mockResolvedValue(configs);
+
+    const res = await request(buildApp()).get('/api/admin/project-settings');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(2);
+    expect(res.body[0]).toMatchObject({ project: 'proj-alpha', skillBranch: 'main' });
+  });
+
+  it('returns 500 when listSkillConfigs throws', async () => {
+    mockProjectSettings.listSkillConfigs.mockRejectedValue(new Error('DB error'));
+
+    const res = await request(buildApp()).get('/api/admin/project-settings');
+
+    expect(res.status).toBe(500);
+    expect(res.body).toMatchObject({ error: 'Internal server error' });
+  });
+});
+
+// ── PUT /api/admin/project-settings/:project ──────────────────────────────────
+
+describe('PUT /api/admin/project-settings/:project', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  const savedConfig = {
+    project: 'proj-alpha',
+    skillRepo: 'org/updated-skills',
+    skillBranch: 'release',
+    updatedBy: 'admin-oid',
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-05-18T00:00:00Z',
+  };
+
+  it('returns 200 with the upserted config', async () => {
+    mockProjectSettings.upsertSkillConfig.mockResolvedValue(savedConfig);
+
+    const res = await request(buildApp())
+      .put('/api/admin/project-settings/proj-alpha')
+      .send({ skillRepo: 'org/updated-skills', skillBranch: 'release' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ project: 'proj-alpha', skillRepo: 'org/updated-skills' });
+    expect(mockProjectSettings.upsertSkillConfig).toHaveBeenCalledWith(
+      'proj-alpha',
+      'org/updated-skills',
+      'release',
+      undefined,
+    );
+  });
+
+  it('returns 400 when skillRepo is missing', async () => {
+    const res = await request(buildApp())
+      .put('/api/admin/project-settings/proj-alpha')
+      .send({ skillBranch: 'main' });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ error: 'skillRepo and skillBranch are required' });
+    expect(mockProjectSettings.upsertSkillConfig).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 when skillBranch is missing', async () => {
+    const res = await request(buildApp())
+      .put('/api/admin/project-settings/proj-alpha')
+      .send({ skillRepo: 'org/repo' });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ error: 'skillRepo and skillBranch are required' });
+    expect(mockProjectSettings.upsertSkillConfig).not.toHaveBeenCalled();
+  });
+
+  it('uses displayName as updatedBy when available', async () => {
+    mockProjectSettings.upsertSkillConfig.mockResolvedValue(savedConfig);
+
+    const app = express();
+    app.use(express.json());
+    app.use((req: any, _res: any, next: any) => {
+      req.user = { profile: { oid: 'oid-1', displayName: 'Alice Admin', upn: 'alice@example.com' } };
+      next();
+    });
+    app.use('/api/admin', adminRouter);
+
+    await request(app)
+      .put('/api/admin/project-settings/proj-alpha')
+      .send({ skillRepo: 'org/repo', skillBranch: 'main' });
+
+    expect(mockProjectSettings.upsertSkillConfig).toHaveBeenCalledWith(
+      'proj-alpha',
+      'org/repo',
+      'main',
+      'Alice Admin',
+    );
+  });
+
+  it('falls back to upn when displayName is absent', async () => {
+    mockProjectSettings.upsertSkillConfig.mockResolvedValue(savedConfig);
+
+    const app = express();
+    app.use(express.json());
+    app.use((req: any, _res: any, next: any) => {
+      req.user = { profile: { oid: 'oid-1', upn: 'alice@example.com' } };
+      next();
+    });
+    app.use('/api/admin', adminRouter);
+
+    await request(app)
+      .put('/api/admin/project-settings/proj-alpha')
+      .send({ skillRepo: 'org/repo', skillBranch: 'main' });
+
+    expect(mockProjectSettings.upsertSkillConfig).toHaveBeenCalledWith(
+      'proj-alpha',
+      'org/repo',
+      'main',
+      'alice@example.com',
+    );
+  });
+
+  it('returns 500 when upsertSkillConfig throws', async () => {
+    mockProjectSettings.upsertSkillConfig.mockRejectedValue(new Error('DB error'));
+
+    const res = await request(buildApp())
+      .put('/api/admin/project-settings/proj-alpha')
+      .send({ skillRepo: 'org/repo', skillBranch: 'main' });
+
+    expect(res.status).toBe(500);
+  });
+});
+
+// ── DELETE /api/admin/project-settings/:project ───────────────────────────────
+
+describe('DELETE /api/admin/project-settings/:project', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('returns 204 on successful delete', async () => {
+    mockProjectSettings.deleteSkillConfig.mockResolvedValue(undefined);
+
+    const res = await request(buildApp()).delete('/api/admin/project-settings/proj-alpha');
+
+    expect(res.status).toBe(204);
+    expect(mockProjectSettings.deleteSkillConfig).toHaveBeenCalledWith('proj-alpha');
+  });
+
+  it('returns 500 when deleteSkillConfig throws', async () => {
+    mockProjectSettings.deleteSkillConfig.mockRejectedValue(new Error('DB error'));
+
+    const res = await request(buildApp()).delete('/api/admin/project-settings/proj-alpha');
 
     expect(res.status).toBe(500);
   });

@@ -73,6 +73,8 @@ Read and evaluate these project assets before writing any code or design doc:
 - `postgresql-migrations` — load when a DB migration is needed
 - `rbac-management` — load when RBAC adds/removes/modifies permissions
 
+> **Skill resolution note:** If the feature involves resolving which skill repo/branch to use for an AI agent session, use `useProjectSkillConfig` (from `src/client/hooks/useProjectSkillConfig.ts`) as the canonical source for repo + branch. Do not hardcode branch names or let users pick repos manually. The admin-managed `project_skill_settings` table (managed via `/admin/project-settings`) is the source of truth.
+
 Output a **Context Block** in this format — paste it into every subagent prompt generated in Phase 4:
 
 ```
