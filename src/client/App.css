@@ -3,51 +3,63 @@
 }
 
 :root {
-  --bg-primary: #ffffff;
-  --bg-secondary: #f5f5f5;
-  --bg-tertiary: #e8e8e8;
-  --text-primary: #1a1a1a;
-  --text-secondary: #555555;
-  --text-muted: #888888;
-  --border-color: #e0e0e0;
-  --border-color-light: #ddd;
-  --accent-color: #142A67;
-  --accent-hover: #0d1c45;
-  --accent-teal: #5ACCA6;
-  --accent-teal-hover: #3aaa86;
-  --success-color: #3aaa86;
-  --success-hover: #2d9070;
+  --brand-primary: #2747D9;
+  --brand-primary-light: #7C8CFF;
+  --brand-navy: #050506;
+  --brand-surface: #EEF2FF;
+  --brand-surface-dark: #18181B;
+  --brand-text-inverse: #F9FAFB;
+  --bg-primary: #F8FAFF;
+  --bg-secondary: #EEF2FF;
+  --bg-tertiary: #E0E7FF;
+  --text-primary: #111827;
+  --text-secondary: #4B5563;
+  --text-muted: #6B7280;
+  --border-color: #D6DDF7;
+  --border-color-light: #E5E9FF;
+  --accent-color: #2747D9;
+  --accent-hover: #1C33A6;
+  --accent-teal: #2747D9;
+  --accent-teal-hover: #1C33A6;
+  --success-color: #16A34A;
+  --success-hover: #15803D;
   --error-color: #d32f2f;
   --shadow-sm: rgba(0, 0, 0, 0.08);
   --shadow-md: rgba(0, 0, 0, 0.14);
-  --calendar-bg: #ffffff;
-  --calendar-event-bg: #eaf7f3;
-  --calendar-event-border: #5ACCA6;
-  --calendar-event-text: #142A67;
+  --calendar-bg: #F8FAFF;
+  --calendar-event-bg: #E0E7FF;
+  --calendar-event-border: #2747D9;
+  --calendar-event-text: #1C33A6;
 }
 
 [data-theme="dark"] {
-  --bg-primary: #1e1e1e;
-  --bg-secondary: #2d2d2d;
-  --bg-tertiary: #3d3d3d;
-  --text-primary: #e0e0e0;
-  --text-secondary: #b0b0b0;
-  --text-muted: #808080;
-  --border-color: #404040;
-  --border-color-light: #505050;
-  --accent-color: #5ACCA6;
-  --accent-hover: #6ed9b4;
-  --accent-teal: #5ACCA6;
-  --accent-teal-hover: #6ed9b4;
-  --success-color: #5ACCA6;
-  --success-hover: #6ed9b4;
+  --brand-primary: #2747D9;
+  --brand-primary-light: #7C8CFF;
+  --brand-navy: #050506;
+  --brand-surface: #EEF2FF;
+  --brand-surface-dark: #18181B;
+  --brand-text-inverse: #F9FAFB;
+  --bg-primary: #050506;
+  --bg-secondary: #111113;
+  --bg-tertiary: #18181B;
+  --text-primary: #F9FAFB;
+  --text-secondary: #D4D4D8;
+  --text-muted: #A1A1AA;
+  --border-color: #2A2A2E;
+  --border-color-light: #3F3F46;
+  --accent-color: #7C8CFF;
+  --accent-hover: #9CA8FF;
+  --accent-teal: #7C8CFF;
+  --accent-teal-hover: #9CA8FF;
+  --success-color: #4ADE80;
+  --success-hover: #86EFAC;
   --error-color: #ef5350;
   --shadow-sm: rgba(0, 0, 0, 0.3);
   --shadow-md: rgba(0, 0, 0, 0.5);
-  --calendar-bg: #2d2d2d;
-  --calendar-event-bg: #1a3330;
-  --calendar-event-border: #5ACCA6;
-  --calendar-event-text: #5ACCA6;
+  --calendar-bg: #111113;
+  --calendar-event-bg: #18181B;
+  --calendar-event-border: #7C8CFF;
+  --calendar-event-text: #E5E7FF;
 }
 
 body {
@@ -76,6 +88,42 @@ body {
   padding: 12px 20px;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-color);
+}
+
+.header-main {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+.app-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px 4px 4px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.app-brand:hover {
+  border-color: var(--border-color);
+  background: color-mix(in srgb, var(--accent-color) 8%, transparent);
+}
+
+.app-brand-mark {
+  width: 32px;
+  height: 32px;
+}
+
+.app-brand-text {
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
 }
 
 .header-controls {
@@ -117,7 +165,7 @@ body {
 .team-selector:focus {
   outline: none;
   border-color: var(--accent-color);
-  box-shadow: 0 0 0 3px rgba(74, 158, 255, 0.1);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-color) 18%, transparent);
 }
 
 .view-switcher {

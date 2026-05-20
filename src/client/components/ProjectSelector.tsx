@@ -1,5 +1,6 @@
 import React from 'react';
 import { useProjects } from '../hooks/useProjects';
+import { BrandLogo } from './BrandLogo';
 import styles from './ProjectSelector.module.css';
 
 interface ProjectSelectorProps {
@@ -17,15 +18,9 @@ export const ProjectSelector: React.FC<ProjectSelectorProps> = ({
     <div className={styles.page}>
       <div className={styles.header}>
         <div className={styles.logoMark}>
-          <svg viewBox="38 -4 78 30" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M41.5675 24.5315H48.7723C48.9238 24.5315 49.0593 24.4283 49.1071 24.2854C52.0832 14.5842 60.8596 8.70941 71.2793 8.06638C71.7024 8.04255 71.6861 7.38361 71.2633 7.35186C56.4235 6.2166 43.8096 15.5686 41.2324 24.087C41.1686 24.3093 41.3363 24.5315 41.5754 24.5315H41.5675Z" fill="#5ACCA6"/>
-            <path d="M101.605 24.5313H108.499C108.754 24.5313 108.937 24.301 108.889 24.0549C106.36 10.5033 91.6402 -0.960387 71.6221 0.0637259C65.032 0.405096 59.5906 2.4692 56.5189 4.94612C56.1918 5.20811 56.4711 5.73206 56.87 5.5971C61.4737 4.05698 66.5637 3.42979 71.5503 3.62033C86.5499 4.19986 98.757 14.568 101.206 24.2058C101.254 24.3884 101.406 24.5313 101.597 24.5313H101.605Z" fill="#5ACCA6"/>
-          </svg>
+          <BrandLogo />
         </div>
-        <h1 className={styles.title}>
-          Amergis <span className={styles.titleAccent}>Scrum</span>
-        </h1>
-        <p className={styles.subtitle}>Select a project to get started</p>
+        <p className={styles.subtitle}>Select a project to start planning</p>
       </div>
 
       {isLoading ? (

@@ -14,21 +14,10 @@
 }
 
 .logoMark {
-  width: 180px;
+  width: max-content;
   margin: 0 auto 20px;
+  font-size: 4rem;
   opacity: 0.95;
-}
-
-.title {
-  margin: 0 0 8px;
-  font-size: 2.2rem;
-  font-weight: 700;
-  color: var(--text-primary);
-  letter-spacing: -0.5px;
-}
-
-.titleAccent {
-  color: var(--accent-color);
 }
 
 .subtitle {

@@ -56,9 +56,14 @@
 }
 
 .composeLogo {
-  width: 180px;
+  width: max-content;
+  font-size: 3.2rem;
   color: var(--text-primary);
   opacity: 0.9;
+}
+
+.composeLogo > svg {
+  display: none;
 }
 
 .composeLogo svg {

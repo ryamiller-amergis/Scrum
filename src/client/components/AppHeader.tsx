@@ -1,4 +1,5 @@
 import React from 'react';
+import { BrandLogo } from './BrandLogo';
 import { UserMenu } from './UserMenu';
 
 interface AppHeaderProps {
@@ -8,6 +9,7 @@ interface AppHeaderProps {
   hasUnreadChangelog: boolean;
   can: (key: string) => boolean;
   onNavigateHome: () => void;
+  onNavigateProjects?: () => void;
   onNavigateCalendar: () => void;
   onNavigatePlanning: () => void;
   onNavigateCloudCost: () => void;
@@ -25,6 +27,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   hasUnreadChangelog,
   can,
   onNavigateHome,
+  onNavigateProjects,
   onNavigateCalendar,
   onNavigatePlanning,
   onNavigateCloudCost,
@@ -36,53 +39,65 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   onOpenAgentChat,
 }) => (
   <div className="app-header">
-    <div className="view-switcher">
+    <div className="header-main">
       <button
-        className={`view-btn ${currentView === 'home' ? 'active' : ''}`}
-        onClick={onNavigateHome}
+        className="app-brand"
+        onClick={onNavigateProjects ?? onNavigateHome}
+        type="button"
+        aria-label="Select an Apex project"
+        title="Select project"
       >
-        Home
+        <BrandLogo variant="mark" className="app-brand-mark" />
+        <span className="app-brand-text">Apex</span>
       </button>
-      {can('calendar:view') && (
+      <div className="view-switcher">
         <button
-          className={`view-btn ${currentView === 'calendar' ? 'active' : ''}`}
-          onClick={onNavigateCalendar}
+          className={`view-btn ${currentView === 'home' ? 'active' : ''}`}
+          onClick={onNavigateHome}
         >
-          Calendar
+          Home
         </button>
-      )}
-      {can('planning:view') && (
-        <button
-          className={`view-btn ${currentView === 'planning' ? 'active' : ''}`}
-          onClick={onNavigatePlanning}
-        >
-          Planning
-        </button>
-      )}
-      {can('cost:view') && (
-        <button
-          className={`view-btn ${currentView === 'cloudcost' ? 'active' : ''}`}
-          onClick={onNavigateCloudCost}
-        >
-          Cloud Cost
-        </button>
-      )}
-      {can('interviews:view') && (
-        <button
-          className={`view-btn ${currentView === 'backlog' ? 'active' : ''}`}
-          onClick={onNavigateBacklog}
-        >
-          Interview
-        </button>
-      )}
-      {can('admin:roles') && (
-        <button
-          className={`view-btn ${currentView === 'admin' ? 'active' : ''}`}
-          onClick={onNavigateAdmin}
-        >
-          Admin
-        </button>
-      )}
+        {can('calendar:view') && (
+          <button
+            className={`view-btn ${currentView === 'calendar' ? 'active' : ''}`}
+            onClick={onNavigateCalendar}
+          >
+            Calendar
+          </button>
+        )}
+        {can('planning:view') && (
+          <button
+            className={`view-btn ${currentView === 'planning' ? 'active' : ''}`}
+            onClick={onNavigatePlanning}
+          >
+            Planning
+          </button>
+        )}
+        {can('cost:view') && (
+          <button
+            className={`view-btn ${currentView === 'cloudcost' ? 'active' : ''}`}
+            onClick={onNavigateCloudCost}
+          >
+            Cloud Cost
+          </button>
+        )}
+        {can('interviews:view') && (
+          <button
+            className={`view-btn ${currentView === 'backlog' ? 'active' : ''}`}
+            onClick={onNavigateBacklog}
+          >
+            Interview
+          </button>
+        )}
+        {can('admin:roles') && (
+          <button
+            className={`view-btn ${currentView === 'admin' ? 'active' : ''}`}
+            onClick={onNavigateAdmin}
+          >
+            Admin
+          </button>
+        )}
+      </div>
     </div>
     <div className="header-controls">
       {onOpenAgentChat && can('chat:view') && (

@@ -207,6 +207,7 @@ function App() {
             hasUnreadChangelog={hasUnreadChangelog}
             can={can}
             onNavigateHome={() => navigate('/home')}
+            onNavigateProjects={() => navigate('/')}
             onNavigateCalendar={() => navigate('/calendar')}
             onNavigatePlanning={() => navigate(`/planning/${planningTab}`)}
             onNavigateCloudCost={() => navigate('/cloud-cost')}

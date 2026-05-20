@@ -4,7 +4,7 @@
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  background: #1e1e1e;
+  background: var(--brand-navy);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   position: relative;
   overflow: hidden;
@@ -17,7 +17,7 @@
   left: -50%;
   width: 200%;
   height: 200%;
-  background: radial-gradient(circle, rgba(90, 204, 166, 0.08) 0%, transparent 65%);
+  background: radial-gradient(circle, color-mix(in srgb, var(--brand-primary-light) 16%, transparent) 0%, transparent 65%);
   animation: pulse 8s ease-in-out infinite;
 }
 
@@ -27,21 +27,21 @@
 }
 
 .login-card {
-  background: #2d2d2d;
+  background: var(--brand-surface-dark);
   backdrop-filter: blur(10px);
   padding: 3rem;
   border-radius: 16px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(90, 204, 166, 0.15);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 0 1px color-mix(in srgb, var(--brand-primary-light) 22%, transparent);
   text-align: center;
   max-width: 420px;
   width: 90%;
   position: relative;
   z-index: 1;
-  border: 1px solid rgba(90, 204, 166, 0.15);
+  border: 1px solid color-mix(in srgb, var(--brand-primary-light) 28%, transparent);
 }
 
 .login-card p {
-  color: #b0b0b0;
+  color: color-mix(in srgb, var(--brand-text-inverse) 78%, transparent);
   margin-bottom: 2.5rem;
   margin-top: 0;
   font-size: 1rem;
@@ -49,8 +49,8 @@
 }
 
 .login-button {
-  background: linear-gradient(135deg, #5ACCA6 0%, #3aaa86 100%);
-  color: #1a1a1a;
+  background: var(--brand-primary-light);
+  color: var(--brand-navy);
   border: none;
   padding: 14px 36px;
   font-size: 16px;
@@ -61,13 +61,13 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  box-shadow: 0 4px 15px rgba(90, 204, 166, 0.3);
+  box-shadow: 0 4px 15px color-mix(in srgb, var(--brand-primary-light) 35%, transparent);
 }
 
 .login-button:hover {
-  background: linear-gradient(135deg, #6ed9b4 0%, #5ACCA6 100%);
+  background: color-mix(in srgb, var(--brand-primary-light) 88%, white 12%);
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(90, 204, 166, 0.5);
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--brand-primary-light) 55%, transparent);
 }
 
 .login-button:active {
@@ -75,7 +75,7 @@
 }
 
 .login-logo {
-  width: 100%;
-  max-width: 280px;
+  width: max-content;
   margin: 0 auto 2rem;
+  font-size: 4.2rem;
 }

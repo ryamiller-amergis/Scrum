@@ -1,5 +1,24 @@
 [
   {
+    "version": "1.14.0",
+    "date": "2026-05-20",
+    "title": "Apex Brand Refresh",
+    "changes": [
+      {
+        "type": "feature",
+        "description": "Rebranded the app as Apex with a new primary-blue visual identity, browser tab icon, sign-in experience, project selector, header mark, and chat home branding"
+      },
+      {
+        "type": "improvement",
+        "description": "Updated light mode to use the Apex primary-blue palette and refreshed dark mode with black and charcoal surfaces plus blue accents across navigation, buttons, calendar events, focus states, and shared UI surfaces"
+      },
+      {
+        "type": "improvement",
+        "description": "Clicking the Apex mark in the menu bar now returns you to the project selector so you can switch projects more easily"
+      }
+    ]
+  },
+  {
     "version": "1.13.0",
     "date": "2026-05-19",
     "title": "Design Docs and Model Controls",
