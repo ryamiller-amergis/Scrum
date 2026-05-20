@@ -148,7 +148,7 @@ router.post('/prds/:prdId/withdraw', requirePermission('interviews:manage'), asy
   }
 });
 
-router.post('/prds/:prdId/review', requirePermission('interviews:manage'), async (req, res, next) => {
+router.post('/prds/:prdId/review', requirePermission('prds:review'), async (req, res, next) => {
   try {
     const userId = getUserId(req);
     const body = req.body as ReviewPrdRequest;
@@ -375,7 +375,7 @@ router.post('/design-docs/:id/withdraw', requirePermission('interviews:manage'),
   }
 });
 
-router.post('/design-docs/:id/review', requirePermission('interviews:manage'), async (req, res, next) => {
+router.post('/design-docs/:id/review', requirePermission('design-docs:review'), async (req, res, next) => {
   try {
     const userId = getUserId(req);
     const body = req.body as ReviewDesignDocRequest;

@@ -7,6 +7,7 @@ import mermaid from 'mermaid';
 import { useAppShell } from '../hooks/useAppShell';
 import {
   useDesignDoc,
+  usePrd,
   useUpdateDesignDocContent,
   useSubmitDesignDoc,
   useWithdrawDesignDoc,
@@ -14,6 +15,7 @@ import {
   useDeleteDesignDoc,
 } from '../hooks/useInterviews';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
+import { ReviewReasonModal } from './ReviewReasonModal';
 import type { DesignDocStatus } from '../../shared/types/interview';
 import { normalizeMermaidBlocks, normalizeMermaidChart } from '../utils/mermaidMarkdown';
 import styles from './DesignDocReviewView.module.css';
@@ -164,23 +166,6 @@ const MermaidDiagram: React.FC<MermaidDiagramProps> = ({ chart }) => {
   return <div ref={containerRef} className={styles.mermaidDiagram} dangerouslySetInnerHTML={{ __html: svg }} />;
 };
 
-const markdownComponents: Components = {
-  code({ className, children, ...props }) {
-    const language = /language-(\w+)/.exec(className ?? '')?.[1];
-    const code = String(children).replace(/\n$/, '');
-
-    if (language === 'mermaid') {
-      return <MermaidDiagram chart={code} />;
-    }
-
-    return (
-      <code className={className} {...props}>
-        {children}
-      </code>
-    );
-  },
-};
-
 interface ContentPaneProps {
   content: string;
   isEditing: boolean;
@@ -189,6 +174,7 @@ interface ContentPaneProps {
   isSaving: boolean;
   canEdit: boolean;
   placeholder: string;
+  markdownComponents: Components;
   onEditToggle: () => void;
   onEditChange: (v: string) => void;
   onSave: () => void;
@@ -203,6 +189,7 @@ const ContentPane: React.FC<ContentPaneProps> = ({
   isSaving,
   canEdit,
   placeholder,
+  markdownComponents,
   onEditToggle,
   onEditChange,
   onSave,
@@ -266,9 +253,10 @@ export const DesignDocReviewView: React.FC = () => {
   const location = useLocation();
   const id = location.pathname.split('/').pop() ?? null;
   const navigate = useNavigate();
-  const { can, userId } = useAppShell();
+  const { can, userId, isAdmin } = useAppShell();
 
   const { data: doc, isLoading, isError } = useDesignDoc(id);
+  const { data: sourcePrd } = usePrd(doc?.prdId ?? null);
   const updateContent = useUpdateDesignDocContent();
   const submitDoc = useSubmitDesignDoc();
   const withdrawDoc = useWithdrawDesignDoc();
@@ -277,6 +265,61 @@ export const DesignDocReviewView: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<TabId>('design');
 
+  const markdownComponents: Components = {
+    code({ className, children, ...props }) {
+      const language = /language-(\w+)/.exec(className ?? '')?.[1];
+      const code = String(children).replace(/\n$/, '');
+
+      if (language === 'mermaid') {
+        return <MermaidDiagram chart={code} />;
+      }
+
+      return (
+        <code className={className} {...props}>
+          {children}
+        </code>
+      );
+    },
+    a({ href, children, ...props }) {
+      if (href) {
+        if (href.endsWith('-assumptions.md') || href === 'assumptions.md') {
+          return (
+            <button
+              type="button"
+              onClick={() => setActiveTab('assumptions')}
+              style={{ color: 'var(--accent-color)', background: 'none', border: 'none', padding: 0, cursor: 'pointer', textDecoration: 'underline' }}
+            >
+              {children}
+            </button>
+          );
+        }
+        if (href.endsWith('-tech-spec.md') || href === 'tech-spec.md') {
+          return (
+            <button
+              type="button"
+              onClick={() => setActiveTab('tech-spec')}
+              style={{ color: 'var(--accent-color)', background: 'none', border: 'none', padding: 0, cursor: 'pointer', textDecoration: 'underline' }}
+            >
+              {children}
+            </button>
+          );
+        }
+        if (href.endsWith('-design.md') || href === 'design.md') {
+          return (
+            <button
+              type="button"
+              onClick={() => setActiveTab('design')}
+              style={{ color: 'var(--accent-color)', background: 'none', border: 'none', padding: 0, cursor: 'pointer', textDecoration: 'underline' }}
+            >
+              {children}
+            </button>
+          );
+        }
+      }
+      return <a href={href} target="_blank" rel="noopener noreferrer" {...props}>{children}</a>;
+    },
+  };
+
   // Per-tab edit state
   const [editingTab, setEditingTab] = useState<TabId | null>(null);
   const [designEdit, setDesignEdit] = useState('');
@@ -284,8 +327,7 @@ export const DesignDocReviewView: React.FC = () => {
   const [assumptionsEdit, setAssumptionsEdit] = useState('');
   const [dirtyTabs, setDirtyTabs] = useState<Set<TabId>>(new Set());
 
-  const [reviewAction, setReviewAction] = useState<'reject' | 'request_revision' | null>(null);
-  const [reviewComment, setReviewComment] = useState('');
+  const [reviewAction, setReviewAction] = useState<'reject' | 'revision' | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   const isGenerating = !!doc && (
@@ -352,24 +394,24 @@ export const DesignDocReviewView: React.FC = () => {
     await reviewDoc.mutateAsync({ designDocId: id, action: 'approve' });
   }, [id, reviewDoc]);
 
-  const handleRejectOrRevision = useCallback(async () => {
+  const handleRejectOrRevision = useCallback(async (reason: string) => {
     if (!id || !reviewAction) return;
     await reviewDoc.mutateAsync({
       designDocId: id,
-      action: reviewAction,
-      comment: reviewComment,
+      action: reviewAction === 'revision' ? 'request_revision' : 'reject',
+      comment: reason,
     });
     setReviewAction(null);
-    setReviewComment('');
-  }, [id, reviewAction, reviewComment, reviewDoc]);
+  }, [id, reviewAction, reviewDoc]);
 
   if (isLoading) return <div className={styles.loadingState}>Loading Design Doc…</div>;
   if (isError || !doc) return <div className={styles.errorState}>Design doc not found.</div>;
 
   const isAuthor = doc.authorId === userId;
   const canManage = can('interviews:manage');
-  const isReviewer = canManage && !isAuthor;
-  const canEdit = canManage && isAuthor && doc.status !== 'approved';
+  const canReview = can('design-docs:review');
+  const isReviewer = canReview && (!isAuthor || isAdmin);
+  const canEdit = canManage && (isAuthor || isAdmin) && doc.status !== 'approved';
 
   const hasAnyContent = !!(doc.designContent || doc.techSpecContent || doc.assumptionsContent);
 
@@ -405,10 +447,29 @@ export const DesignDocReviewView: React.FC = () => {
                 {statusLabel(doc.status)}
               </span>
             </div>
+            {sourcePrd && (
+              <div className={styles.parentLinks}>
+                <button
+                  className={styles.parentLinkChip}
+                  onClick={() => navigate(`/backlog/prd/${sourcePrd.id}`)}
+                  type="button"
+                  title={`View PRD: ${sourcePrd.title}`}
+                >
+                  <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="2" y="1" width="10" height="12" rx="1.5" />
+                    <path d="M4.5 4.5h5M4.5 7h5M4.5 9.5h3" />
+                  </svg>
+                  {sourcePrd.title}
+                  <svg viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 8, height: 8, opacity: 0.6 }}>
+                    <path d="M2 8L8 2M5 2h3v3" />
+                  </svg>
+                </button>
+              </div>
+            )}
             {doc.reviewerId && doc.reviewedAt && (
               <div className={styles.reviewInfo}>
                 <span className={styles.reviewInfoRow}>
-                  Reviewed by {doc.reviewerId} on {formatDate(doc.reviewedAt)}
+                  Reviewed by {doc.reviewerName ?? doc.reviewerId} on {formatDate(doc.reviewedAt)}
                 </span>
                 {doc.reviewComment && (
                   <span className={styles.reviewInfoRow}>"{doc.reviewComment}"</span>
@@ -423,7 +484,7 @@ export const DesignDocReviewView: React.FC = () => {
             <span className={styles.reviewOnlyBadge}>Read-only — approved</span>
           )}
 
-          {canManage && isAuthor && (
+          {canManage && (isAuthor || isAdmin) && (
             <>
               {(doc.status === 'draft' || doc.status === 'revision_requested' || doc.status === 'rejected') && (
                 <button
@@ -463,7 +524,7 @@ export const DesignDocReviewView: React.FC = () => {
             </>
           )}
 
-          {canManage && isReviewer && doc.status === 'pending_review' && (
+          {isReviewer && doc.status === 'pending_review' && (
             <div className={styles.reviewControls}>
               <button
                 className={styles.btnApprove}
@@ -473,56 +534,30 @@ export const DesignDocReviewView: React.FC = () => {
               >
                 Approve
               </button>
-              {reviewAction === null ? (
-                <>
-                  <button
-                    className={styles.btnRevision}
-                    onClick={() => setReviewAction('request_revision')}
-                    type="button"
-                  >
-                    Request Revision
-                  </button>
-                  <button
-                    className={styles.btnReject}
-                    onClick={() => setReviewAction('reject')}
-                    type="button"
-                  >
-                    Reject
-                  </button>
-                </>
-              ) : (
-                <div className={styles.commentBox}>
-                  <textarea
-                    className={styles.commentInput}
-                    rows={2}
-                    placeholder={reviewAction === 'reject' ? 'Reason for rejection…' : 'What needs to change?'}
-                    value={reviewComment}
-                    onChange={(e) => setReviewComment(e.target.value)}
-                    autoFocus
-                  />
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button
-                      className={reviewAction === 'reject' ? styles.btnReject : styles.btnRevision}
-                      onClick={() => void handleRejectOrRevision()}
-                      disabled={!reviewComment.trim() || reviewDoc.isPending}
-                      type="button"
-                    >
-                      {reviewAction === 'reject' ? 'Confirm Reject' : 'Confirm Revision Request'}
-                    </button>
-                    <button
-                      className={styles.btnSecondary}
-                      onClick={() => { setReviewAction(null); setReviewComment(''); }}
-                      type="button"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )}
+              <button
+                className={styles.btnRevision}
+                onClick={() => setReviewAction('revision')}
+                type="button"
+              >
+                Request Revision
+              </button>
+              <button
+                className={styles.btnReject}
+                onClick={() => setReviewAction('reject')}
+                type="button"
+              >
+                Reject
+              </button>
             </div>
           )}
         </div>
       </div>
+
+      {doc.status === 'rejected' && doc.reviewComment && (
+        <div className={styles.rejectionBanner}>
+          <strong>Rejected:</strong> {doc.reviewComment}
+        </div>
+      )}
 
       {isGenerating ? (
         /* ── Generating skeleton ─────────────────────────────────────── */
@@ -607,6 +642,7 @@ export const DesignDocReviewView: React.FC = () => {
               isSaving={updateContent.isPending}
               canEdit={canEdit}
               placeholder={tabPlaceholder[activeTab]}
+              markdownComponents={markdownComponents}
               onEditToggle={() => handleEditToggle(activeTab)}
               onEditChange={(v) => handleEditChange(activeTab, v)}
               onSave={() => void handleSave(activeTab)}
@@ -628,6 +664,17 @@ export const DesignDocReviewView: React.FC = () => {
             });
           }}
           onCancel={() => setShowDeleteModal(false)}
+        />
+      )}
+
+      {reviewAction && (
+        <ReviewReasonModal
+          mode={reviewAction}
+          itemName={doc.title}
+          docTypeName="Design Doc"
+          isPending={reviewDoc.isPending}
+          onConfirm={(reason) => void handleRejectOrRevision(reason)}
+          onCancel={() => setReviewAction(null)}
         />
       )}
     </div>

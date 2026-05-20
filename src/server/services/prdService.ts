@@ -3,6 +3,7 @@ import { db } from '../db/drizzle';
 import { prds, appUsers } from '../db/schema';
 import type { Prd, PrdStatus, PrdSummary, ReviewPrdRequest } from '../../shared/types/interview';
 import { readOutputPrd, readOutputBacklog } from './chatAgentService';
+import { isAdminUser } from '../utils/rbacHelpers';
 
 const VALID_PRD_STATUSES: PrdStatus[] = ['generating', 'draft', 'pending_review', 'approved', 'rejected', 'revision_requested'];
 
@@ -98,7 +99,9 @@ export async function updatePrdContent(
 ): Promise<void> {
   const row = await db.query.prds.findFirst({ where: eq(prds.id, id) });
   if (!row) throw notFound('PRD not found');
-  if (row.authorId !== requestingUserId) throw forbidden('Only the author can edit PRD content');
+  if (row.authorId !== requestingUserId && !(await isAdminUser(requestingUserId))) {
+    throw forbidden('Only the author can edit PRD content');
+  }
   if (row.status === 'approved') throw conflict('Approved PRDs cannot be edited');
 
   const updates: Partial<typeof prds.$inferInsert> = {
@@ -135,7 +138,9 @@ export async function updatePrdBacklog(
 export async function submitForReview(id: string, requestingUserId: string): Promise<void> {
   const row = await db.query.prds.findFirst({ where: eq(prds.id, id) });
   if (!row) throw notFound('PRD not found');
-  if (row.authorId !== requestingUserId) throw forbidden('Only the author can submit for review');
+  if (row.authorId !== requestingUserId && !(await isAdminUser(requestingUserId))) {
+    throw forbidden('Only the author can submit for review');
+  }
   if (row.status !== 'draft' && row.status !== 'revision_requested' && row.status !== 'rejected') {
     throw conflict(`Cannot submit PRD from status '${row.status}'`);
   }
@@ -156,7 +161,9 @@ export async function submitForReview(id: string, requestingUserId: string): Pro
 export async function withdrawFromReview(id: string, requestingUserId: string): Promise<void> {
   const row = await db.query.prds.findFirst({ where: eq(prds.id, id) });
   if (!row) throw notFound('PRD not found');
-  if (row.authorId !== requestingUserId) throw forbidden('Only the author can withdraw from review');
+  if (row.authorId !== requestingUserId && !(await isAdminUser(requestingUserId))) {
+    throw forbidden('Only the author can withdraw from review');
+  }
   if (row.status !== 'pending_review') throw conflict(`Cannot withdraw PRD from status '${row.status}'`);
 
   await db
@@ -179,7 +186,9 @@ export async function reviewPrd(
   const row = await db.query.prds.findFirst({ where: eq(prds.id, id) });
   if (!row) throw notFound('PRD not found');
   if (row.status !== 'pending_review') throw conflict(`Cannot review PRD from status '${row.status}'`);
-  // if (row.authorId === reviewerId) throw forbidden('You cannot review your own PRD');
+  if (row.authorId === reviewerId && !(await isAdminUser(reviewerId))) {
+    throw forbidden('You cannot review your own PRD');
+  }
   if ((opts.action === 'reject' || opts.action === 'request_revision') && !opts.comment) {
     const err = new Error('A comment is required when rejecting or requesting revision');
     (err as any).status = 400;
@@ -208,7 +217,7 @@ export async function syncPrdContent(
   id: string,
   content: string,
   backlogJson?: unknown,
-  finalStatus: PrdStatus = 'draft',
+  finalStatus: PrdStatus = 'pending_review',
 ): Promise<void> {
   await db
     .update(prds)
@@ -249,7 +258,7 @@ export function startPrdWatcher(prdId: string, chatThreadId: string): void {
       console.log(`[prdWatcher] Both files ready — syncing to DB (prdId=${prdId})`);
       try {
         await syncPrdContent(prdId, content, backlog);
-        console.log(`[prdWatcher] Sync complete — PRD is now draft (prdId=${prdId})`);
+        console.log(`[prdWatcher] Sync complete — PRD is now pending_review (prdId=${prdId})`);
       } catch (err) {
         console.error(`[prdWatcher] Failed to sync PRD content (prdId=${prdId})`, err);
       }
@@ -278,7 +287,9 @@ function rowToPrdSummary(row: typeof prds.$inferSelect, reviewerName?: string | 
 export async function deletePrd(id: string, requestingUserId: string): Promise<void> {
   const row = await db.query.prds.findFirst({ where: eq(prds.id, id) });
   if (!row) throw notFound('PRD not found');
-  if (row.authorId !== requestingUserId) throw forbidden('Only the author can delete this PRD');
+  if (row.authorId !== requestingUserId && !(await isAdminUser(requestingUserId))) {
+    throw forbidden('Only the author can delete this PRD');
+  }
   await db.delete(prds).where(eq(prds.id, id));
 }
 

@@ -46,6 +46,10 @@ jest.mock('../services/chatAgentService', () => ({
   readOutputBacklog: jest.fn().mockReturnValue(null),
 }));
 
+jest.mock('../utils/rbacHelpers', () => ({
+  isAdminUser: jest.fn().mockResolvedValue(false),
+}));
+
 import {
   createPrd,
   listPrds,
@@ -453,16 +457,15 @@ describe('reviewPrd', () => {
     });
   });
 
-  it('allows the author to review their own PRD (self-review check is currently disabled)', async () => {
+  it('throws 403 when the author tries to review their own PRD', async () => {
     mockDb.query.prds.findFirst.mockResolvedValue(pendingPrd);
-    const whereMock = jest.fn().mockResolvedValue(undefined);
-    const setMock = jest.fn().mockReturnValue({ where: whereMock });
-    mockDb.update.mockReturnValue({ set: setMock });
 
-    // Self-review guard is commented out in prdService — the call must resolve
     await expect(
       reviewPrd('prd-1', 'user-author', { action: 'approve' }),
-    ).resolves.toBeUndefined();
+    ).rejects.toMatchObject({
+      message: 'You cannot review your own PRD',
+      status: 403,
+    });
   });
 
   it('throws 409 when PRD is not in pending_review status', async () => {
@@ -523,7 +526,7 @@ describe('deletePrd', () => {
 describe('syncPrdContent', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it('updates content and sets status to "draft" by default', async () => {
+  it('updates content and sets status to "pending_review" by default', async () => {
     const whereMock = jest.fn().mockResolvedValue(undefined);
     const setMock = jest.fn().mockReturnValue({ where: whereMock });
     mockDb.update.mockReturnValue({ set: setMock });
@@ -531,7 +534,7 @@ describe('syncPrdContent', () => {
     await syncPrdContent('prd-1', 'Generated markdown content');
 
     expect(setMock).toHaveBeenCalledWith(
-      expect.objectContaining({ content: 'Generated markdown content', status: 'draft' }),
+      expect.objectContaining({ content: 'Generated markdown content', status: 'pending_review' }),
     );
   });
 

@@ -114,6 +114,45 @@
   gap: 6px;
 }
 
+/* ── Parent entity back-navigation chip ─────────────────────────────────── */
+
+.parentLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 2px;
+}
+
+.parentLinkChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px 2px 6px;
+  background: color-mix(in srgb, var(--accent-color) 8%, var(--bg-secondary));
+  border: 1px solid color-mix(in srgb, var(--accent-color) 30%, var(--border-color));
+  border-radius: 20px;
+  color: var(--accent-color);
+  font-size: 0.72rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.parentLinkChip svg {
+  width: 11px;
+  height: 11px;
+  flex-shrink: 0;
+}
+
+.parentLinkChip:hover {
+  background: color-mix(in srgb, var(--accent-color) 16%, var(--bg-secondary));
+  border-color: var(--accent-color);
+}
+
 .reviewControls {
   display: flex;
   align-items: center;
@@ -225,28 +264,14 @@
   color: #fff;
 }
 
-.commentBox {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.commentInput {
-  padding: 8px 12px;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  font-size: 0.85rem;
-  resize: none;
-  font-family: inherit;
-  min-width: 220px;
-  transition: border-color 0.2s ease;
-}
-
-.commentInput:focus {
-  outline: none;
-  border-color: var(--accent-color);
+.rejectionBanner {
+  padding: 12px 24px;
+  background: rgba(239, 68, 68, 0.07);
+  border-bottom: 1px solid color-mix(in srgb, var(--error-color) 40%, var(--border-color));
+  color: var(--error-color);
+  font-size: 0.875rem;
+  line-height: 1.55;
+  flex-shrink: 0;
 }
 
 .tabs {

@@ -1,8 +1,9 @@
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/drizzle';
-import { designDocs } from '../db/schema';
+import { designDocs, appUsers } from '../db/schema';
 import type { DesignDoc, DesignDocStatus, DesignDocSummary, ReviewDesignDocRequest } from '../../shared/types/interview';
 import { readOutputDesignDoc, readOutputTechSpec, readOutputAssumptions } from './chatAgentService';
+import { isAdminUser } from '../utils/rbacHelpers';
 
 const VALID_STATUSES: DesignDocStatus[] = ['generating', 'draft', 'pending_review', 'approved', 'rejected', 'revision_requested'];
 
@@ -67,19 +68,27 @@ export async function listDesignDocs(
   if (filters?.project) conditions.push(eq(designDocs.project, filters.project));
 
   const rows = await db
-    .select()
+    .select({ designDoc: designDocs, reviewerDisplayName: appUsers.displayName })
     .from(designDocs)
+    .leftJoin(appUsers, eq(designDocs.reviewerId, appUsers.oid))
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(desc(designDocs.updatedAt));
 
-  return rows.map(rowToSummary);
+  return rows.map(({ designDoc, reviewerDisplayName }) => rowToSummary(designDoc, reviewerDisplayName));
 }
 
 export async function getDesignDoc(id: string): Promise<DesignDoc | null> {
-  const row = await db.query.designDocs.findFirst({ where: eq(designDocs.id, id) });
-  if (!row) return null;
+  const rows = await db
+    .select({ designDoc: designDocs, reviewerDisplayName: appUsers.displayName })
+    .from(designDocs)
+    .leftJoin(appUsers, eq(designDocs.reviewerId, appUsers.oid))
+    .where(eq(designDocs.id, id))
+    .limit(1);
+
+  if (rows.length === 0) return null;
+  const { designDoc: row, reviewerDisplayName } = rows[0];
   return {
-    ...rowToSummary(row),
+    ...rowToSummary(row, reviewerDisplayName),
     designContent: row.designContent,
     techSpecContent: row.techSpecContent,
     assumptionsContent: row.assumptionsContent,
@@ -93,7 +102,9 @@ export async function updateDesignDocContent(
 ): Promise<void> {
   const row = await db.query.designDocs.findFirst({ where: eq(designDocs.id, id) });
   if (!row) throw notFound('Design doc not found');
-  if (row.authorId !== requestingUserId) throw forbidden('Only the author can edit design doc content');
+  if (row.authorId !== requestingUserId && !(await isAdminUser(requestingUserId))) {
+    throw forbidden('Only the author can edit design doc content');
+  }
   if (row.status === 'approved') throw conflict('Approved design docs cannot be edited');
 
   const updates: Partial<typeof designDocs.$inferInsert> = {
@@ -117,7 +128,9 @@ export async function updateDesignDocContent(
 export async function submitForReview(id: string, requestingUserId: string): Promise<void> {
   const row = await db.query.designDocs.findFirst({ where: eq(designDocs.id, id) });
   if (!row) throw notFound('Design doc not found');
-  if (row.authorId !== requestingUserId) throw forbidden('Only the author can submit for review');
+  if (row.authorId !== requestingUserId && !(await isAdminUser(requestingUserId))) {
+    throw forbidden('Only the author can submit for review');
+  }
   if (row.status !== 'draft' && row.status !== 'revision_requested' && row.status !== 'rejected') {
     throw conflict(`Cannot submit design doc from status '${row.status}'`);
   }
@@ -140,7 +153,9 @@ export async function submitForReview(id: string, requestingUserId: string): Pro
 export async function withdrawFromReview(id: string, requestingUserId: string): Promise<void> {
   const row = await db.query.designDocs.findFirst({ where: eq(designDocs.id, id) });
   if (!row) throw notFound('Design doc not found');
-  if (row.authorId !== requestingUserId) throw forbidden('Only the author can withdraw from review');
+  if (row.authorId !== requestingUserId && !(await isAdminUser(requestingUserId))) {
+    throw forbidden('Only the author can withdraw from review');
+  }
   if (row.status !== 'pending_review') throw conflict(`Cannot withdraw design doc from status '${row.status}'`);
 
   await db
@@ -163,7 +178,9 @@ export async function reviewDesignDoc(
   const row = await db.query.designDocs.findFirst({ where: eq(designDocs.id, id) });
   if (!row) throw notFound('Design doc not found');
   if (row.status !== 'pending_review') throw conflict(`Cannot review design doc from status '${row.status}'`);
-  if (row.authorId === reviewerId) throw forbidden('You cannot review your own design doc');
+  if (row.authorId === reviewerId && !(await isAdminUser(reviewerId))) {
+    throw forbidden('You cannot review your own design doc');
+  }
   if ((opts.action === 'reject' || opts.action === 'request_revision') && !opts.comment) {
     const err = new Error('A comment is required when rejecting or requesting revision');
     (err as any).status = 400;
@@ -258,12 +275,12 @@ export function startDesignDocWatcher(designDocId: string, chatThreadId: string)
 
     if (anyNewFile) {
       if (allFound) {
-        syncOpts.finalStatus = 'draft';
+        syncOpts.finalStatus = 'pending_review';
       }
       try {
         await syncDesignDocContent(designDocId, syncOpts);
         if (allFound) {
-          console.log(`[designDocWatcher] All files ready — design doc is now draft (designDocId=${designDocId})`);
+          console.log(`[designDocWatcher] All files ready — design doc is now pending_review (designDocId=${designDocId})`);
         }
       } catch (err) {
         console.error(`[designDocWatcher] Failed to sync design doc content (designDocId=${designDocId})`, err);
@@ -279,11 +296,13 @@ export function startDesignDocWatcher(designDocId: string, chatThreadId: string)
 export async function deleteDesignDoc(id: string, requestingUserId: string): Promise<void> {
   const row = await db.query.designDocs.findFirst({ where: eq(designDocs.id, id) });
   if (!row) throw notFound('Design doc not found');
-  if (row.authorId !== requestingUserId) throw forbidden('Only the author can delete this design doc');
+  if (row.authorId !== requestingUserId && !(await isAdminUser(requestingUserId))) {
+    throw forbidden('Only the author can delete this design doc');
+  }
   await db.delete(designDocs).where(eq(designDocs.id, id));
 }
 
-function rowToSummary(row: typeof designDocs.$inferSelect): DesignDocSummary {
+function rowToSummary(row: typeof designDocs.$inferSelect, reviewerName?: string | null): DesignDocSummary {
   return {
     id: row.id,
     prdId: row.prdId,
@@ -293,6 +312,7 @@ function rowToSummary(row: typeof designDocs.$inferSelect): DesignDocSummary {
     title: row.title,
     status: row.status as DesignDocStatus,
     reviewerId: row.reviewerId ?? undefined,
+    reviewerName: reviewerName ?? undefined,
     reviewComment: row.reviewComment ?? undefined,
     reviewedAt: row.reviewedAt ?? undefined,
     createdAt: row.createdAt,

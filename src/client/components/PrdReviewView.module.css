@@ -114,6 +114,45 @@
   gap: 6px;
 }
 
+/* ── Parent entity back-navigation chip ─────────────────────────────────── */
+
+.parentLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 2px;
+}
+
+.parentLinkChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px 2px 6px;
+  background: color-mix(in srgb, var(--accent-color) 8%, var(--bg-secondary));
+  border: 1px solid color-mix(in srgb, var(--accent-color) 30%, var(--border-color));
+  border-radius: 20px;
+  color: var(--accent-color);
+  font-size: 0.72rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.parentLinkChip svg {
+  width: 11px;
+  height: 11px;
+  flex-shrink: 0;
+}
+
+.parentLinkChip:hover {
+  background: color-mix(in srgb, var(--accent-color) 16%, var(--bg-secondary));
+  border-color: var(--accent-color);
+}
+
 .reviewControls {
   display: flex;
   align-items: center;

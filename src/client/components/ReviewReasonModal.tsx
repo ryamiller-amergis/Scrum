@@ -1,28 +1,58 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import styles from './PrdRevisionModal.module.css';
+import styles from './ReviewReasonModal.module.css';
 
-const schema = z.object({
+const rejectSchema = z.object({
+  reason: z.string().min(1, 'Rejection reason is required'),
+});
+
+const revisionSchema = z.object({
   reason: z.string().min(1, 'Revision notes are required'),
 });
 
-type FormValues = z.infer<typeof schema>;
+type FormValues = z.infer<typeof rejectSchema>;
 
-interface PrdRevisionModalProps {
-  prdTitle: string;
+interface ReviewReasonModalProps {
+  mode: 'reject' | 'revision';
+  itemName: string;
+  docTypeName?: string;
   isPending: boolean;
   onConfirm: (reason: string) => void;
   onCancel: () => void;
 }
 
-export const PrdRevisionModal: React.FC<PrdRevisionModalProps> = ({
-  prdTitle,
+const COPY = {
+  reject: {
+    title: (docType: string) => `Reject ${docType}`,
+    body: 'Provide a reason for rejecting',
+    placeholder: 'Reason for rejection…',
+    pendingLabel: 'Rejecting…',
+    confirmLabel: 'Confirm Reject',
+  },
+  revision: {
+    title: () => 'Request Revision',
+    body: 'Describe what needs to change in',
+    placeholder: 'What needs to change?',
+    pendingLabel: 'Submitting…',
+    confirmLabel: 'Confirm',
+  },
+} as const;
+
+export const ReviewReasonModal: React.FC<ReviewReasonModalProps> = ({
+  mode,
+  itemName,
+  docTypeName = 'document',
   isPending,
   onConfirm,
   onCancel,
 }) => {
+  const schema = useMemo(
+    () => (mode === 'reject' ? rejectSchema : revisionSchema),
+    [mode],
+  );
+
   const {
     register,
     handleSubmit,
@@ -44,20 +74,25 @@ export const PrdRevisionModal: React.FC<PrdRevisionModalProps> = ({
     onConfirm(values.reason);
   };
 
+  const copy = COPY[mode];
+  const btnClass = mode === 'reject' ? styles.btnReject : styles.btnConfirm;
+
   return (
     <div
       className={styles.overlay}
       onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
       role="dialog"
       aria-modal="true"
-      aria-labelledby="prd-revision-title"
+      aria-labelledby="review-reason-title"
     >
       <form className={styles.card} onSubmit={handleSubmit(onSubmit)}>
-        <h2 className={styles.title} id="prd-revision-title">Request Revision</h2>
+        <h2 className={styles.title} id="review-reason-title">
+          {copy.title(docTypeName)}
+        </h2>
 
         <p className={styles.body}>
-          Describe what needs to change in{' '}
-          <span className={styles.prdName}>&ldquo;{prdTitle}&rdquo;</span>.
+          {copy.body}{' '}
+          <span className={styles.itemName}>&ldquo;{itemName}&rdquo;</span>.
           This will be shown to the author.
         </p>
 
@@ -65,7 +100,7 @@ export const PrdRevisionModal: React.FC<PrdRevisionModalProps> = ({
           <textarea
             className={`${styles.textarea} ${errors.reason ? styles.textareaError : ''}`}
             rows={4}
-            placeholder="What needs to change?"
+            placeholder={copy.placeholder}
             autoFocus
             {...register('reason')}
           />
@@ -84,11 +119,11 @@ export const PrdRevisionModal: React.FC<PrdRevisionModalProps> = ({
             Cancel
           </button>
           <button
-            className={styles.btnConfirm}
+            className={btnClass}
             type="submit"
             disabled={isPending}
           >
-            {isPending ? 'Submitting…' : 'Confirm'}
+            {isPending ? copy.pendingLabel : copy.confirmLabel}
           </button>
         </div>
       </form>
@@ -96,4 +131,4 @@ export const PrdRevisionModal: React.FC<PrdRevisionModalProps> = ({
   );
 };
 
-export default PrdRevisionModal;
+export default ReviewReasonModal;

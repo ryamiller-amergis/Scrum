@@ -39,7 +39,9 @@ For every UI feature being **added**, **modified**, or **removed**, work through
 | `cost:view` | cost | admin, viewer |
 | `deployments:create` | deployments | admin, member |
 | `deployments:manage` | deployments | admin |
+| `design-docs:review` | design-docs | admin, member |
 | `planning:view` | planning | admin, member, viewer |
+| `prds:review` | prds | admin, member |
 | `skills:manage` | skills | admin |
 | `wiki:write` | wiki | admin, member |
 | `workitems:write` | workitems | admin, member |

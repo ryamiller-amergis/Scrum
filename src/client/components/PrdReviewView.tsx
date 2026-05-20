@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm';
 import { useAppShell } from '../hooks/useAppShell';
 import {
   usePrd,
+  useInterview,
   useUpdatePrdContent,
   useSubmitPrd,
   useWithdrawPrd,
@@ -13,8 +14,7 @@ import {
   useDesignDocsByPrd,
 } from '../hooks/useInterviews';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
-import { PrdRejectModal } from './PrdRejectModal';
-import { PrdRevisionModal } from './PrdRevisionModal';
+import { ReviewReasonModal } from './ReviewReasonModal';
 import { BacklogViewer } from './BacklogViewer';
 import type { PrdStatus } from '../../shared/types/interview';
 import styles from './PrdReviewView.module.css';
@@ -51,11 +51,12 @@ export const PrdReviewView: React.FC = () => {
   const location = useLocation();
   const id = location.pathname.split('/').pop() ?? null;
   const navigate = useNavigate();
-  const { can, userId } = useAppShell();
+  const { can, userId, isAdmin } = useAppShell();
 
   const { data: prd, isLoading, isError } = usePrd(id);
   const { data: relatedDesignDocs } = useDesignDocsByPrd(prd?.status === 'approved' ? id : undefined);
   const linkedDesignDoc = relatedDesignDocs?.[0];
+  const { data: sourceInterview } = useInterview(prd?.interviewId ?? null);
 
   const updateContent = useUpdatePrdContent();
   const submitPrd = useSubmitPrd();
@@ -67,8 +68,7 @@ export const PrdReviewView: React.FC = () => {
   const [editContent, setEditContent] = useState('');
   const [isDirty, setIsDirty] = useState(false);
 
-  const [showRevisionModal, setShowRevisionModal] = useState(false);
-  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [reviewAction, setReviewAction] = useState<'reject' | 'revision' | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   const isGenerating = !!prd && prd.content === '';
@@ -104,17 +104,12 @@ export const PrdReviewView: React.FC = () => {
     }
   }, [id, reviewPrd, navigate]);
 
-  const handleRejectConfirm = useCallback(async (reason: string) => {
-    if (!id) return;
-    await reviewPrd.mutateAsync({ prdId: id, action: 'reject', comment: reason });
-    setShowRejectModal(false);
-  }, [id, reviewPrd]);
-
-  const handleRevisionConfirm = useCallback(async (reason: string) => {
-    if (!id) return;
-    await reviewPrd.mutateAsync({ prdId: id, action: 'request_revision', comment: reason });
-    setShowRevisionModal(false);
-  }, [id, reviewPrd]);
+  const handleReviewConfirm = useCallback(async (reason: string) => {
+    if (!id || !reviewAction) return;
+    const action = reviewAction === 'reject' ? 'reject' : 'request_revision';
+    await reviewPrd.mutateAsync({ prdId: id, action, comment: reason });
+    setReviewAction(null);
+  }, [id, reviewAction, reviewPrd]);
 
   const handleTabChange = useCallback((tab: TabId) => {
     if (tab === 'edit' && prd) {
@@ -129,6 +124,7 @@ export const PrdReviewView: React.FC = () => {
 
   const isAuthor = prd.authorId === userId;
   const canManage = can('interviews:manage');
+  const canReview = can('prds:review');
 
   return (
     <div className={styles.container}>
@@ -144,6 +140,25 @@ export const PrdReviewView: React.FC = () => {
                 {statusLabel(prd.status)}
               </span>
             </div>
+            {sourceInterview && (
+              <div className={styles.parentLinks}>
+                <button
+                  className={styles.parentLinkChip}
+                  onClick={() => navigate(`/backlog/interview/${sourceInterview.id}`)}
+                  type="button"
+                  title={`View Interview: ${sourceInterview.title}`}
+                >
+                  <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="7" cy="5" r="2.5" />
+                    <path d="M2 12c0-2.76 2.24-5 5-5s5 2.24 5 5" />
+                  </svg>
+                  {sourceInterview.title}
+                  <svg viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 8, height: 8, opacity: 0.6 }}>
+                    <path d="M2 8L8 2M5 2h3v3" />
+                  </svg>
+                </button>
+              </div>
+            )}
             {prd.reviewerId && prd.reviewedAt && (
               <div className={styles.reviewInfo}>
                 <span className={styles.reviewInfoRow}>
@@ -162,7 +177,7 @@ export const PrdReviewView: React.FC = () => {
             <span className={styles.reviewOnlyBadge}>Read-only — approved</span>
           )}
 
-          {canManage && isAuthor && (
+          {canManage && (isAuthor || isAdmin) && (
             <>
               {(prd.status === 'draft' || prd.status === 'revision_requested' || prd.status === 'rejected') && (
                 <button
@@ -202,7 +217,7 @@ export const PrdReviewView: React.FC = () => {
             </>
           )}
 
-          {canManage && prd.status === 'pending_review' && (
+          {canReview && (!isAuthor || isAdmin) && prd.status === 'pending_review' && (
             <div className={styles.reviewControls}>
               <button
                 className={styles.btnApprove}
@@ -214,14 +229,14 @@ export const PrdReviewView: React.FC = () => {
               </button>
               <button
                 className={styles.btnRevision}
-                onClick={() => setShowRevisionModal(true)}
+                onClick={() => setReviewAction('revision')}
                 type="button"
               >
                 Request Revision
               </button>
               <button
                 className={styles.btnReject}
-                onClick={() => setShowRejectModal(true)}
+                onClick={() => setReviewAction('reject')}
                 type="button"
               >
                 Reject
@@ -314,7 +329,7 @@ export const PrdReviewView: React.FC = () => {
             >
               Preview
             </button>
-            {canManage && isAuthor && prd.status !== 'approved' && (
+            {canManage && (isAuthor || isAdmin) && prd.status !== 'approved' && (
               <button
                 className={`${styles.tab} ${activeTab === 'edit' ? styles.active : ''}`}
                 onClick={() => handleTabChange('edit')}
@@ -339,7 +354,7 @@ export const PrdReviewView: React.FC = () => {
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>{prd.content}</ReactMarkdown>
                 ) : (
                   <div className={styles.emptyPreview}>
-                    No content yet.{canManage && isAuthor ? ' Use the Edit tab to write the PRD.' : ''}
+                    No content yet.{canManage && (isAuthor || isAdmin) ? ' Use the Edit tab to write the PRD.' : ''}
                   </div>
                 )}
               </div>
@@ -401,21 +416,14 @@ export const PrdReviewView: React.FC = () => {
         />
       )}
 
-      {showRejectModal && prd && (
-        <PrdRejectModal
-          prdTitle={prd.title}
+      {reviewAction && (
+        <ReviewReasonModal
+          mode={reviewAction}
+          itemName={prd.title}
+          docTypeName="PRD"
           isPending={reviewPrd.isPending}
-          onConfirm={(reason) => void handleRejectConfirm(reason)}
-          onCancel={() => setShowRejectModal(false)}
-        />
-      )}
-
-      {showRevisionModal && prd && (
-        <PrdRevisionModal
-          prdTitle={prd.title}
-          isPending={reviewPrd.isPending}
-          onConfirm={(reason) => void handleRevisionConfirm(reason)}
-          onCancel={() => setShowRevisionModal(false)}
+          onConfirm={(reason) => void handleReviewConfirm(reason)}
+          onCancel={() => setReviewAction(null)}
         />
       )}
     </div>
