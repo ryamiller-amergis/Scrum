@@ -16,6 +16,7 @@ import { PRDPreviewDrawer } from './PRDPreviewDrawer';
 import { ThreadHistorySidebar } from './ThreadHistorySidebar';
 import { DEFAULT_MODEL_ID } from '../config/models';
 import type { ChatMessage, ChatThread } from '../../shared/types/chat';
+import type { QuickSkillPill } from '../../shared/types/projectSettings';
 import { BrandLogo } from './BrandLogo';
 import styles from './AgentHome.module.css';
 
@@ -458,7 +459,7 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
   const [skillPickerIdx, setSkillPickerIdx] = useState(0);
   const [selectedSkillPath, setSelectedSkillPath] = useState<string | null>(null);
   const [selectedSkillName, setSelectedSkillName] = useState<string | null>(null);
-  const [selectedQuickSkill, setSelectedQuickSkill] = useState<{ label: string; skillPath: string; model?: string | null } | null>(null);
+  const [selectedQuickSkill, setSelectedQuickSkill] = useState<QuickSkillPill | null>(null);
 
   // PRD state
   const [showPrdPreview, setShowPrdPreview] = useState(false);
