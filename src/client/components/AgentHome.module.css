@@ -105,6 +105,39 @@
   flex-shrink: 0;
 }
 
+.pillClickable {
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.pillClickable:hover {
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+  background: var(--bg-tertiary);
+}
+
+.pillSelected {
+  border-color: var(--accent-color);
+  background: color-mix(in srgb, var(--accent-color) 12%, var(--bg-secondary));
+  color: var(--accent-color);
+  font-weight: 600;
+}
+
+.pillDescription {
+  text-align: center;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  max-width: 520px;
+  animation: pillDescFade 0.2s ease;
+}
+
+@keyframes pillDescFade {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 .hint {
   margin: 0;
   font-size: 0.75rem;
@@ -213,6 +246,12 @@
 .inputBox:focus-within {
   border-color: var(--accent-color);
   box-shadow: 0 2px 12px var(--shadow-md);
+}
+
+.inputBoxDisabled {
+  opacity: 0.5;
+  pointer-events: none;
+  background: var(--bg-tertiary);
 }
 
 .textarea {

@@ -2,6 +2,7 @@ import { boolean, integer, jsonb, pgTable, primaryKey, text, timestamp, uuid } f
 import { relations } from 'drizzle-orm';
 import type { ChatThreadKickoff } from '../../shared/types/chat';
 import type { ValidationScorecard } from '../../shared/types/interview';
+import type { QuickSkillPill } from '../../shared/types/projectSettings';
 
 // ── Tables ────────────────────────────────────────────────────────────────────
 
@@ -251,6 +252,7 @@ export const projectSkillSettings = pgTable('project_skill_settings', {
   designDocAssistantModel: text('design_doc_assistant_model'),
   designDocValidationSkillPath: text('design_doc_validation_skill_path'),
   designDocValidationModel: text('design_doc_validation_model'),
+  quickSkillPills: jsonb('quick_skill_pills').$type<QuickSkillPill[]>(),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 });

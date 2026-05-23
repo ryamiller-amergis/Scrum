@@ -458,6 +458,7 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
   const [skillPickerIdx, setSkillPickerIdx] = useState(0);
   const [selectedSkillPath, setSelectedSkillPath] = useState<string | null>(null);
   const [selectedSkillName, setSelectedSkillName] = useState<string | null>(null);
+  const [selectedQuickSkill, setSelectedQuickSkill] = useState<{ label: string; skillPath: string; model?: string | null } | null>(null);
 
   // PRD state
   const [showPrdPreview, setShowPrdPreview] = useState(false);
@@ -491,6 +492,8 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
     : (repos.find((r) => r.name.toLowerCase() === selectedProject.toLowerCase()) ?? repos[0]);
   const defaultBranch = skillConfig?.skillBranch ?? defaultRepo?.defaultBranch ?? 'main';
   const resolvedRepoName = skillConfig?.skillRepo ?? defaultRepo?.name ?? null;
+
+  const quickSkillPills = skillConfig?.quickSkillPills ?? [];
 
   const { data: skills = [] } = useSkillList(
     selectedProject || null,
@@ -780,12 +783,13 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
               text === `/${selectedSkillName}` &&
               attachments.length === 0,
           );
+        const effectiveSkillPath = selectedSkillPath ?? selectedQuickSkill?.skillPath ?? undefined;
         const result = await startChat.mutateAsync({
           kickoff: {
             project: selectedProject,
             repo: resolvedRepoName!,
             branch: defaultBranch,
-            skillPath: selectedSkillPath ?? undefined,
+            skillPath: effectiveSkillPath,
             freeformContext,
             model,
           },
@@ -793,6 +797,7 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
         });
         activeThreadId = result.threadId;
         setThreadId(activeThreadId);
+        setSelectedQuickSkill(null);
       }
 
       // For new threads the skill is baked into the kickoff system prompt, so a bare
@@ -852,7 +857,7 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
     } finally {
       setIsSending(false);
     }
-  }, [input, attachments, isRunning, isSending, threadId, resolvedRepoName, startChat, selectedProject, defaultBranch, selectedSkillPath, selectedSkillName, model, clearAttachments, isListening]);
+  }, [input, attachments, isRunning, isSending, threadId, resolvedRepoName, startChat, selectedProject, defaultBranch, selectedSkillPath, selectedSkillName, selectedQuickSkill, model, clearAttachments, isListening]);
 
   const handleKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (skillPickerOpen && filteredSkills.length > 0) {
@@ -904,6 +909,7 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
     setSkillPickerIdx(0);
     setSelectedSkillPath(null);
     setSelectedSkillName(null);
+    setSelectedQuickSkill(null);
     clearAttachments();
     setShowPrdPreview(false);
     setInitialPrdReady(false);
@@ -926,7 +932,8 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
   }, []);
 
   const isCompose = !threadId;
-  const canSend = (input.trim().length > 0 || attachments.length > 0) && !isRunning && !isSending && (!!threadId || !!resolvedRepoName);
+  const needsSkillSelection = isCompose && quickSkillPills.length > 0 && !selectedQuickSkill;
+  const canSend = (input.trim().length > 0 || attachments.length > 0) && !isRunning && !isSending && !needsSkillSelection && (!!threadId || !!resolvedRepoName);
 
   // ── Shared input area ────────────────────────────────────────────────────────
 
@@ -957,31 +964,31 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
         </div>
       )}
 
-      <div className={styles.inputBox}>
+      <div className={`${styles.inputBox} ${needsSkillSelection ? styles.inputBoxDisabled : ''}`}>
         <input
           ref={fileInputRef}
           type="file"
           multiple
           className={styles.fileInput}
           onChange={handleAttachmentChange}
-          disabled={isRunning || isSending}
+          disabled={isRunning || isSending || needsSkillSelection}
         />
         <textarea
           ref={textareaRef}
           className={styles.textarea}
           placeholder={
             isCompose
-              ? 'Ask me anything… type / to invoke a skill  (Shift+Enter for new line)'
+              ? (needsSkillSelection ? 'Select an option above to get started' : 'Let Apex know what you need…')
               : isRunning
                 ? 'Agent is thinking…'
-                : 'Continue the conversation… type / to invoke a skill'
+                : 'Continue the conversation…'
           }
           value={input}
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
           rows={isCompose ? 3 : 1}
-          disabled={isRunning || isSending}
-          autoFocus={isCompose}
+          disabled={isRunning || isSending || needsSkillSelection}
+          autoFocus={isCompose && !needsSkillSelection}
         />
         {attachments.length > 0 && (
           <div className={styles.attachmentList}>
@@ -1015,7 +1022,7 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
             type="button"
             aria-label="Attach files"
             title="Attach files for context"
-            disabled={isRunning || isSending}
+            disabled={isRunning || isSending || needsSkillSelection}
           >
             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <path d="M7 10.5l5.2-5.2a3 3 0 114.2 4.2l-6.7 6.7a5 5 0 01-7.1-7.1l6.4-6.4" />
@@ -1029,7 +1036,7 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
             title={isSpeechSupported
               ? (isListening ? 'Stop listening' : 'Talk to transcribe into chat')
               : 'Speech recognition is not supported in this browser'}
-            disabled={!isSpeechSupported || isRunning || isSending}
+            disabled={!isSpeechSupported || isRunning || isSending || needsSkillSelection}
           >
             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
               <rect x="7" y="2.5" width="6" height="10" rx="3" />
@@ -1038,20 +1045,22 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
               <path d="M7.5 18h5" />
             </svg>
           </button>
-          <select
-            className={styles.modelSelect}
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
-            disabled={isRunning}
-          >
-            {modelsLoading || !availableModels?.length ? (
-              <option value="">Loading models…</option>
-            ) : (
-              availableModels.map((m) => (
-                <option key={m.id} value={m.id}>{m.displayName}</option>
-              ))
-            )}
-          </select>
+          {!isCompose && (
+            <select
+              className={styles.modelSelect}
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              disabled={isRunning}
+            >
+              {modelsLoading || !availableModels?.length ? (
+                <option value="">Loading models…</option>
+              ) : (
+                availableModels.map((m) => (
+                  <option key={m.id} value={m.id}>{m.displayName}</option>
+                ))
+              )}
+            </select>
+          )}
           {isRunning ? (
             <button
               className={`${styles.sendBtn} ${styles.stopBtn}`}
@@ -1121,36 +1130,38 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
             <h1 className={styles.composeHeading}>What would you like to work on?</h1>
 
             <div className={styles.contextPills}>
-              <span className={styles.pill}>
-                <svg viewBox="0 0 12 12" fill="currentColor"><rect x="1" y="1" width="4" height="4" rx="0.5"/><rect x="7" y="1" width="4" height="4" rx="0.5"/><rect x="1" y="7" width="4" height="4" rx="0.5"/><rect x="7" y="7" width="4" height="4" rx="0.5"/></svg>
-                {selectedProject}
-              </span>
-              <span className={styles.pill}>
-                <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="1,3 4,6 1,9"/><line x1="5" y1="9" x2="11" y2="9"/>
-                </svg>
-                Development
-              </span>
-              <span className={styles.pill}>
-                <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M6 1a3 3 0 0 1 3 3c0 1.5-1 2.5-2 3v.5H5V7C4 6.5 3 5.5 3 4a3 3 0 0 1 3-3z"/>
-                  <circle cx="6" cy="10.5" r="0.75" fill="currentColor" stroke="none"/>
-                </svg>
-                Requirements
-              </span>
-              <span className={styles.pill}>
-                <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M10 7.5a4 4 0 1 1-8 0 4 4 0 0 1 8 0z"/>
-                  <path d="M6 5.5v2M5 7.5h2"/>
-                  <path d="M9.5 3.5L11 2"/>
-                </svg>
-                Support
-              </span>
+              {quickSkillPills.map((pill) => (
+                <button
+                  key={pill.skillPath}
+                  type="button"
+                  className={`${styles.pill} ${styles.pillClickable} ${
+                    selectedQuickSkill?.skillPath === pill.skillPath ? styles.pillSelected : ''
+                  }`}
+                  onClick={() => {
+                    const isDeselect = selectedQuickSkill?.skillPath === pill.skillPath;
+                    setSelectedQuickSkill(isDeselect ? null : pill);
+                    if (isDeselect) {
+                      setModel(globalDefaultModel?.value ?? DEFAULT_MODEL_ID);
+                    } else if (pill.model) {
+                      setModel(pill.model);
+                    }
+                  }}
+                >
+                  {pill.label}
+                </button>
+              ))}
             </div>
+
+            {selectedQuickSkill && (
+              <div className={styles.pillDescription}>
+                {skills.find((s) => s.path === selectedQuickSkill.skillPath)?.description
+                  || `Skill: ${selectedQuickSkill.label}`}
+              </div>
+            )}
 
             {inputArea}
 
-            <p className={styles.hint}>Enter to send · Shift+Enter for new line · / to invoke a skill</p>
+            <p className={styles.hint}>Enter to send · Shift+Enter for new line</p>
           </div>
         </div>
       ) : (

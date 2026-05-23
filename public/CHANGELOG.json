@@ -1,5 +1,24 @@
 [
   {
+    "version": "1.18.0",
+    "date": "2026-05-23",
+    "title": "Quick Skill Pills & Guided Home",
+    "changes": [
+      {
+        "type": "feature",
+        "description": "Admins can now configure Quick Skill Pills — clickable shortcut buttons on the Agent home page that route messages through a specific skill and model"
+      },
+      {
+        "type": "improvement",
+        "description": "Agent home page now requires selecting a skill pill before typing, providing a guided entry point instead of an open-ended prompt"
+      },
+      {
+        "type": "improvement",
+        "description": "Removed project pill and model selector from the compose view for a cleaner, distraction-free experience"
+      }
+    ]
+  },
+  {
     "version": "1.17.0",
     "date": "2026-05-23",
     "title": "Design Doc Validation & Cloud Resilience",

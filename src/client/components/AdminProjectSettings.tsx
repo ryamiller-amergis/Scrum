@@ -8,7 +8,7 @@ import {
   useAvailableModels,
 } from '../hooks/useProjectSkillConfig';
 import { useSkillProjects, useSkillRepos, useSkillBranches, useSkillList } from '../hooks/useChatThreads';
-import type { ProjectSkillConfig } from '../../shared/types/projectSettings';
+import type { ProjectSkillConfig, QuickSkillPill } from '../../shared/types/projectSettings';
 import styles from './AdminProjectSettings.module.css';
 
 // ── BranchCombobox ─────────────────────────────────────────────────────────────
@@ -237,6 +237,7 @@ interface EditState {
   designDocQaModel: string;
   designDocAssistantModel: string;
   designDocValidationModel: string;
+  quickSkillPills: QuickSkillPill[];
   isNew: boolean;
 }
 
@@ -286,7 +287,7 @@ export const AdminProjectSettings: React.FC<AdminProjectSettingsProps> = ({
   }, [edit?.skillRepo, repos]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleAddNew = () => {
-    setEdit({ project: '', skillRepo: '', skillBranch: '', interviewSkillPath: '', prdSkillPath: '', designDocSkillPath: '', designDocQaSkillPath: '', designDocAssistantSkillPath: '', designDocValidationSkillPath: '', interviewModel: '', prdModel: '', designDocModel: '', designDocQaModel: '', designDocAssistantModel: '', designDocValidationModel: '', isNew: true });
+    setEdit({ project: '', skillRepo: '', skillBranch: '', interviewSkillPath: '', prdSkillPath: '', designDocSkillPath: '', designDocQaSkillPath: '', designDocAssistantSkillPath: '', designDocValidationSkillPath: '', interviewModel: '', prdModel: '', designDocModel: '', designDocQaModel: '', designDocAssistantModel: '', designDocValidationModel: '', quickSkillPills: [], isNew: true });
     setFormError(null);
   };
 
@@ -307,13 +308,14 @@ export const AdminProjectSettings: React.FC<AdminProjectSettingsProps> = ({
       designDocQaModel: config.designDocQaModel ?? '',
       designDocAssistantModel: config.designDocAssistantModel ?? '',
       designDocValidationModel: config.designDocValidationModel ?? '',
+      quickSkillPills: config.quickSkillPills ?? [],
       isNew: false,
     });
     setFormError(null);
   };
 
   const handleProjectChange = (project: string) => {
-    setEdit((prev) => prev ? { ...prev, project, skillRepo: '', skillBranch: '', interviewSkillPath: '', prdSkillPath: '', designDocSkillPath: '', designDocQaSkillPath: '', designDocAssistantSkillPath: '', designDocValidationSkillPath: '', interviewModel: '', prdModel: '', designDocModel: '', designDocQaModel: '', designDocAssistantModel: '', designDocValidationModel: '' } : prev);
+    setEdit((prev) => prev ? { ...prev, project, skillRepo: '', skillBranch: '', interviewSkillPath: '', prdSkillPath: '', designDocSkillPath: '', designDocQaSkillPath: '', designDocAssistantSkillPath: '', designDocValidationSkillPath: '', interviewModel: '', prdModel: '', designDocModel: '', designDocQaModel: '', designDocAssistantModel: '', designDocValidationModel: '', quickSkillPills: [] } : prev);
   };
 
   const handleRepoChange = (repoName: string) => {
@@ -352,6 +354,7 @@ export const AdminProjectSettings: React.FC<AdminProjectSettingsProps> = ({
           designDocQaModel: edit.designDocQaModel || null,
           designDocAssistantModel: edit.designDocAssistantModel || null,
           designDocValidationModel: edit.designDocValidationModel || null,
+          quickSkillPills: edit.quickSkillPills.length > 0 ? edit.quickSkillPills : null,
         },
       });
       setEdit(null);
@@ -593,6 +596,138 @@ export const AdminProjectSettings: React.FC<AdminProjectSettingsProps> = ({
                   ))}
                 </select>
               </div>
+            </div>
+
+            <p className={styles.formTitle} style={{ marginTop: '1.25rem' }}>Quick Skill Pills</p>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
+              Clickable skill shortcuts shown on the home page. Users can select a pill before typing to automatically route their message through the chosen skill.
+            </p>
+
+            {edit.quickSkillPills.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                {edit.quickSkillPills.map((pill, idx) => (
+                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{ minWidth: '10rem', fontSize: '0.85rem', color: 'var(--text-primary)' }}>
+                      {pill.label}
+                    </span>
+                    <span style={{ flex: 1, fontSize: '0.8rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {pill.skillPath}
+                    </span>
+                    <select
+                      className={styles.select}
+                      style={{ flex: '0 0 10rem', height: '28px', padding: '4px 8px', fontSize: '12px' }}
+                      value={pill.model ?? ''}
+                      onChange={(e) => {
+                        const pills = [...edit.quickSkillPills];
+                        pills[idx] = { ...pills[idx], model: e.target.value || null };
+                        setEdit((prev) => prev ? { ...prev, quickSkillPills: pills } : prev);
+                      }}
+                      disabled={upsert.isPending || isLoadingModels}
+                    >
+                      <option value="">Default model</option>
+                      {availableModels.map((m) => (
+                        <option key={m.id} value={m.id}>{m.displayName}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className={styles.btnAction}
+                      disabled={idx === 0}
+                      onClick={() => {
+                        const pills = [...edit.quickSkillPills];
+                        [pills[idx - 1], pills[idx]] = [pills[idx], pills[idx - 1]];
+                        setEdit((prev) => prev ? { ...prev, quickSkillPills: pills } : prev);
+                      }}
+                      title="Move up"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.btnAction}
+                      disabled={idx === edit.quickSkillPills.length - 1}
+                      onClick={() => {
+                        const pills = [...edit.quickSkillPills];
+                        [pills[idx], pills[idx + 1]] = [pills[idx + 1], pills[idx]];
+                        setEdit((prev) => prev ? { ...prev, quickSkillPills: pills } : prev);
+                      }}
+                      title="Move down"
+                    >
+                      ↓
+                    </button>
+                    <button
+                      type="button"
+                      className={`${styles.btnAction} ${styles.btnActionDanger}`}
+                      onClick={() => {
+                        const pills = edit.quickSkillPills.filter((_, i) => i !== idx);
+                        setEdit((prev) => prev ? { ...prev, quickSkillPills: pills } : prev);
+                      }}
+                      title="Remove pill"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
+              <div className={styles.field} style={{ flex: '0 0 10rem' }}>
+                <label className={styles.label} htmlFor="ps-pill-label">Label</label>
+                <input
+                  id="ps-pill-label"
+                  className={styles.input}
+                  placeholder="e.g. Production Support"
+                  disabled={upsert.isPending || isLoadingSkills || !edit.skillRepo}
+                />
+              </div>
+              <div className={styles.field} style={{ flex: 1 }}>
+                <label className={styles.label} htmlFor="ps-pill-skill">Skill</label>
+                <select
+                  id="ps-pill-skill"
+                  className={styles.select}
+                  disabled={upsert.isPending || isLoadingSkills || !edit.skillRepo}
+                >
+                  <option value="">— select a skill —</option>
+                  {skillList.map((s) => (
+                    <option key={s.id} value={s.path}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className={styles.field} style={{ flex: '0 0 10rem' }}>
+                <label className={styles.label} htmlFor="ps-pill-model">Model</label>
+                <select
+                  id="ps-pill-model"
+                  className={styles.select}
+                  disabled={upsert.isPending || isLoadingModels || !edit.skillRepo}
+                >
+                  <option value="">Use default</option>
+                  {availableModels.map((m) => (
+                    <option key={m.id} value={m.id}>{m.displayName}</option>
+                  ))}
+                </select>
+              </div>
+              <button
+                type="button"
+                className={styles.btnAction}
+                disabled={upsert.isPending || isLoadingSkills || !edit.skillRepo}
+                onClick={() => {
+                  const labelEl = document.getElementById('ps-pill-label') as HTMLInputElement | null;
+                  const skillEl = document.getElementById('ps-pill-skill') as HTMLSelectElement | null;
+                  const modelEl = document.getElementById('ps-pill-model') as HTMLSelectElement | null;
+                  if (!labelEl || !skillEl) return;
+                  const label = labelEl.value.trim();
+                  const skillPath = skillEl.value;
+                  if (!label || !skillPath) return;
+                  const pillModel = modelEl?.value || null;
+                  setEdit((prev) => prev ? { ...prev, quickSkillPills: [...prev.quickSkillPills, { label, skillPath, model: pillModel }] } : prev);
+                  labelEl.value = '';
+                  skillEl.value = '';
+                  if (modelEl) modelEl.value = '';
+                }}
+              >
+                Add
+              </button>
             </div>
 
             <p className={styles.formTitle} style={{ marginTop: '1.25rem' }}>Model Config</p>

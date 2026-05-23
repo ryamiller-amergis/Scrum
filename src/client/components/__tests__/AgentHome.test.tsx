@@ -16,6 +16,7 @@ import {
   useStartChat,
 } from '../../hooks/useChatThreads';
 import { useChatAttachments } from '../../hooks/useChatAttachments';
+import { useProjectSkillConfig } from '../../hooks/useProjectSkillConfig';
 
 jest.mock('../../hooks/useChatThreads', () => ({
   useSkillRepos: jest.fn(),
@@ -91,6 +92,7 @@ describe('AgentHome', () => {
     }) as jest.Mock;
     mockUseChatStream.mockReturnValue(idleStream);
 
+    (useProjectSkillConfig as jest.Mock).mockReturnValue({ data: null });
     (useSkillRepos as jest.Mock).mockReturnValue({
       data: [{ id: 'repo-1', name: 'MaxView', defaultBranch: 'main' }],
     });
@@ -124,15 +126,15 @@ describe('AgentHome', () => {
   // ── Compose (no active thread) ──────────────────────────────────────────────
 
   describe('compose state (no active thread)', () => {
-    it('renders the compose prompt and skill hint', () => {
+    it('renders the compose prompt and hint', () => {
       renderAgentHome({ selectedProject: "MaxView" });
-      expect(screen.getByPlaceholderText(/Ask me anything/i)).toBeInTheDocument();
+      expect(screen.getByPlaceholderText(/Let Apex know what you need/i)).toBeInTheDocument();
       expect(screen.getByText(/Enter to send/i)).toBeInTheDocument();
     });
 
     it('shows skill picker when "/" is typed', async () => {
       renderAgentHome({ selectedProject: "MaxView" });
-      fireEvent.change(screen.getByPlaceholderText(/Ask me anything/i), {
+      fireEvent.change(screen.getByPlaceholderText(/Let Apex know what you need/i), {
         target: { value: '/' },
       });
       expect(await screen.findByText('grill-with-docs')).toBeInTheDocument();
@@ -141,7 +143,7 @@ describe('AgentHome', () => {
 
     it('filters skill picker by query after "/"', async () => {
       renderAgentHome({ selectedProject: "MaxView" });
-      fireEvent.change(screen.getByPlaceholderText(/Ask me anything/i), {
+      fireEvent.change(screen.getByPlaceholderText(/Let Apex know what you need/i), {
         target: { value: '/grill' },
       });
       expect(await screen.findByText('grill-with-docs')).toBeInTheDocument();
@@ -150,12 +152,12 @@ describe('AgentHome', () => {
 
     it('hides skill picker when input is cleared', async () => {
       renderAgentHome({ selectedProject: "MaxView" });
-      fireEvent.change(screen.getByPlaceholderText(/Ask me anything/i), {
+      fireEvent.change(screen.getByPlaceholderText(/Let Apex know what you need/i), {
         target: { value: '/' },
       });
       await screen.findByText('grill-with-docs');
 
-      fireEvent.change(screen.getByPlaceholderText(/Ask me anything/i), {
+      fireEvent.change(screen.getByPlaceholderText(/Let Apex know what you need/i), {
         target: { value: '' },
       });
       expect(screen.queryByText('grill-with-docs')).toBeNull();
@@ -163,18 +165,18 @@ describe('AgentHome', () => {
 
     it('populates textarea with /skillName after picker selection', async () => {
       renderAgentHome({ selectedProject: "MaxView" });
-      fireEvent.change(screen.getByPlaceholderText(/Ask me anything/i), {
+      fireEvent.change(screen.getByPlaceholderText(/Let Apex know what you need/i), {
         target: { value: '/' },
       });
       const btn = await screen.findByText('grill-with-docs');
       fireEvent.mouseDown(btn);
 
-      expect(screen.getByPlaceholderText(/Ask me anything/i)).toHaveValue('/grill-with-docs');
+      expect(screen.getByPlaceholderText(/Let Apex know what you need/i)).toHaveValue('/grill-with-docs');
     });
 
     it('creates a new thread with skillPath in kickoff when skill slug is sent', async () => {
       renderAgentHome({ selectedProject: "MaxView" });
-      fireEvent.change(screen.getByPlaceholderText(/Ask me anything/i), {
+      fireEvent.change(screen.getByPlaceholderText(/Let Apex know what you need/i), {
         target: { value: '/' },
       });
       const btn = await screen.findByText('grill-with-docs');
@@ -208,14 +210,14 @@ describe('AgentHome', () => {
       });
 
       renderAgentHome({ selectedProject: "MaxView" });
-      fireEvent.change(screen.getByPlaceholderText(/Ask me anything/i), {
+      fireEvent.change(screen.getByPlaceholderText(/Let Apex know what you need/i), {
         target: { value: '/' },
       });
       const btn = await screen.findByText('grill-with-docs');
       fireEvent.mouseDown(btn);
 
       // User appends extra context after the slug
-      fireEvent.change(screen.getByPlaceholderText(/Ask me anything/i), {
+      fireEvent.change(screen.getByPlaceholderText(/Let Apex know what you need/i), {
         target: { value: '/grill-with-docs add email resend feature' },
       });
       fireEvent.click(screen.getByLabelText('Send'));
@@ -241,7 +243,7 @@ describe('AgentHome', () => {
       });
 
       renderAgentHome({ selectedProject: "MaxView" });
-      fireEvent.change(screen.getByPlaceholderText(/Ask me anything/i), {
+      fireEvent.change(screen.getByPlaceholderText(/Let Apex know what you need/i), {
         target: { value: 'Tell me about the architecture' },
       });
       fireEvent.click(screen.getByLabelText('Send'));
@@ -261,7 +263,7 @@ describe('AgentHome', () => {
 
     it('posts the plain text request as the first message after creating a home-page thread', async () => {
       renderAgentHome({ selectedProject: "MaxView" });
-      fireEvent.change(screen.getByPlaceholderText(/Ask me anything/i), {
+      fireEvent.change(screen.getByPlaceholderText(/Let Apex know what you need/i), {
         target: { value: 'Tell me about the architecture' },
       });
       fireEvent.click(screen.getByLabelText('Send'));
@@ -282,11 +284,11 @@ describe('AgentHome', () => {
 
     it('posts the user request after a skill kickoff when text follows the skill slug', async () => {
       renderAgentHome({ selectedProject: "MaxView" });
-      fireEvent.change(screen.getByPlaceholderText(/Ask me anything/i), {
+      fireEvent.change(screen.getByPlaceholderText(/Let Apex know what you need/i), {
         target: { value: '/' },
       });
       fireEvent.mouseDown(await screen.findByText('grill-with-docs'));
-      fireEvent.change(screen.getByPlaceholderText(/Ask me anything/i), {
+      fireEvent.change(screen.getByPlaceholderText(/Let Apex know what you need/i), {
         target: { value: '/grill-with-docs add email resend feature' },
       });
       fireEvent.click(screen.getByLabelText('Send'));
@@ -318,7 +320,7 @@ describe('AgentHome', () => {
       });
 
       renderAgentHome({ selectedProject: "MaxView" });
-      fireEvent.change(screen.getByPlaceholderText(/Ask me anything/i), {
+      fireEvent.change(screen.getByPlaceholderText(/Let Apex know what you need/i), {
         target: { value: '/' },
       });
       fireEvent.mouseDown(await screen.findByText('grill-with-docs'));
@@ -340,7 +342,7 @@ describe('AgentHome', () => {
 
     it('selects a skill with keyboard navigation and Enter', async () => {
       renderAgentHome({ selectedProject: "MaxView" });
-      const input = screen.getByPlaceholderText(/Ask me anything/i);
+      const input = screen.getByPlaceholderText(/Let Apex know what you need/i);
       fireEvent.change(input, { target: { value: '/' } });
       await screen.findByText('grill-with-docs');
 
@@ -357,6 +359,89 @@ describe('AgentHome', () => {
     });
   });
 
+  // ── Quick skill pill gating ────────────────────────────────────────────────
+
+  describe('quick skill pill gating (compose mode)', () => {
+    beforeEach(() => {
+      (useProjectSkillConfig as jest.Mock).mockReturnValue({
+        data: {
+          skillRepo: 'MaxView',
+          skillBranch: 'main',
+          quickSkillPills: [
+            { label: 'Write PRD', skillPath: '.cursor/skills/to-prd/SKILL.md', model: 'claude-opus-4-6' },
+            { label: 'Grill', skillPath: '.cursor/skills/grill-with-docs/SKILL.md', model: null },
+          ],
+        },
+      });
+    });
+
+    it('disables the textarea when no pill is selected', () => {
+      renderAgentHome({ selectedProject: "MaxView" });
+      const textarea = screen.getByPlaceholderText(/Select an option above to get started/i);
+      expect(textarea).toBeDisabled();
+    });
+
+    it('disables the attach button when no pill is selected', () => {
+      renderAgentHome({ selectedProject: "MaxView" });
+      expect(screen.getByLabelText('Attach files')).toBeDisabled();
+    });
+
+    it('disables the microphone button when no pill is selected', () => {
+      renderAgentHome({ selectedProject: "MaxView" });
+      const micBtn = screen.getByLabelText('Start voice transcription');
+      expect(micBtn).toBeDisabled();
+    });
+
+    it('disables the send button when no pill is selected', () => {
+      renderAgentHome({ selectedProject: "MaxView" });
+      expect(screen.getByLabelText('Send')).toBeDisabled();
+    });
+
+    it('does not show the model selector in compose mode', () => {
+      renderAgentHome({ selectedProject: "MaxView" });
+      expect(screen.queryByRole('combobox')).toBeNull();
+    });
+
+    it('does not render the project pill', () => {
+      renderAgentHome({ selectedProject: "MaxView" });
+      const pills = screen.getAllByRole('button').filter(
+        (btn) => btn.textContent === 'MaxView' && btn.className.includes('pill'),
+      );
+      expect(pills).toHaveLength(0);
+    });
+
+    it('enables the textarea after selecting a quick skill pill', () => {
+      renderAgentHome({ selectedProject: "MaxView" });
+      fireEvent.click(screen.getByText('Write PRD'));
+      const textarea = screen.getByPlaceholderText(/Let Apex know what you need/i);
+      expect(textarea).not.toBeDisabled();
+    });
+
+    it('enables attach and mic buttons after selecting a pill', () => {
+      renderAgentHome({ selectedProject: "MaxView" });
+      fireEvent.click(screen.getByText('Grill'));
+      expect(screen.getByLabelText('Attach files')).not.toBeDisabled();
+    });
+
+    it('enables the send button once a pill is selected and text is entered', () => {
+      renderAgentHome({ selectedProject: "MaxView" });
+      fireEvent.click(screen.getByText('Write PRD'));
+      fireEvent.change(screen.getByPlaceholderText(/Let Apex know what you need/i), {
+        target: { value: 'build a dashboard' },
+      });
+      expect(screen.getByLabelText('Send')).not.toBeDisabled();
+    });
+
+    it('re-disables the textarea when the selected pill is toggled off', () => {
+      renderAgentHome({ selectedProject: "MaxView" });
+      fireEvent.click(screen.getByText('Grill'));
+      expect(screen.getByPlaceholderText(/Let Apex know what you need/i)).not.toBeDisabled();
+
+      fireEvent.click(screen.getByText('Grill'));
+      expect(screen.getByPlaceholderText(/Select an option above to get started/i)).toBeDisabled();
+    });
+  });
+
   // ── Active thread (chat view) ───────────────────────────────────────────────
 
   describe('active thread (chat view)', () => {
@@ -366,7 +451,7 @@ describe('AgentHome', () => {
       renderAgentHome({ selectedProject: "MaxView" });
 
       // Compose-mode send to create a thread (calls mutateAsync + fetch /messages)
-      fireEvent.change(screen.getByPlaceholderText(/Ask me anything/i), {
+      fireEvent.change(screen.getByPlaceholderText(/Let Apex know what you need/i), {
         target: { value: 'start session' },
       });
       fireEvent.click(screen.getByLabelText('Send'));
@@ -455,7 +540,7 @@ describe('AgentHome', () => {
       });
       const { rerender } = renderAgentHome({ selectedProject: "MaxView" });
 
-      fireEvent.change(screen.getByPlaceholderText(/Ask me anything/i), {
+      fireEvent.change(screen.getByPlaceholderText(/Let Apex know what you need/i), {
         target: { value: 'write a PRD' },
       });
       fireEvent.click(screen.getByLabelText('Send'));
@@ -481,7 +566,7 @@ describe('AgentHome', () => {
       // Start a thread then simulate the agent being in the running state
       renderAgentHome({ selectedProject: "MaxView" });
 
-      fireEvent.change(screen.getByPlaceholderText(/Ask me anything/i), {
+      fireEvent.change(screen.getByPlaceholderText(/Let Apex know what you need/i), {
         target: { value: 'go' },
       });
       fireEvent.click(screen.getByLabelText('Send'));
@@ -503,7 +588,7 @@ describe('AgentHome', () => {
     it('sends a cancel request when Stop is clicked during a running chat', async () => {
       const { rerender } = renderAgentHome({ selectedProject: "MaxView" });
 
-      fireEvent.change(screen.getByPlaceholderText(/Ask me anything/i), {
+      fireEvent.change(screen.getByPlaceholderText(/Let Apex know what you need/i), {
         target: { value: 'start session' },
       });
       fireEvent.click(screen.getByLabelText('Send'));

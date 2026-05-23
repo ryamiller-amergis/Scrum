@@ -3711,6 +3711,7 @@ router.get('/skill-config', async (req: Request, res: Response) => {
       interviewModel: config.interviewModel ?? null,
       prdModel: config.prdModel ?? null,
       designDocModel: config.designDocModel ?? null,
+      quickSkillPills: config.quickSkillPills ?? null,
     });
   } catch {
     res.status(500).json({ error: 'Internal server error' });

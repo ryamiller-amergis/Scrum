@@ -1,7 +1,7 @@
 import { db } from '../db/drizzle';
 import { projectSkillSettings } from '../db/schema';
 import { eq } from 'drizzle-orm';
-import type { ProjectSkillConfig } from '../../shared/types/projectSettings';
+import type { ProjectSkillConfig, QuickSkillPill } from '../../shared/types/projectSettings';
 
 export async function getSkillConfig(project: string): Promise<ProjectSkillConfig | null> {
   const rows = await db
@@ -33,6 +33,7 @@ export async function upsertSkillConfig(
   designDocAssistantModel?: string | null,
   designDocValidationSkillPath?: string | null,
   designDocValidationModel?: string | null,
+  quickSkillPills?: QuickSkillPill[] | null | undefined,
 ): Promise<ProjectSkillConfig> {
   const now = new Date().toISOString();
   const rows = await db
@@ -54,6 +55,7 @@ export async function upsertSkillConfig(
       designDocQaModel: designDocQaModel ?? null,
       designDocAssistantModel: designDocAssistantModel ?? null,
       designDocValidationModel: designDocValidationModel ?? null,
+      quickSkillPills: quickSkillPills ?? null,
       updatedAt: now,
     })
     .onConflictDoUpdate({
@@ -74,6 +76,7 @@ export async function upsertSkillConfig(
         designDocQaModel: designDocQaModel ?? null,
         designDocAssistantModel: designDocAssistantModel ?? null,
         designDocValidationModel: designDocValidationModel ?? null,
+        quickSkillPills: quickSkillPills ?? null,
         updatedAt: now,
       },
     })

@@ -1,3 +1,9 @@
+export interface QuickSkillPill {
+  label: string;
+  skillPath: string;
+  model?: string | null;
+}
+
 export interface ProjectSkillConfig {
   project: string;
   skillRepo: string;
@@ -15,6 +21,7 @@ export interface ProjectSkillConfig {
   designDocQaModel?: string | null;
   designDocAssistantModel?: string | null;
   designDocValidationModel?: string | null;
+  quickSkillPills?: QuickSkillPill[] | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -34,6 +41,7 @@ export interface UpsertProjectSkillConfigRequest {
   designDocQaModel?: string | null;
   designDocAssistantModel?: string | null;
   designDocValidationModel?: string | null;
+  quickSkillPills?: QuickSkillPill[] | null;
 }
 
 export interface ProjectSkillConfigResponse {
@@ -52,4 +60,5 @@ export interface ProjectSkillConfigResponse {
   designDocQaModel?: string | null;
   designDocAssistantModel?: string | null;
   designDocValidationModel?: string | null;
+  quickSkillPills?: QuickSkillPill[] | null;
 }
