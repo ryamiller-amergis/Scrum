@@ -442,6 +442,133 @@ describe('AgentHome', () => {
     });
   });
 
+  // ── Model selection from quick skill pills ────────────────────────────────
+
+  describe('model selection from quick skill pills', () => {
+    beforeEach(() => {
+      (useProjectSkillConfig as jest.Mock).mockReturnValue({
+        data: {
+          skillRepo: 'MaxView',
+          skillBranch: 'main',
+          quickSkillPills: [
+            { label: 'Write PRD', skillPath: '.cursor/skills/to-prd/SKILL.md', model: 'claude-opus-4-6' },
+            { label: 'Grill', skillPath: '.cursor/skills/grill-with-docs/SKILL.md', model: null },
+          ],
+        },
+      });
+    });
+
+    it('creates a thread with the pill-configured model when a pill with a model is selected', async () => {
+      renderAgentHome({ selectedProject: 'MaxView' });
+
+      fireEvent.click(screen.getByText('Write PRD'));
+      fireEvent.change(screen.getByPlaceholderText(/Let Apex know what you need/i), {
+        target: { value: 'build a dashboard' },
+      });
+      fireEvent.click(screen.getByLabelText('Send'));
+
+      await waitFor(() => {
+        expect(mutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({
+            kickoff: expect.objectContaining({
+              model: 'claude-opus-4-6',
+              skillPath: '.cursor/skills/to-prd/SKILL.md',
+            }),
+          }),
+        );
+      });
+    });
+
+    it('creates a thread with the global default model when a pill has no model configured', async () => {
+      renderAgentHome({ selectedProject: 'MaxView' });
+
+      fireEvent.click(screen.getByText('Grill'));
+      fireEvent.change(screen.getByPlaceholderText(/Let Apex know what you need/i), {
+        target: { value: 'interview me' },
+      });
+      fireEvent.click(screen.getByLabelText('Send'));
+
+      await waitFor(() => {
+        expect(mutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({
+            kickoff: expect.objectContaining({
+              model: 'composer-2', // global default, not stale from a previous selection
+              skillPath: '.cursor/skills/grill-with-docs/SKILL.md',
+            }),
+          }),
+        );
+      });
+    });
+
+    it('resets to the global default model when switching from a model-configured pill to one without', async () => {
+      renderAgentHome({ selectedProject: 'MaxView' });
+
+      // Select the opus-backed pill first so its model enters the state
+      fireEvent.click(screen.getByText('Write PRD'));
+      // Switch directly to the no-model pill — the old bug would have kept 'claude-opus-4-6'
+      fireEvent.click(screen.getByText('Grill'));
+
+      fireEvent.change(screen.getByPlaceholderText(/Let Apex know what you need/i), {
+        target: { value: 'interview me' },
+      });
+      fireEvent.click(screen.getByLabelText('Send'));
+
+      await waitFor(() => {
+        expect(mutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({
+            kickoff: expect.objectContaining({
+              model: 'composer-2',
+            }),
+          }),
+        );
+      });
+    });
+
+    it('restores the global default model when a pill is deselected and a no-model pill is then selected', async () => {
+      renderAgentHome({ selectedProject: 'MaxView' });
+
+      // Select then deselect the opus pill
+      fireEvent.click(screen.getByText('Write PRD'));
+      fireEvent.click(screen.getByText('Write PRD')); // toggle off
+      // Now select the no-model pill
+      fireEvent.click(screen.getByText('Grill'));
+
+      fireEvent.change(screen.getByPlaceholderText(/Let Apex know what you need/i), {
+        target: { value: 'start grilling' },
+      });
+      fireEvent.click(screen.getByLabelText('Send'));
+
+      await waitFor(() => {
+        expect(mutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({
+            kickoff: expect.objectContaining({
+              model: 'composer-2',
+            }),
+          }),
+        );
+      });
+    });
+
+    it('also sends the pill model in the first user message body', async () => {
+      renderAgentHome({ selectedProject: 'MaxView' });
+
+      fireEvent.click(screen.getByText('Write PRD'));
+      fireEvent.change(screen.getByPlaceholderText(/Let Apex know what you need/i), {
+        target: { value: 'build a dashboard' },
+      });
+      fireEvent.click(screen.getByLabelText('Send'));
+
+      await waitFor(() => {
+        const messageCall = (global.fetch as jest.Mock).mock.calls.find((c) =>
+          String(c[0]).includes('/api/chat/threads/thread-123/messages'),
+        );
+        expect(messageCall).toBeDefined();
+        const body = JSON.parse(messageCall![1].body);
+        expect(body.model).toBe('claude-opus-4-6');
+      });
+    });
+  });
+
   // ── Active thread (chat view) ───────────────────────────────────────────────
 
   describe('active thread (chat view)', () => {

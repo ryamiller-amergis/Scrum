@@ -1141,11 +1141,11 @@ export const AgentHome: React.FC<AgentHomeProps> = ({ selectedProject }) => {
                   onClick={() => {
                     const isDeselect = selectedQuickSkill?.skillPath === pill.skillPath;
                     setSelectedQuickSkill(isDeselect ? null : pill);
-                    if (isDeselect) {
-                      setModel(globalDefaultModel?.value ?? DEFAULT_MODEL_ID);
-                    } else if (pill.model) {
-                      setModel(pill.model);
-                    }
+                    setModel(
+                      isDeselect
+                        ? (globalDefaultModel?.value ?? DEFAULT_MODEL_ID)
+                        : (pill.model ?? globalDefaultModel?.value ?? DEFAULT_MODEL_ID),
+                    );
                   }}
                 >
                   {pill.label}

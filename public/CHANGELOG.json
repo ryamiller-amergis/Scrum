@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.19.1",
+    "date": "2026-05-26",
+    "title": "Skill Pill Model Fix",
+    "changes": [
+      {
+        "type": "bugfix",
+        "description": "Fixed issue where selecting a Quick Skill Pill did not apply the model configured for that pill — switching between pills or selecting one without a configured model could silently carry over the wrong model from a previous session"
+      }
+    ]
+  },
+  {
     "version": "1.19.0",
     "date": "2026-05-26",
     "title": "AI Fix Validation & Per-Feature Design Docs",
