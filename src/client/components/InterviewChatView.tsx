@@ -798,9 +798,9 @@ const ExistingInterviewView: React.FC<{ id: string }> = ({ id }) => {
                 <button
                   className={styles.actionBtn}
                   onClick={() => void handleStatusChange('in_progress')}
-                  disabled={updateStatus.isPending}
+                  disabled={updateStatus.isPending || interview.prds.length > 0}
                   type="button"
-                  title="Reopen this interview"
+                  title={interview.prds.length > 0 ? 'Cannot reopen — a PRD has already been generated' : 'Reopen this interview'}
                 >
                   <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M13 3v4H9" />
@@ -829,9 +829,9 @@ const ExistingInterviewView: React.FC<{ id: string }> = ({ id }) => {
                 <button
                   className={styles.actionBtnPrimary}
                   onClick={() => void handleGeneratePrd()}
-                  disabled={startChat.isPending || createPrd.isPending}
+                  disabled={startChat.isPending || createPrd.isPending || interview.prds.length > 0}
                   type="button"
-                  title="Generate a PRD from this interview"
+                  title={interview.prds.length > 0 ? 'A PRD has already been generated for this interview' : 'Generate a PRD from this interview'}
                 >
                   {startChat.isPending || createPrd.isPending ? (
                     <>
@@ -941,7 +941,7 @@ const ExistingInterviewView: React.FC<{ id: string }> = ({ id }) => {
               ? <>This interview is complete and the chat is closed.{interview.prds.length > 0 ? ' View the linked PRD above.' : ''}</>
               : 'This interview is archived and the chat is read-only.'}
           </span>
-          {interview.status === 'complete' && canManage && (
+          {interview.status === 'complete' && canManage && interview.prds.length === 0 && (
             <button
               className={styles.lockedReopenBtn}
               onClick={() => void handleStatusChange('in_progress')}

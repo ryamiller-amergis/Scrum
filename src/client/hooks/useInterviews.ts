@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   CreateDesignDocResponse,
   CreateInterviewResponse,
+  CreatePrdAdoItemsRequest,
+  CreatePrdAdoItemsResponse,
   CreatePrdResponse,
   DesignDoc,
   DesignDocStatus,
@@ -498,6 +500,38 @@ export function useValidationReport(docId: string | null, validationThreadId: st
       if (query.state.data?.markdown) return false;
       if (docStatus === 'validating') return 10_000;
       return false;
+    },
+  });
+}
+
+// ── PRD → ADO Work Items ─────────────────────────────────────────────────────
+
+export function useCreatePrdAdoItems() {
+  const qc = useQueryClient();
+  return useMutation<CreatePrdAdoItemsResponse, Error, { prdId: string } & CreatePrdAdoItemsRequest>({
+    mutationFn: ({ prdId, ...body }) =>
+      apiFetch(`/api/interviews/prds/${prdId}/ado-work-items`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }),
+    onSuccess: (_data, { prdId }) => {
+      qc.invalidateQueries({ queryKey: ['prd', prdId] });
+    },
+  });
+}
+
+export function useSyncPrdAdoStatus(prdId: string | null) {
+  const qc = useQueryClient();
+  return useMutation<{ cleared: number }, Error>({
+    mutationFn: () =>
+      apiFetch(`/api/interviews/prds/${prdId}/sync-ado-status`, {
+        method: 'POST',
+      }),
+    onSuccess: (data) => {
+      if (data.cleared > 0 && prdId) {
+        qc.invalidateQueries({ queryKey: ['prd', prdId] });
+      }
     },
   });
 }

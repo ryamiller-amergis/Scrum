@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -13,10 +13,13 @@ import {
   useReviewPrd,
   useDeletePrd,
   useDesignDocsByPrd,
+  useCreatePrdAdoItems,
+  useSyncPrdAdoStatus,
 } from '../hooks/useInterviews';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 import { ReviewReasonModal } from './ReviewReasonModal';
 import { BacklogViewer } from './BacklogViewer';
+import { CreateAdoItemsModal } from './CreateAdoItemsModal';
 import type { PrdStatus } from '../../shared/types/interview';
 import styles from './PrdReviewView.module.css';
 
@@ -62,6 +65,8 @@ export const PrdReviewView: React.FC = () => {
   const reopenPrd = useReopenPrd();
   const reviewPrd = useReviewPrd();
   const deletePrd = useDeletePrd();
+  const createAdoItems = useCreatePrdAdoItems();
+  const syncAdoStatus = useSyncPrdAdoStatus(id);
 
   const [activeTab, setActiveTab] = useState<TabId>('preview');
   const [editContent, setEditContent] = useState('');
@@ -69,6 +74,7 @@ export const PrdReviewView: React.FC = () => {
 
   const [showRevisionModal, setShowRevisionModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showAdoModal, setShowAdoModal] = useState(false);
 
   const isGenerating = !!prd && prd.content === '';
 
@@ -117,12 +123,36 @@ export const PrdReviewView: React.FC = () => {
     setActiveTab(tab);
   }, [prd]);
 
+  // Auto-verify ADO IDs once when an approved PRD with backlog ADO items loads.
+  // Silently clears any IDs that were deleted in ADO.
+  useEffect(() => {
+    if (!prd || prd.status !== 'approved' || !prd.backlogJson) return;
+    const backlog = prd.backlogJson as { epics?: Array<{ adoWorkItemId?: number }> };
+    const hasAnyAdoIds = (backlog.epics ?? []).some(e => e.adoWorkItemId);
+    if (!hasAnyAdoIds) return;
+    syncAdoStatus.mutate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prd?.id, prd?.status]);
+
+  const hasUnpushedItems = useMemo(() => {
+    if (!prd?.backlogJson) return false;
+    const backlog = prd.backlogJson as { epics?: Array<{ adoWorkItemId?: number }> };
+    return (backlog.epics ?? []).some(e => !e.adoWorkItemId);
+  }, [prd?.backlogJson]);
+
   if (isLoading) return <div className={styles.loadingState}>Loading PRD…</div>;
   if (isError || !prd) return <div className={styles.errorState}>PRD not found.</div>;
 
   const isAuthor = prd.authorId === userId;
   const canManage = can('interviews:manage');
   const canReview = can('prds:review');
+  const anyDesignDocApproved = relatedDesignDocs
+    && relatedDesignDocs.some(d => d.status === 'approved');
+
+  const canCreateAdoItems = prd.status === 'approved'
+    && anyDesignDocApproved
+    && can('workitems:write')
+    && hasUnpushedItems;
 
   return (
     <div className={styles.container}>
@@ -219,9 +249,9 @@ export const PrdReviewView: React.FC = () => {
             <button
               className={styles.actionBtn}
               onClick={() => reopenPrd.mutate(prd.id)}
-              disabled={reopenPrd.isPending}
+              disabled={reopenPrd.isPending || prd.status === 'approved'}
               type="button"
-              title="Admin: force this PRD back to Pending Review"
+              title={prd.status === 'approved' ? 'Cannot reopen an approved PRD' : 'Admin: force this PRD back to Pending Review'}
             >
               {reopenPrd.isPending ? 'Reopening…' : 'Reopen for Review'}
             </button>
@@ -246,6 +276,18 @@ export const PrdReviewView: React.FC = () => {
               </button>
             </div>
           )}
+
+          {prd.status === 'approved' && can('workitems:write') && hasUnpushedItems && (
+            <button
+              className={styles.actionBtnPrimary}
+              onClick={() => setShowAdoModal(true)}
+              disabled={!canCreateAdoItems || createAdoItems.isPending}
+              title={!anyDesignDocApproved ? 'At least one design doc must be approved first' : 'Create work items in Azure DevOps'}
+              type="button"
+            >
+              {createAdoItems.isPending ? 'Creating…' : 'Create in ADO'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -266,6 +308,18 @@ export const PrdReviewView: React.FC = () => {
               {relatedDesignDocs.length === 1 ? 'View Design Doc' : doc.title} →
             </button>
           ))}
+        </div>
+      )}
+
+      {createAdoItems.isSuccess && createAdoItems.data && (
+        <div className={styles.adoSuccessBanner}>
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={styles.adoSuccessIcon}>
+            <polyline points="3 8 6.5 11.5 13 5" />
+          </svg>
+          <span>
+            {createAdoItems.data.totalCreated} work item{createAdoItems.data.totalCreated !== 1 ? 's' : ''} created in ADO
+            {createAdoItems.data.created.epics.length > 0 && ` — ${createAdoItems.data.created.epics.length} epic${createAdoItems.data.created.epics.length !== 1 ? 's' : ''}, ${createAdoItems.data.created.features.length} feature${createAdoItems.data.created.features.length !== 1 ? 's' : ''}, ${createAdoItems.data.created.pbis.length} PBI${createAdoItems.data.created.pbis.length !== 1 ? 's' : ''}`}
+          </span>
         </div>
       )}
 
@@ -425,6 +479,19 @@ export const PrdReviewView: React.FC = () => {
           isPending={reviewPrd.isPending}
           onConfirm={(reason) => void handleReviewConfirm(reason)}
           onCancel={() => setShowRevisionModal(false)}
+        />
+      )}
+
+      {showAdoModal && prd && (
+        <CreateAdoItemsModal
+          prd={prd}
+          isPending={createAdoItems.isPending}
+          designDocs={relatedDesignDocs ?? []}
+          onSubmit={async (req) => {
+            await createAdoItems.mutateAsync({ prdId: prd.id, ...req });
+            setShowAdoModal(false);
+          }}
+          onCancel={() => setShowAdoModal(false)}
         />
       )}
     </div>

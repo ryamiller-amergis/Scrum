@@ -54,6 +54,19 @@ router.get('/projects/:project/teams', async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/projects/:project/area-paths - List area paths for a given ADO project
+router.get('/projects/:project/area-paths', async (req: Request, res: Response) => {
+  try {
+    const { project } = req.params;
+    const adoService = new AzureDevOpsService();
+    const areaPaths = await adoService.getAreaPaths(project);
+    res.json(areaPaths);
+  } catch (error: any) {
+    console.error('Error fetching ADO area paths:', error);
+    res.status(500).json({ error: 'Failed to fetch area paths' });
+  }
+});
+
 // GET /api/workitems - Fetch work items for date range
 router.get('/workitems', async (req: Request, res: Response) => {
   try {

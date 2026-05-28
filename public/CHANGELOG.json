@@ -1,5 +1,24 @@
 [
   {
+    "version": "1.19.2",
+    "date": "2026-05-28",
+    "title": "PRD & Interview Guardrails",
+    "changes": [
+      {
+        "type": "improvement",
+        "description": "Generate PRD button on completed interviews is now disabled when a PRD has already been generated, preventing accidental duplicates"
+      },
+      {
+        "type": "improvement",
+        "description": "Reopen button on completed interviews is disabled (and hidden from the locked notice) when a PRD already exists, keeping the interview locked once a PRD is in progress"
+      },
+      {
+        "type": "improvement",
+        "description": "Reopen for Review button on PRDs is disabled when the PRD status is approved, preventing approved PRDs from being sent back for re-review"
+      }
+    ]
+  },
+  {
     "version": "1.19.1",
     "date": "2026-05-26",
     "title": "Skill Pill Model Fix",

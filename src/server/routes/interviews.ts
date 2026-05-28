@@ -16,6 +16,8 @@ import {
 } from '../services/interviewService';
 import {
   createPrd,
+  createPrdAdoWorkItems,
+  syncPrdAdoStatus,
   deletePrd,
   getPrd,
   listPrds,
@@ -338,6 +340,30 @@ router.post('/prds/:prdId/design-docs', requirePermission('interviews:manage'), 
 
     res.status(201).json({ designDocId, threadId: thread.id });
 
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /prds/:prdId/ado-work-items — push selected backlog items to Azure DevOps
+router.post('/prds/:prdId/ado-work-items', requirePermission('workitems:write'), async (req, res, next) => {
+  try {
+    const userId = getUserId(req);
+    const result = await createPrdAdoWorkItems(req.params.prdId, userId, req.body);
+    res.status(201).json(result);
+  } catch (err: any) {
+    if (err.message?.includes('not found') || err.message?.includes('must be approved') || err.message?.includes('design doc')) {
+      return res.status(422).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
+// POST /prds/:prdId/sync-ado-status — verify stored ADO IDs, clear any that were deleted in ADO
+router.post('/prds/:prdId/sync-ado-status', requirePermission('workitems:write'), async (req, res, next) => {
+  try {
+    const result = await syncPrdAdoStatus(req.params.prdId);
+    res.json(result);
   } catch (err) {
     next(err);
   }
