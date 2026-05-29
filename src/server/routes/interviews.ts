@@ -50,6 +50,7 @@ import {
 import { readOutputBacklog, readOutputDesignDoc, readOutputTechSpec, readOutputAssumptions, readOutputPrd, readOutputValidationScorecard, readOutputValidationScorecardMd, readAllOutputDesignDocFeatures, createThread, getThreadAsync } from '../services/chatAgentService';
 import { getSkillConfig } from '../services/projectSettingsService';
 import { getDefaultModel } from '../services/appSettingsService';
+import { generatePrototypesForPrd } from '../services/designPrototypeService';
 import type { InterviewStatus, PrdStatus, ReviewPrdRequest, DesignDocStatus, ReviewDesignDocRequest } from '../../shared/types/interview';
 
 const router = Router();
@@ -185,6 +186,11 @@ router.post('/prds/:prdId/review', requirePermission('prds:review'), async (req,
           res.json({ ok: true });
           return;
         }
+
+        // Fire-and-forget: generate Claude design prototypes for each Feature in the PRD
+        generatePrototypesForPrd(req.params.prdId).catch(err => {
+          console.error('[interviews] Design prototype generation failed:', err);
+        });
 
         const skillConfig = await getSkillConfig(prd.project);
         const globalModel = await getDefaultModel();

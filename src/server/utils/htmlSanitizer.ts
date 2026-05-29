@@ -40,5 +40,10 @@ export function sanitizeMockHtml(raw: string): string {
   // 7. Strip <base> tags
   html = html.replace(/<base\b[^>]*>/gi, '');
 
+  // 8. Neutralize all <a> href values so clicking links doesn't navigate
+  //    within the iframe (which shows a blank page). Preserve the visual
+  //    styling by keeping the tag and text content intact.
+  html = html.replace(/<a\b([^>]*?)href\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '<a$1href="#"');
+
   return html.trim();
 }

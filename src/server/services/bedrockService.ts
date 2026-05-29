@@ -2267,3 +2267,124 @@ export function synthesisePlanFromUiMock(
     updatedAt: now,
   };
 }
+
+/* ════════════════════════════════════════════════════════════
+   DESIGN PROTOTYPE GENERATION (Claude Design POC)
+   ════════════════════════════════════════════════════════════ */
+
+export interface DesignPrototypeInput {
+  featureName: string;
+  featureDescription?: string;
+  pbis: Array<{
+    title: string;
+    description?: string;
+    acceptanceCriteria?: string;
+  }>;
+}
+
+export async function generateDesignPrototypeHtml(
+  input: DesignPrototypeInput
+): Promise<string> {
+  const catalog = await (await import('./designSystemService')).getDesignSystemCatalog();
+  const catalogSection = buildCatalogSection(catalog);
+
+  const ref = getFigmaReference();
+  const image: ImageInput | undefined = ref.tablePageBase64
+    ? { base64: ref.tablePageBase64, mediaType: 'image/png', width: ref.tablePageWidth, height: ref.tablePageHeight }
+    : undefined;
+
+  const pbiSection = input.pbis.map((pbi, i) => {
+    const parts = [`### PBI ${i + 1}: ${pbi.title}`];
+    if (pbi.description) parts.push(pbi.description);
+    if (pbi.acceptanceCriteria) parts.push(`**Acceptance Criteria:**\n${pbi.acceptanceCriteria}`);
+    return parts.join('\n');
+  }).join('\n\n');
+
+  const prompt = `You are a senior UI/UX designer generating a high-fidelity HTML prototype for a MaxView application feature.
+
+${catalogSection}
+
+## Feature to Design
+
+**Feature:** ${input.featureName}
+${input.featureDescription ? `**Description:** ${input.featureDescription}` : ''}
+
+## PBI Requirements
+
+${pbiSection}
+
+## Instructions
+
+Generate a single, self-contained HTML document with inline CSS (no external dependencies, no JavaScript). The document must show **four state sections** stacked vertically, each clearly separated:
+
+1. **DEFAULT STATE** — Populated with realistic sample data matching the feature domain. All PBI requirements must be visually represented. Use the MaxView design system: white sidebar nav, content area on #f5f5f5, page header with title, sub-tabs if applicable.
+
+2. **EMPTY STATE** — The view when no records/data exist. Include helpful messaging and a call-to-action (e.g. "No items found. Create your first item."). Use an appropriate illustration placeholder.
+
+3. **ERROR STATE** — Show inline form validation errors and/or error banners. Use realistic error messages derived from the acceptance criteria (e.g. "End date must be after start date"). Show field-level red borders and error text.
+
+4. **LOADING STATE** — Show CSS-only animated skeleton placeholders (pulse animation) matching the default layout structure. Card skeletons for cards, row skeletons for tables, etc.
+
+Each section must have:
+- A sticky-positioned section header with label and icon: "✅ Default State", "📭 Empty State", "⚠️ Error State", "⏳ Loading State"
+- A subtle background tint difference to separate sections visually
+- Full MaxView design system styling throughout (sidebar, topbar, colors, typography)
+
+Return ONLY the complete HTML document. No markdown fences, no explanation — just the raw HTML starting with <!DOCTYPE html>.`;
+
+  const text = await invokeModel(prompt, image, UI_MOCK_MODEL_ID, UI_MOCK_MAX_TOKENS);
+
+  // Strip any markdown fences if the model wraps the response
+  let html = text.trim();
+  if (html.startsWith('```')) {
+    html = html.replace(/^```(?:html)?\s*\n?/, '').replace(/\n?```\s*$/, '');
+  }
+
+  return html;
+}
+
+export async function regenerateDesignPrototypeHtml(
+  priorHtml: string,
+  feedback: string,
+  unresolvedComments: string[]
+): Promise<string> {
+  const catalog = await (await import('./designSystemService')).getDesignSystemCatalog();
+  const catalogSection = buildCatalogSection(catalog);
+
+  const ref = getFigmaReference();
+  const image: ImageInput | undefined = ref.tablePageBase64
+    ? { base64: ref.tablePageBase64, mediaType: 'image/png', width: ref.tablePageWidth, height: ref.tablePageHeight }
+    : undefined;
+
+  const commentsSection = unresolvedComments.length > 0
+    ? `\n## Unresolved Review Comments\n\n${unresolvedComments.map((c, i) => `${i + 1}. ${c}`).join('\n')}\n`
+    : '';
+
+  const prompt = `You are revising an existing MaxView UI prototype based on reviewer feedback.
+
+${catalogSection}
+
+## Current Prototype HTML
+
+${priorHtml}
+
+## Reviewer Feedback
+
+${feedback}
+${commentsSection}
+
+## Instructions
+
+Revise the HTML prototype to address the feedback and unresolved comments above. Maintain all four state sections (Default, Empty, Error, Loading). Keep the MaxView design system styling. Preserve sections that were not mentioned in the feedback.
+
+Return ONLY the complete revised HTML document. No markdown fences, no explanation — just the raw HTML starting with <!DOCTYPE html>.`;
+
+  const text = await invokeModel(prompt, image, UI_MOCK_MODEL_ID, UI_MOCK_MAX_TOKENS);
+
+  let html = text.trim();
+  if (html.startsWith('```')) {
+    html = html.replace(/^```(?:html)?\s*\n?/, '').replace(/\n?```\s*$/, '');
+  }
+
+  return html;
+}

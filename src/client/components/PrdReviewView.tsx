@@ -249,6 +249,18 @@ export const PrdReviewView: React.FC = () => {
         </div>
       </div>
 
+      {prd.status === 'approved' && (
+        <div className={styles.designDocBanner}>
+          <button
+            className={styles.designDocBannerLink}
+            onClick={() => navigate(`/backlog/design-prototypes/${id}`)}
+            type="button"
+          >
+            View Design Prototypes →
+          </button>
+        </div>
+      )}
+
       {prd.status === 'approved' && relatedDesignDocs && relatedDesignDocs.length > 0 && (
         <div className={styles.designDocBanner}>
           <span className={styles.designDocBannerText}>
