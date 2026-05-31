@@ -562,3 +562,83 @@
   color: var(--error-color);
   margin-top: 8px;
 }
+
+/* ── Responsive: narrow phones ─────────────────────────────────────────────── */
+
+@media (max-width: 480px) {
+  .dashboard {
+    padding: 16px;
+  }
+
+  .header {
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  .heading {
+    font-size: 1.25rem;
+  }
+
+  .filtersRow {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  .searchWrap {
+    flex-shrink: 1;
+    width: 100%;
+  }
+
+  .searchInput {
+    width: 100%;
+  }
+
+  .searchInput:focus {
+    width: 100%;
+  }
+
+  .filters {
+    width: 100%;
+  }
+
+  .filterPill {
+    flex: 1;
+    text-align: center;
+  }
+
+  .tabs {
+    gap: 0;
+    margin-bottom: 16px;
+  }
+
+  .tab {
+    padding: 8px 12px;
+    font-size: 0.82rem;
+  }
+
+  .card {
+    padding: 12px;
+    gap: 6px;
+  }
+
+  .cardFooter {
+    padding-top: 8px;
+  }
+
+  .groupCardChildren {
+    grid-template-columns: 1fr;
+    padding: 0 12px 12px;
+  }
+
+  .emptyState {
+    padding: 32px 16px;
+  }
+
+  .modalCard {
+    padding: 20px;
+    margin: 0 12px;
+  }
+}

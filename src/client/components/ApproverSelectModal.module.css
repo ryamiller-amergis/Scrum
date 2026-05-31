@@ -169,3 +169,64 @@
   color: var(--text-muted);
   margin: 0;
 }
+
+/* Responsive — tablet / small desktop */
+@media (max-width: 768px) {
+  .overlay {
+    padding: 0;
+  }
+
+  .card {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+    margin: 0;
+    padding: 16px;
+  }
+
+  .chipGrid {
+    gap: 6px;
+  }
+
+  .actions {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+}
+
+/* Responsive — phone */
+@media (max-width: 480px) {
+  .card {
+    padding: 12px;
+    gap: 14px;
+  }
+
+  .title {
+    font-size: 0.95rem;
+  }
+
+  .subtitle {
+    font-size: 0.78rem;
+  }
+
+  .sectionTitle {
+    font-size: 0.8rem;
+  }
+
+  .chip {
+    font-size: 0.78rem;
+    padding: 5px 12px;
+  }
+
+  .actions {
+    flex-direction: column;
+  }
+
+  .btnCancel,
+  .btnConfirm {
+    width: 100%;
+    text-align: center;
+  }
+}

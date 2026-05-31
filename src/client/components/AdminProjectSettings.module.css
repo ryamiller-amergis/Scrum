@@ -844,8 +844,156 @@
   .pageHeader { flex-direction: column; align-items: stretch; }
   .formGrid { grid-template-columns: 1fr; }
   .formGridThreeCol { grid-template-columns: 1fr; }
-  .tableWrapper { overflow-x: auto; }
+  .tableWrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .table { min-width: 600px; }
+
+  .accordionHeader {
+    min-height: 44px;
+    padding: 12px 16px;
+  }
+
+  .formCard {
+    padding: 16px;
+  }
+
+  .input,
+  .select {
+    width: 100%;
+  }
+
+  .userPicker {
+    max-width: 100%;
+  }
+
+  .formActions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .formActions .btnPrimary,
+  .formActions .btnCancel {
+    text-align: center;
+  }
+
+  .actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+  }
+
+  .btnAction {
+    text-align: center;
+  }
+
+  .pillItemRow {
+    flex-wrap: wrap;
+  }
+
+  .pillLabel {
+    min-width: unset;
+  }
+
+  .approvalModeOptions {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 480px) {
+  .page {
+    padding: 16px 12px;
+  }
+
+  .pageTitle {
+    font-size: 1.2rem;
+  }
+
+  .pageSubtitle {
+    font-size: 0.78rem;
+  }
+
+  .formCard {
+    padding: 12px;
+    border-radius: 8px;
+  }
+
+  .formTitle {
+    font-size: 13px;
+  }
+
+  .accordionHeader {
+    font-size: 13px;
+    padding: 10px 12px;
+    min-height: 44px;
+  }
+
+  .accordionBody {
+    padding: 0 12px;
+  }
+
+  .accordionBodyOpen {
+    padding: 0 12px 12px;
+  }
+
+  .label {
+    font-size: 10px;
+  }
+
+  .input,
+  .select {
+    font-size: 13px;
+    height: 36px;
+    padding: 7px 8px;
+  }
+
+  .th {
+    padding: 10px 12px;
+    font-size: 10px;
+  }
+
+  .td {
+    padding: 10px 12px;
+    font-size: 13px;
+  }
+
+  .btnPrimary {
+    padding: 8px 16px;
+    font-size: 13px;
+  }
+
+  .btnAction {
+    padding: 6px 10px;
+    font-size: 11px;
+  }
+
+  .userChip {
+    font-size: 11px;
+    padding: 3px 6px 3px 8px;
+  }
+
+  .userPickerInput {
+    font-size: 12px;
+    height: 32px;
+  }
+
+  .pillLabel {
+    font-size: 12px;
+  }
+
+  .pillPath {
+    font-size: 11px;
+  }
+
+  .approvalModeOption {
+    padding: 10px 12px;
+  }
+
+  .approvalModeLabel {
+    font-size: 0.8rem;
+  }
+
+  .approvalModeDesc {
+    font-size: 0.72rem;
+  }
 }
 
 /* ── Approval Mode ──────────────────────────────────────────────── */

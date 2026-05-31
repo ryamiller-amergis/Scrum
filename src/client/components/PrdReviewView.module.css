@@ -816,3 +816,163 @@
   font-style: italic;
   padding: 4px 0 0;
 }
+
+/* ── Responsive: tablet ────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .header {
+    flex-wrap: wrap;
+    padding: 10px 16px;
+  }
+
+  .headerLeft {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .headerRight {
+    flex-wrap: wrap;
+    gap: 6px;
+    flex: 1 1 100%;
+    justify-content: flex-end;
+  }
+
+  .reviewControls {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .actionDivider {
+    display: none;
+  }
+
+  .tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding: 0 16px;
+  }
+
+  .tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tab {
+    flex-shrink: 0;
+  }
+
+  .tabContent {
+    padding: 16px;
+  }
+
+  .preview {
+    max-width: none;
+  }
+
+  .editArea {
+    max-width: none;
+  }
+
+  .backlogView {
+    max-width: none;
+  }
+
+  .genAgent {
+    max-width: none;
+  }
+
+  .generatingBanner {
+    max-width: none;
+  }
+
+  .skeletonSection {
+    max-width: none;
+  }
+
+  .genStream {
+    padding: 16px;
+  }
+
+  .genStatus {
+    padding: 10px 16px;
+  }
+
+  .designDocBanner {
+    padding: 10px 16px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .adoSuccessBanner {
+    padding: 10px 16px;
+  }
+}
+
+/* ── Responsive: narrow phones ─────────────────────────────────────────────── */
+
+@media (max-width: 480px) {
+  .header {
+    padding: 8px 12px;
+    gap: 8px;
+  }
+
+  .title {
+    font-size: 0.88rem;
+  }
+
+  .actionBtn {
+    height: 26px;
+    padding: 0 8px;
+    font-size: 0.72rem;
+  }
+
+  .tabs {
+    padding: 0 12px;
+  }
+
+  .tab {
+    padding: 8px 12px;
+    font-size: 0.82rem;
+  }
+
+  .tabContent {
+    padding: 12px;
+  }
+
+  .textarea {
+    padding: 10px;
+    font-size: 0.84rem;
+  }
+
+  .editActions {
+    flex-wrap: wrap;
+  }
+
+  .genStream {
+    padding: 12px;
+  }
+
+  .genStatus {
+    padding: 8px 12px;
+    font-size: 0.8rem;
+  }
+
+  .genAgent {
+    padding: 10px 14px;
+    font-size: 0.84rem;
+  }
+
+  .backlogPre {
+    padding: 12px;
+    font-size: 0.78rem;
+  }
+
+  .approverPanel {
+    padding: 12px 14px;
+  }
+
+  .approverChip {
+    padding: 4px 10px;
+    font-size: 0.75rem;
+  }
+}

@@ -1066,3 +1066,133 @@
   border-radius: 3px;
   font-size: 0.85em;
 }
+
+/* ── Responsive: tablet ────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .header {
+    flex-wrap: wrap;
+    padding: 12px 16px;
+  }
+
+  .headerLeft {
+    min-width: 0;
+    flex: 1 1 100%;
+  }
+
+  .headerRight {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .titleInput {
+    min-width: 140px;
+  }
+
+  .messages {
+    padding: 12px 16px;
+  }
+
+  .messageBubble {
+    max-width: 88%;
+  }
+
+  .assistantBubble {
+    max-width: 88%;
+  }
+
+  .inputArea {
+    padding: 10px 16px 14px;
+  }
+
+  .lockedNotice {
+    padding: 10px 16px;
+    flex-wrap: wrap;
+  }
+
+  .composeInner {
+    max-width: 100%;
+  }
+
+  .composeHeading {
+    font-size: 1.4rem;
+  }
+}
+
+/* ── Responsive: narrow phones ─────────────────────────────────────────────── */
+
+@media (max-width: 480px) {
+  .header {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .headerRight {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .actionBtn {
+    padding: 5px 8px;
+    font-size: 0.78rem;
+  }
+
+  .title {
+    font-size: 0.88rem;
+  }
+
+  .messages {
+    padding: 10px 12px;
+  }
+
+  .messageBubble {
+    max-width: 92%;
+    padding: 8px 12px;
+    font-size: 0.84rem;
+  }
+
+  .assistantBubble {
+    max-width: 92%;
+    padding: 8px 12px;
+    font-size: 0.84rem;
+  }
+
+  .inputArea {
+    padding: 8px 12px 12px;
+  }
+
+  .inputBox {
+    padding: 10px;
+    border-radius: 12px;
+  }
+
+  .composeContainer {
+    padding: 16px;
+  }
+
+  .composeHeading {
+    font-size: 1.2rem;
+  }
+
+  .composeInner {
+    gap: 16px;
+  }
+
+  .lockedNotice {
+    padding: 10px 12px;
+    font-size: 0.78rem;
+  }
+
+  .choiceBlock {
+    margin-top: 8px;
+  }
+
+  .choiceOption {
+    padding: 8px 10px;
+  }
+
+  .choiceSendBtn {
+    width: calc(100% - 16px);
+    margin: 8px 8px 10px;
+  }
+}

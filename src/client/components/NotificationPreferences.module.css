@@ -123,3 +123,28 @@
   transform: translateX(14px);
   background: #fff;
 }
+
+/* ── Mobile responsive ────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .prefs-container {
+    padding: 8px;
+  }
+
+  .prefs-row {
+    min-height: 44px;
+    padding: 8px 4px;
+    flex-wrap: wrap;
+  }
+
+  .prefs-toggles {
+    width: 100%;
+    justify-content: flex-end;
+    gap: 16px;
+  }
+
+  .prefs-toggle {
+    min-height: 44px;
+    justify-content: center;
+  }
+}

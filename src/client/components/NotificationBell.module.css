@@ -74,3 +74,12 @@
     box-shadow: 0 0 0 0 color-mix(in srgb, var(--error-color) 0%, transparent);
   }
 }
+
+/* ── Mobile responsive ────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .bell-button {
+    height: 44px;
+    width: 44px;
+  }
+}

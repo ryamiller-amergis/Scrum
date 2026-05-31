@@ -191,3 +191,45 @@
   color: var(--accent-color);
   border-color: var(--accent-color);
 }
+
+/* ── Mobile responsive ────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .page {
+    max-width: none;
+    padding: 16px 12px;
+  }
+
+  .header {
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .title {
+    font-size: 1.25rem;
+  }
+
+  .mark-all-btn {
+    min-height: 44px;
+  }
+
+  .item {
+    padding: 12px;
+    min-height: 44px;
+    gap: 8px;
+  }
+
+  .group-label {
+    padding: 10px 12px 4px;
+  }
+
+  .load-more-btn {
+    min-height: 44px;
+    width: 100%;
+  }
+
+  .empty {
+    padding: 32px 12px;
+  }
+}
