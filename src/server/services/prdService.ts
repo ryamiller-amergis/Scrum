@@ -323,7 +323,10 @@ export function startPrdWatcher(prdId: string, chatThreadId: string): void {
     if (attempts > WATCHER_MAX_ATTEMPTS) {
       clearInterval(interval);
       activePrdWatchers.delete(prdId);
-      console.warn(`[prdWatcher] Timed out waiting for PRD output (prdId=${prdId}, threadId=${chatThreadId})`);
+      console.warn(`[prdWatcher] Timed out waiting for PRD output — resetting to draft (prdId=${prdId}, threadId=${chatThreadId})`);
+      await db.update(prds)
+        .set({ status: 'draft', updatedAt: new Date().toISOString() })
+        .where(and(eq(prds.id, prdId), eq(prds.status, 'generating')));
       return;
     }
 

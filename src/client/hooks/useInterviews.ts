@@ -77,8 +77,11 @@ export function usePrd(id: string | null) {
     queryFn: () => apiFetch(`/api/interviews/prds/${id}`),
     enabled: !!id,
     staleTime: 30_000,
-    refetchInterval: (query) =>
-      query.state.data?.content === '' ? 5_000 : false,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (!data) return false;
+      return data.status === 'generating' && data.content === '' ? 5_000 : false;
+    },
   });
 }
 
@@ -117,7 +120,8 @@ export function useDesignDoc(id: string | null) {
       if (!d) return false;
       if (d.status === 'interviewing') return 10_000;
       if (d.status === 'validating') return 10_000;
-      return (d.designContent === '' || d.techSpecContent === '' || d.assumptionsContent === '') ? 5_000 : false;
+      if (d.status === 'generating' && (d.designContent === '' || d.techSpecContent === '' || d.assumptionsContent === '')) return 5_000;
+      return false;
     },
   });
 }

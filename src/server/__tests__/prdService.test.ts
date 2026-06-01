@@ -69,9 +69,18 @@ import {
   reviewPrd,
   deletePrd,
   syncPrdContent,
+  startPrdWatcher,
 } from '../services/prdService';
 
 const { db: mockDb } = jest.requireMock('../db/drizzle') as { db: any };
+
+const {
+  readOutputPrd: mockReadOutputPrd,
+  readOutputBacklog: mockReadOutputBacklog,
+} = jest.requireMock('../services/chatAgentService') as {
+  readOutputPrd: jest.Mock;
+  readOutputBacklog: jest.Mock;
+};
 
 const { isAdminUser: mockIsAdminUser } = jest.requireMock('../utils/rbacHelpers') as {
   isAdminUser: jest.Mock;
@@ -735,6 +744,85 @@ describe('reopenForReview', () => {
 
     expect(setMock).toHaveBeenCalledWith(
       expect.objectContaining({ status: 'pending_review' }),
+    );
+  });
+});
+
+// ── startPrdWatcher ───────────────────────────────────────────────────────────
+
+describe('startPrdWatcher', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('syncs content to DB when both files are found', async () => {
+    mockReadOutputPrd.mockReturnValue('# Generated PRD');
+    mockReadOutputBacklog.mockReturnValue({ epics: [] });
+
+    const whereMock = jest.fn().mockResolvedValue(undefined);
+    const setMock = jest.fn().mockReturnValue({ where: whereMock });
+    mockDb.update.mockReturnValue({ set: setMock });
+
+    // Also mock the workspace cleanup query
+    mockDb.query.prds.findFirst.mockResolvedValue(null);
+
+    startPrdWatcher('prd-1', 'thread-1');
+
+    // Advance past one interval tick
+    jest.advanceTimersByTime(5_000);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(mockReadOutputPrd).toHaveBeenCalledWith('thread-1');
+    expect(mockReadOutputBacklog).toHaveBeenCalledWith('thread-1');
+    expect(setMock).toHaveBeenCalledWith(
+      expect.objectContaining({ content: '# Generated PRD', status: 'pending_review' }),
+    );
+  });
+
+  it('resets PRD to draft when watcher times out without finding files', async () => {
+    mockReadOutputPrd.mockReturnValue(null);
+    mockReadOutputBacklog.mockReturnValue(null);
+
+    const whereMock = jest.fn().mockResolvedValue(undefined);
+    const setMock = jest.fn().mockReturnValue({ where: whereMock });
+    mockDb.update.mockReturnValue({ set: setMock });
+
+    startPrdWatcher('prd-1', 'thread-1');
+
+    // Advance past all 360 ticks + 1 to trigger the timeout
+    for (let i = 0; i <= 360; i++) {
+      jest.advanceTimersByTime(5_000);
+      await Promise.resolve();
+      await Promise.resolve();
+    }
+
+    expect(setMock).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'draft' }),
+    );
+  });
+
+  it('does not sync when only PRD file is found without backlog', async () => {
+    mockReadOutputPrd.mockReturnValue('# PRD');
+    mockReadOutputBacklog.mockReturnValue(null);
+
+    const setMock = jest.fn().mockReturnThis();
+    mockDb.update.mockReturnValue({ set: setMock });
+
+    startPrdWatcher('prd-1', 'thread-1');
+
+    jest.advanceTimersByTime(5_000);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // syncPrdContent should NOT have been called (requires both files)
+    expect(setMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ content: expect.any(String), status: 'pending_review' }),
     );
   });
 });

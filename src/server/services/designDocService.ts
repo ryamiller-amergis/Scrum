@@ -407,7 +407,10 @@ export function startDesignDocWatcher(seedDocId: string, chatThreadId: string): 
     if (attempts > WATCHER_MAX_ATTEMPTS) {
       clearInterval(interval);
       activeDocWatchers.delete(seedDocId);
-      console.warn(`[designDocWatcher] Timed out (seedDocId=${seedDocId}, threadId=${chatThreadId})`);
+      console.warn(`[designDocWatcher] Timed out — resetting to draft (seedDocId=${seedDocId}, threadId=${chatThreadId})`);
+      await db.update(designDocs)
+        .set({ status: 'draft', updatedAt: new Date().toISOString() })
+        .where(and(eq(designDocs.id, seedDocId), eq(designDocs.status, 'generating')));
       return;
     }
 

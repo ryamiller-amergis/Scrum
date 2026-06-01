@@ -1240,7 +1240,7 @@ export const DesignDocReviewView: React.FC = () => {
   );
 
   const isInterviewing = doc?.status === 'interviewing';
-  const isGenerating = !isInterviewing && !!doc && (
+  const isGenerating = !isInterviewing && !!doc && doc.status === 'generating' && (
     doc.designContent === '' || doc.techSpecContent === '' || doc.assumptionsContent === ''
   );
 
@@ -2056,7 +2056,7 @@ export const DesignDocReviewView: React.FC = () => {
           onClose={handleAssistantClose}
           discussContext={discussContext ?? undefined}
           docAssistantThreadId={doc.docAssistantThreadId}
-          canCreateThread={canEdit}
+          canCreateThread={canWriteAssistant}
           readOnly={!canWriteAssistant}
         />
       )}

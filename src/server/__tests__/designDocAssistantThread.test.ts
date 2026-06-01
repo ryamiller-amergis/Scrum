@@ -347,7 +347,7 @@ describe('POST /api/interviews/design-docs/:id/assistant-thread — create permi
     const res = await request(buildApp()).post('/api/interviews/design-docs/doc-1/assistant-thread');
 
     expect(res.status).toBe(403);
-    expect(res.body.error).toMatch(/author or an admin/i);
+    expect(res.body.error).toMatch(/author.*admin.*assigned approver/i);
     expect(mockCreateThread).not.toHaveBeenCalled();
   });
 });

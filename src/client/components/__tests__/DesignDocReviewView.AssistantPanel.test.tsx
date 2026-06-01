@@ -51,7 +51,7 @@ jest.mock('../../hooks/useInterviews', () => ({
   useAcceptFixValidation: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
   useRevertDesignDocSection: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
   useReassignApprovers: jest.fn(() => ({ mutate: jest.fn(), isPending: false })),
-  useDocumentAssignments: jest.fn(() => ({ data: [] })),
+  useDocumentAssignments: jest.fn(() => ({ data: [{ approverUserId: 'user-reviewer', status: 'pending' }] })),
 }));
 
 const mockUseChatStream = jest.fn();
@@ -77,7 +77,7 @@ const mockDoc = {
   prdId: 'prd-1',
   project: 'proj-alpha',
   status: 'draft',
-  authorId: 'user-author',  // different from userId → isReviewer = true
+  authorId: 'user-author',
   chatThreadId: 'thread-gen',
   qaChatThreadId: null,
   docAssistantThreadId: null,

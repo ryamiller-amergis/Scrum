@@ -116,7 +116,7 @@ export async function canWriteThread(userId: string, threadId: string): Promise<
   return isAssignedApprover(link.documentId, 'design_doc', userId);
 }
 
-/** Author or admin may create / replace doc_assistant_thread_id on a design doc. */
+/** Author, admin, or assigned approver may create / replace doc_assistant_thread_id on a design doc. */
 export async function canCreateDesignDocAssistantThread(
   userId: string,
   designDocId: string,
@@ -127,5 +127,6 @@ export async function canCreateDesignDocAssistantThread(
   });
   if (!doc) return false;
   if (doc.authorId === userId) return true;
-  return isAdminUser(userId);
+  if (await isAdminUser(userId)) return true;
+  return isAssignedApprover(designDocId, 'design_doc', userId);
 }

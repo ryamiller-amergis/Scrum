@@ -45,6 +45,13 @@ jest.mock('../services/chatAgentService', () => ({
   readOutputDesignDoc: jest.fn().mockReturnValue(null),
   readOutputTechSpec: jest.fn().mockReturnValue(null),
   readOutputAssumptions: jest.fn().mockReturnValue(null),
+  readOutputValidationScorecard: jest.fn().mockReturnValue(null),
+  readOutputValidationScorecardMd: jest.fn().mockReturnValue(null),
+  readAllOutputDesignDocFeatures: jest.fn().mockReturnValue([]),
+  isThreadIdle: jest.fn().mockReturnValue(false),
+  createThread: jest.fn(),
+  sendMessage: jest.fn(),
+  cancelRun: jest.fn(),
 }));
 
 jest.mock('../utils/rbacHelpers', () => ({
@@ -81,6 +88,7 @@ import {
   syncDesignDocContent,
   syncValidationResult,
   markValidationReady,
+  startDesignDocWatcher,
 } from '../services/designDocService';
 
 const { db: mockDb } = jest.requireMock('../db/drizzle') as { db: any };
@@ -923,6 +931,51 @@ describe('reviewDesignDoc (approve with validation gate)', () => {
 
     expect(setMock).toHaveBeenCalledWith(
       expect.objectContaining({ status: 'approved', reviewerId: 'user-reviewer' }),
+    );
+  });
+});
+
+// ── startDesignDocWatcher ─────────────────────────────────────────────────────
+
+describe('startDesignDocWatcher', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('resets design doc to draft when watcher times out without finding features', async () => {
+    const { readAllOutputDesignDocFeatures: mockReadFeatures } =
+      jest.requireMock('../services/chatAgentService') as { readAllOutputDesignDocFeatures: jest.Mock };
+    mockReadFeatures.mockReturnValue([]);
+
+    // The watcher queries the seed doc on each tick to check if syncOutputToDb already handled it
+    mockDb.query.designDocs.findFirst.mockResolvedValue({
+      id: 'doc-seed',
+      chatThreadId: 'thread-dd',
+      prdId: 'prd-1',
+      project: 'proj-alpha',
+      authorId: 'user-1',
+    });
+
+    const whereMock = jest.fn().mockResolvedValue(undefined);
+    const setMock = jest.fn().mockReturnValue({ where: whereMock });
+    mockDb.update.mockReturnValue({ set: setMock });
+
+    startDesignDocWatcher('doc-seed', 'thread-dd');
+
+    // Max attempts = 360, advance past all ticks + 1
+    for (let i = 0; i <= 360; i++) {
+      jest.advanceTimersByTime(5_000);
+      await Promise.resolve();
+      await Promise.resolve();
+    }
+
+    expect(setMock).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'draft' }),
     );
   });
 });

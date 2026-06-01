@@ -22,7 +22,7 @@ import {
   deleteThread as pgDeleteThread,
 } from './chatThreadRepository';
 import { db } from '../db/drizzle';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, or } from 'drizzle-orm';
 import { interviews, prds, designDocs } from '../db/schema';
 import { syncPrdContent } from './prdService';
 import { syncDesignDocContent, syncValidationResult, syncPerFeatureDesignDocs } from './designDocService';
@@ -363,6 +363,34 @@ async function checkIsInterviewThread(threadId: string): Promise<boolean> {
 }
 
 /**
+ * Returns a label (e.g. "prd", "design_doc") if this thread is referenced by
+ * a PRD or design doc row, or null if it's a standalone chat thread.
+ *
+ * Used by closeThread to avoid deleting the chat_threads row when an
+ * ON DELETE CASCADE FK would silently destroy the parent document.
+ */
+async function threadBacksDocument(threadId: string): Promise<string | null> {
+  const prdRow = await db.query.prds.findFirst({
+    where: eq(prds.chatThreadId, threadId),
+    columns: { id: true },
+  });
+  if (prdRow) return 'prd';
+
+  const ddRow = await db.query.designDocs.findFirst({
+    where: or(
+      eq(designDocs.chatThreadId, threadId),
+      eq(designDocs.qaChatThreadId, threadId),
+      eq(designDocs.docAssistantThreadId, threadId),
+      eq(designDocs.validationThreadId, threadId),
+    ),
+    columns: { id: true },
+  });
+  if (ddRow) return 'design_doc';
+
+  return null;
+}
+
+/**
  * Return live ThreadState from memory, or hydrate from Postgres (e.g. after server restart).
  */
 async function ensureThreadState(threadId: string): Promise<ThreadState | null> {
@@ -691,6 +719,11 @@ async function syncOutputToDb(threadId: string, workspaceDir: string): Promise<v
       await syncPrdContent(prdRow.id, content, backlog ?? undefined);
       console.log(`[chat] post-run: synced PRD output to DB (prdId=${prdRow.id})`);
       fullySynced = content !== null && backlog !== null;
+    } else if (prdRow.status === 'generating') {
+      await db.update(prds)
+        .set({ status: 'draft', updatedAt: new Date().toISOString() })
+        .where(and(eq(prds.id, prdRow.id), eq(prds.status, 'generating')));
+      console.warn(`[chat] post-run: agent produced no PRD output — reset to draft (prdId=${prdRow.id})`);
     }
     if (fullySynced) cleanupWorkspaceDir(workspaceDir);
     return;
@@ -825,6 +858,31 @@ function cleanupWorkspaceDir(workspaceDir: string): void {
     fs.rmSync(workspaceDir, { recursive: true, force: true });
     console.log(`[chat] post-run: cleaned up workspace ${workspaceDir}`);
   } catch { /* non-fatal */ }
+}
+
+/**
+ * Reset any PRD or design doc stuck in 'generating' status for this thread
+ * back to 'draft'. Called when the agent run throws before syncOutputToDb
+ * can run, so the document doesn't stay in a generating limbo forever.
+ */
+async function failGeneratingDocuments(threadId: string): Promise<void> {
+  const [prdResult] = await db.update(prds)
+    .set({ status: 'draft', updatedAt: new Date().toISOString() })
+    .where(and(eq(prds.chatThreadId, threadId), eq(prds.status, 'generating')))
+    .returning({ id: prds.id });
+
+  if (prdResult) {
+    console.warn(`[chat] failGeneratingDocuments: reset PRD to draft (prdId=${prdResult.id}, threadId=${threadId})`);
+  }
+
+  const [ddResult] = await db.update(designDocs)
+    .set({ status: 'draft', updatedAt: new Date().toISOString() })
+    .where(and(eq(designDocs.chatThreadId, threadId), eq(designDocs.status, 'generating')))
+    .returning({ id: designDocs.id });
+
+  if (ddResult) {
+    console.warn(`[chat] failGeneratingDocuments: reset design doc to draft (designDocId=${ddResult.id}, threadId=${threadId})`);
+  }
 }
 
 export async function sendMessage(
@@ -1059,6 +1117,12 @@ export async function sendMessage(
     trackEvent('agent.run.errored', { threadId, errorTier: tier, errorCode, model: resolvedModel });
     broadcast(state, { type: 'error', error: state.thread.lastError ?? 'Unknown error', errorCode });
     broadcast(state, { type: 'done' });
+
+    try {
+      await failGeneratingDocuments(threadId);
+    } catch (fgErr) {
+      console.error(`[chat] failGeneratingDocuments failed for thread ${threadId}:`, fgErr);
+    }
   } finally {
     state.thread.lastActivityAt = new Date().toISOString();
     persistThread(state.thread);
@@ -1105,11 +1169,20 @@ export async function closeThread(threadId: string): Promise<void> {
     fs.rmSync(state.thread.workspaceDir, { recursive: true, force: true });
   } catch { /* non-fatal */ }
 
-  // Only delete from Postgres if the thread is not backing an interview.
-  // Interview threads use ON DELETE CASCADE, so deleting the chat_thread row
-  // would silently wipe the interview record. Leave the DB row intact; the
-  // in-memory state and workspace have already been cleaned up above.
+  // Never delete the chat_threads row when another table references it via
+  // ON DELETE CASCADE — doing so silently wipes the parent document.
+  //   - interviews.chat_thread_id  → CASCADE (deletes the interview)
+  //   - prds.chat_thread_id        → CASCADE (deletes the PRD)
+  // Design-doc thread columns don't have CASCADE FKs today, but deleting the
+  // row would orphan the workspace reference and break recovery/sync. Guard
+  // them the same way so document data is never lost.
   if (state.isInterviewThread) return;
+
+  const backsDocument = await threadBacksDocument(threadId);
+  if (backsDocument) {
+    console.log(`[chat] closeThread: skipping pg delete — thread ${threadId} backs a ${backsDocument}`);
+    return;
+  }
 
   pgDeleteThread(threadId).catch((err: Error) =>
     console.error('[chat] pg deleteThread failed:', err.message),

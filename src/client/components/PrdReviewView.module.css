@@ -690,6 +690,19 @@
   color: var(--text-secondary);
 }
 
+.failedBanner {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px 20px;
+  border: 1px solid var(--error-color);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+  margin: 24px auto;
+  max-width: 760px;
+  color: var(--error-color);
+}
+
 /* ── ADO creation success banner ─────────────────────────────────────────── */
 
 .adoSuccessBanner {

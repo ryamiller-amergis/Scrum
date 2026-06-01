@@ -735,7 +735,7 @@ router.post('/design-docs/:id/assistant-thread', requirePermission('interviews:v
     const mayCreate = await canCreateDesignDocAssistantThread(userId, req.params.id);
     if (!mayCreate) {
       res.status(403).json({
-        error: 'Only the document author or an admin can create the assistant thread',
+        error: 'Only the document author, an admin, or an assigned approver can create the assistant thread',
       });
       return;
     }

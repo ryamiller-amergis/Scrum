@@ -89,7 +89,8 @@ export const PrdReviewView: React.FC = () => {
     'prd',
   );
 
-  const isGenerating = !!prd && prd.content === '';
+  const isGenerating = !!prd && prd.status === 'generating' && prd.content === '';
+  const generationFailed = !!prd && prd.status === 'draft' && prd.content === '';
 
   const handleSaveContent = useCallback(async () => {
     if (!id || !prd) return;
@@ -467,6 +468,32 @@ export const PrdReviewView: React.FC = () => {
             </div>
           </div>
         </>
+      ) : generationFailed ? (
+        /* ── Generation failed banner ────────────────────────────────── */
+        <div className={styles.tabContent}>
+          <div className={styles.failedBanner}>
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+              style={{ width: 24, height: 24, flexShrink: 0 }}
+            >
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+            <div>
+              <div className={styles.bannerTitle}>PRD generation did not complete</div>
+              <div className={styles.bannerSub}>
+                The AI agent finished without producing output. You can return to the interview and try generating again.
+              </div>
+            </div>
+          </div>
+        </div>
       ) : (
         /* ── Normal tabs ─────────────────────────────────────────────── */
         <>
