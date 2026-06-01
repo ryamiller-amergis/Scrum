@@ -188,7 +188,7 @@ export async function isApprovalComplete(
   const mode: ApprovalMode = settings[0]?.approvalMode ?? 'any_one';
 
   const assignments = await getAssignments(documentId, documentType);
-  if (assignments.length === 0) return { complete: false, mode };
+  if (assignments.length === 0) return { complete: true, mode };
 
   if (mode === 'any_one') {
     return { complete: assignments.some((a) => a.status === 'approved'), mode };
@@ -307,4 +307,32 @@ export async function propagateDesignDocApprovers(
   if (approverIds && approverIds.length > 0) {
     await assignApprovers(designDocId, 'design_doc', approverIds, assignedBy);
   }
+}
+
+export async function notifyApproversDocumentReady(
+  documentId: string,
+  documentType: 'prd' | 'design_doc',
+): Promise<void> {
+  const assignments = await getAssignments(documentId, documentType);
+  const pendingApprovers = assignments
+    .filter((a) => a.status === 'pending')
+    .map((a) => a.approverUserId);
+
+  if (pendingApprovers.length === 0) return;
+
+  const docTitle = await getDocumentTitle(documentId, documentType);
+  await Promise.allSettled(
+    pendingApprovers.map((userId) =>
+      createNotification(userId, {
+        type: 'user-action',
+        title: documentType === 'prd'
+          ? 'A PRD is ready for your review'
+          : 'A design doc is ready for your review',
+        body: `"${docTitle}" is now pending review`,
+        link: documentType === 'prd'
+          ? `/backlog/prd/${documentId}`
+          : `/backlog/design-doc/${documentId}`,
+      }),
+    ),
+  );
 }

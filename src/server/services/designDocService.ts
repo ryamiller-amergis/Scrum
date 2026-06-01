@@ -6,7 +6,7 @@ import { designDocs, appUsers, chatThreads, prds } from '../db/schema';
 import type { ContentSnapshot, DesignDoc, DesignDocStatus, DesignDocSummary, ReviewDesignDocRequest, ValidationScorecard } from '../../shared/types/interview';
 import { readOutputDesignDoc, readOutputTechSpec, readOutputAssumptions, readOutputValidationScorecard, readOutputValidationScorecardMd, readAllOutputDesignDocFeatures, isThreadIdle, createThread as createChatThread, sendMessage, cancelRun } from './chatAgentService';
 import { isAdminUser } from '../utils/rbacHelpers';
-import { assignApprovers, recordApproverResponse, isAssignedApprover, isApprovalComplete, propagateDesignDocApprovers } from './documentApprovalService';
+import { assignApprovers, recordApproverResponse, isAssignedApprover, isApprovalComplete, propagateDesignDocApprovers, notifyApproversDocumentReady } from './documentApprovalService';
 import { getSkillConfig } from './projectSettingsService';
 import { getDefaultModel } from './appSettingsService';
 import { getPrd } from './prdService';
@@ -245,7 +245,7 @@ export async function reviewDesignDoc(
     await recordApproverResponse(id, 'design_doc', reviewerId, responseStatus, opts.comment ?? undefined);
   }
 
-  if (opts.action === 'approve') {
+  if (opts.action === 'approve' && !admin) {
     const { complete } = await isApprovalComplete(id, 'design_doc', row.project);
     if (!complete) {
       return;
@@ -286,6 +286,12 @@ export async function syncDesignDocContent(
     .update(designDocs)
     .set(updates)
     .where(eq(designDocs.id, id));
+
+  if (opts.finalStatus === 'pending_review') {
+    notifyApproversDocumentReady(id, 'design_doc').catch((err) =>
+      console.error(`[syncDesignDocContent] Failed to notify approvers (docId=${id})`, err),
+    );
+  }
 }
 
 const WATCHER_INTERVAL_MS = 5_000;
@@ -772,6 +778,12 @@ export async function syncValidationResult(
   if (newStatus) updates.status = newStatus;
 
   await db.update(designDocs).set(updates).where(eq(designDocs.id, designDocId));
+
+  if (newStatus === 'pending_review') {
+    notifyApproversDocumentReady(designDocId, 'design_doc').catch((err) =>
+      console.error(`[syncValidationResult] Failed to notify approvers (docId=${designDocId})`, err),
+    );
+  }
 }
 
 export async function cancelValidation(id: string, requestingUserId: string): Promise<void> {
@@ -817,6 +829,10 @@ export async function markValidationReady(id: string, requestingUserId: string):
   await db.update(designDocs)
     .set({ status: 'pending_review', updatedAt: new Date().toISOString() })
     .where(eq(designDocs.id, id));
+
+  notifyApproversDocumentReady(id, 'design_doc').catch((err) =>
+    console.error(`[markValidationReady] Failed to notify approvers (docId=${id})`, err),
+  );
 }
 
 // ── Fix Validation Flow ───────────────────────────────────────────────────────

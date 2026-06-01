@@ -55,6 +55,7 @@ import {
   getAvailableApprovers,
   propagateDesignDocApprovers,
   reassignApprovers,
+  notifyApproversDocumentReady,
 } from '../services/documentApprovalService';
 
 const { db: mockDb } = jest.requireMock('../db/drizzle') as { db: any };
@@ -377,14 +378,14 @@ describe('isApprovalComplete', () => {
     expect(result).toEqual({ complete: false, mode: 'all_required' });
   });
 
-  it('returns complete=false when no assignments exist', async () => {
+  it('returns complete=true when no assignments exist (no threshold to meet)', async () => {
     mockDb.select
       .mockReturnValueOnce(makeLimitSelectChain([{ approvalMode: 'any_one' }]))
       .mockReturnValueOnce(makeAssignmentSelectChain([]));
 
     const result = await isApprovalComplete('prd-1', 'prd', 'proj');
 
-    expect(result).toEqual({ complete: false, mode: 'any_one' });
+    expect(result).toEqual({ complete: true, mode: 'any_one' });
   });
 
   it('defaults to any_one when no project settings found', async () => {
@@ -581,5 +582,81 @@ describe('reassignApprovers', () => {
       body: 'Review requested for: My Design Doc',
       link: '/backlog/design-doc/dd-1',
     }));
+  });
+});
+
+// ── notifyApproversDocumentReady ──────────────────────────────────────────────
+
+describe('notifyApproversDocumentReady', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('sends a notification to each pending approver when document is ready', async () => {
+    mockDb.select
+      .mockReturnValueOnce(makeAssignmentSelectChain([
+        makeAssignmentRow({ approverUserId: 'approver-1', status: 'pending' }),
+        makeAssignmentRow({ id: 'a2', approverUserId: 'approver-2', status: 'pending' }),
+      ]))
+      .mockReturnValueOnce(makeLimitSelectChain([{ title: 'Auth Design Doc' }]));
+
+    await notifyApproversDocumentReady('dd-1', 'design_doc');
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(mockCreateNotification).toHaveBeenCalledTimes(2);
+    expect(mockCreateNotification).toHaveBeenCalledWith('approver-1', expect.objectContaining({
+      type: 'user-action',
+      title: 'A design doc is ready for your review',
+      body: '"Auth Design Doc" is now pending review',
+      link: '/backlog/design-doc/dd-1',
+    }));
+    expect(mockCreateNotification).toHaveBeenCalledWith('approver-2', expect.objectContaining({
+      type: 'user-action',
+      title: 'A design doc is ready for your review',
+      body: '"Auth Design Doc" is now pending review',
+      link: '/backlog/design-doc/dd-1',
+    }));
+  });
+
+  it('sends correct notification for PRD document type', async () => {
+    mockDb.select
+      .mockReturnValueOnce(makeAssignmentSelectChain([
+        makeAssignmentRow({ approverUserId: 'approver-1', status: 'pending', documentType: 'prd' }),
+      ]))
+      .mockReturnValueOnce(makeLimitSelectChain([{ title: 'Payment PRD' }]));
+
+    await notifyApproversDocumentReady('prd-1', 'prd');
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(mockCreateNotification).toHaveBeenCalledTimes(1);
+    expect(mockCreateNotification).toHaveBeenCalledWith('approver-1', expect.objectContaining({
+      type: 'user-action',
+      title: 'A PRD is ready for your review',
+      body: '"Payment PRD" is now pending review',
+      link: '/backlog/prd/prd-1',
+    }));
+  });
+
+  it('does not send notifications to approvers who already responded', async () => {
+    mockDb.select
+      .mockReturnValueOnce(makeAssignmentSelectChain([
+        makeAssignmentRow({ approverUserId: 'approver-1', status: 'approved' }),
+        makeAssignmentRow({ id: 'a2', approverUserId: 'approver-2', status: 'pending' }),
+      ]))
+      .mockReturnValueOnce(makeLimitSelectChain([{ title: 'Some Doc' }]));
+
+    await notifyApproversDocumentReady('dd-1', 'design_doc');
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(mockCreateNotification).toHaveBeenCalledTimes(1);
+    expect(mockCreateNotification).toHaveBeenCalledWith('approver-2', expect.anything());
+  });
+
+  it('does nothing when there are no assignments', async () => {
+    mockDb.select
+      .mockReturnValueOnce(makeAssignmentSelectChain([]));
+
+    await notifyApproversDocumentReady('dd-1', 'design_doc');
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(mockCreateNotification).not.toHaveBeenCalled();
   });
 });

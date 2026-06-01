@@ -257,7 +257,7 @@ export async function reviewPrd(
     await recordApproverResponse(id, 'prd', reviewerId, responseStatus, opts.comment ?? undefined);
   }
 
-  if (opts.action === 'approve') {
+  if (opts.action === 'approve' && !admin) {
     const { complete } = await isApprovalComplete(id, 'prd', row.project);
     if (!complete) {
       return;

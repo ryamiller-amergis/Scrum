@@ -578,6 +578,42 @@ describe('reviewPrd', () => {
       expect.objectContaining({ status: 'approved' }),
     );
   });
+
+  it('admin approval bypasses isApprovalComplete check entirely', async () => {
+    mockDb.query.prds.findFirst.mockResolvedValue(pendingPrd);
+    mockIsAssignedApprover.mockResolvedValue(false);
+    mockIsAdminUser.mockResolvedValue(true);
+    const whereMock = jest.fn().mockResolvedValue(undefined);
+    const setMock = jest.fn().mockReturnValue({ where: whereMock });
+    mockDb.update.mockReturnValue({ set: setMock });
+
+    await reviewPrd('prd-1', 'user-admin', { action: 'approve' });
+
+    expect(mockIsApprovalComplete).not.toHaveBeenCalled();
+    expect(setMock).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'approved' }),
+    );
+  });
+
+  it('designated approver approval transitions PRD to approved (any_one mode)', async () => {
+    mockDb.query.prds.findFirst.mockResolvedValue(pendingPrd);
+    mockIsAssignedApprover.mockResolvedValue(true);
+    mockIsAdminUser.mockResolvedValue(false);
+    mockIsApprovalComplete.mockResolvedValue({ complete: true, mode: 'any_one' });
+    const whereMock = jest.fn().mockResolvedValue(undefined);
+    const setMock = jest.fn().mockReturnValue({ where: whereMock });
+    mockDb.update.mockReturnValue({ set: setMock });
+
+    await reviewPrd('prd-1', 'user-reviewer', { action: 'approve' });
+
+    expect(mockRecordApproverResponse).toHaveBeenCalledWith(
+      'prd-1', 'prd', 'user-reviewer', 'approved', undefined,
+    );
+    expect(mockIsApprovalComplete).toHaveBeenCalledWith('prd-1', 'prd', 'proj-alpha');
+    expect(setMock).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'approved', reviewerId: 'user-reviewer' }),
+    );
+  });
 });
 
 // ── deletePrd ──────────────────────────────────────────────────────────────────
